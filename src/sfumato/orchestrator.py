@@ -439,9 +439,9 @@ async def run_news_refresh(
         - Individual feed fetch failures are non-fatal (logged, skipped)
         - State is NOT saved; caller must call state.save_all() if persistence needed
     """
-    # Get default batch size from config (will use layout.recommended_stories later
-    # when semantic matching is implemented)
-    batch_size = config.news.stories_per_refresh
+    # Batch size = how many stories per rotation display (not total curated).
+    # stories_per_refresh is total curated (~12), we split into batches of 3-4.
+    batch_size = min(4, config.news.stories_per_refresh)
 
     # Fetch and curate news
     result = await refresh_news(
