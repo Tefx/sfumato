@@ -5650,7 +5650,7 @@ phases:
       - Merge conflict with art-facts test suite resolved by preserving both families.'
   - id: replay.replay-fix-app-state-replay-integration
     name: replay.fix-app-state-replay-integration
-    status: claimed
+    status: done
     description: "Fix ALL replay production-state blockers found by `replay.gate`\
       \ — not just the first.\n\nstep_type: implementation\ntags:\n  - integration\n\
       symbolic_testing: false\nspec_refs:\n  - ARCHITECTURE.md#2.10\n  - ARCHITECTURE.md#2.12\n\
@@ -5716,6 +5716,32 @@ phases:
     agent: python-senior
     claimed_by: python-senior
     claimed_at: '2026-03-14T23:19:55.084421+00:00'
+    done_at: '2026-03-14T23:23:30.442235+00:00'
+    evidence: 'Step: replay.replay-fix-app-state-replay-integration
+
+      Commit hash(es): 71212e3; merged as [main f6bace9]
+
+      Files changed: src/sfumato/state.py, src/sfumato/orchestrator.py, tests/test_state.py,
+      tests/test_orchestrator.py
+
+      Verification:
+
+      - uv run pytest tests/test_state.py tests/test_orchestrator.py -k "replay" -v
+      -> 32 passed, 194 deselected
+
+      - uv run pytest tests/test_state.py::TestAppStateLoadContract::test_app_state_replay_queue_lifecycle_persists_via_save_all
+      tests/test_orchestrator.py::TestReplayProtocolSurface::test_production_app_state_replay_queue_seam_is_present
+      -v -> 2 passed
+
+      - AppState now owns replay_queue field, load(), and save_all() lifecycle; orchestrator
+      replay seam no longer silently no-ops for production AppState
+
+      Spec link: ARCHITECTURE.md#2.10
+
+      Gaps/Notes:
+
+      - Scope focused on replay integration surfaces and replay-focused verification
+      subsets.'
   - id: replay.retest-app-state-replay-integration
     name: retest-app-state-replay-integration
     status: pending
