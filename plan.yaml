@@ -3316,7 +3316,7 @@ phases:
       are defined; full production command behavior remains for implementation step.'
   - id: production.cli-full.tests
     name: Author production CLI tests
-    status: pending
+    status: claimed
     description: "step_type: test\nspec_refs:\n  - ARCHITECTURE.md#2.13\n  - ARCHITECTURE.md#2.12\n\
       touch_paths:\n  - tests/test_cli.py\n  - src/sfumato/cli.py\n  - src/sfumato/__main__.py\n\
       harness_refs:\n  - typer CLI harness\nagent: python-executor\n\nAuthor tests\
@@ -3341,6 +3341,8 @@ phases:
     - production.watch
     - production.cli-full.contract
     agent: python-executor
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T18:06:36.809131+00:00'
   - id: production.docker.contract
     name: Define container deployment contract
     status: done
