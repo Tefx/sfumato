@@ -5270,7 +5270,7 @@ phases:
       changes in this step.'
   - id: replay.gate
     name: Replay phase gate review
-    status: pending
+    status: claimed
     description: 'As an INDEPENDENT REVIEWER (gate-reviewer), assess whether the replay
       phase
 
@@ -5318,6 +5318,8 @@ phases:
     - replay.scheduler-wire.contract
     - replay.scheduler-wire.test
     - replay.scheduler-wire
+    claimed_by: gate-reviewer
+    claimed_at: '2026-03-14T23:07:51.307071+00:00'
   - id: replay.config.contract
     name: Define replay expiry config contract
     status: done
