@@ -1436,7 +1436,7 @@ phases:
       - `core.core-pipeline-verify-retest-full-suite`'
   - id: core.core-pipeline-verify-fix-skip-blockers
     name: core.pipeline.verify.fix-skip-blockers
-    status: pending
+    status: claimed
     description: "step_type: implementation\nspec_refs:\n  - ARCHITECTURE.md#2.12\n\
       \  - ARCHITECTURE.md#2.13\n  - README.md\n touch_paths:\n  - tests/test_orchestrator.py\n\
       \  - src/sfumato/orchestrator.py\nharness_refs:\n  - pytest\n  - orchestrator\
@@ -1491,6 +1491,8 @@ phases:
     depends_on:
     - core.pipeline.verify
     agent: python-executor
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T14:59:01.934763+00:00'
   - id: core.core-pipeline-verify-retest-full-suite
     name: core.pipeline.verify.retest-full-suite
     status: pending
