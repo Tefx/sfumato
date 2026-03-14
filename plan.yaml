@@ -4922,33 +4922,47 @@ phases:
     status: pending
     description: "step_type: implementation\nagent: python-senior\nspec_refs:\n  -\
       \ ARCHITECTURE.md#2.10\ntouch_paths:\n  - src/sfumato/state.py\n  - tests/test_state.py\n\
-      \nImplement ReplayQueue alongside existing NewsQueue in state.py:\n\nDesign\
-      \ decisions (python-senior scope):\n1. ReplayQueue stores consumed batches for\
-      \ infinite cycling\n2. After NewsQueue.dequeue(), the batch moves to ReplayQueue\n\
-      3. ReplayQueue.next() cycles through batches round-robin (not FIFO pop)\n4.\
-      \ ReplayQueue.expire(days) removes batches older than N days\n5. Persistence:\
-      \ replay_queue.json alongside news_queue.json\n6. Deduplication: seen_urls set\
-      \ tracks all URLs ever seen.\n   When RSS overlap ratio > 80% (seen/total),\
-      \ skip LLM curation.\n\nIntegration with existing NewsQueue:\n- NewsQueue.dequeue()\
-      \ should return batch AND move it to replay\n- Or: orchestrator handles the\
-      \ transfer (choose best design)\n\nState semantics:\n- ReplayQueue cycling is\
-      \ stateful (track current index)\n- Expiry is by enqueued_at timestamp, not\
-      \ dequeue time\n"
-    verification: '- ReplayQueue class exists with next(), expire(), persist/load
+      \nImplement `ReplayQueue` in `state.py` following the explicit contract and\
+      \ test chain.\n\nDesign decisions (python-senior scope):\n1. ReplayQueue stores\
+      \ consumed batches for infinite cycling.\n2. Orchestrator remains the transfer\
+      \ owner after `NewsQueue.dequeue()`; do not silently move dequeue side effects\
+      \ into `NewsQueue` unless the contract/test artifacts are updated accordingly.\n\
+      3. `ReplayQueue.next()` cycles batches round-robin without destructive pop.\n\
+      4. `ReplayQueue.expire(days)` removes batches older than N days.\n5. Persistence\
+      \ uses a replay artifact alongside `news_queue.json` and preserves replay index\
+      \ across save/load.\n6. Deduplication state tracks all seen URLs and supports\
+      \ overlap-ratio checks for the orchestrator skip decision.\n\nFailure-mode checklist:\n\
+      - relative vs absolute path behavior for the replay persistence artifact\n-\
+      \ missing-file fallback behavior on first load\n- explicit clear / empty replay\
+      \ semantics during save/load\n- stale persisted replay index vs newly loaded\
+      \ batch set precedence\n- partial-write or interrupted-save behavior does not\
+      \ corrupt future loads\n\nState semantics:\n- last-writer-wins: the most recent\
+      \ successful save defines replay batches, replay index, and seen URL state\n\
+      - preserve exactly: batch order, `enqueued_at`, replay index progression, and\
+      \ seen URL membership across persistence cycles\n- backward-compatible behavior:\
+      \ absence of replay persistence files loads as empty replay state without breaking\
+      \ existing `AppState.load()` callers\n\nOut-of-scope guardrail:\n- This step\
+      \ implements the state module only; orchestrator wiring, refresh flow policy,\
+      \ and queue transfer execution remain in `replay.scheduler-wire`\n\nTests: satisfy\
+      \ the upstream ReplayQueue contract tests in `tests/test_state.py`."
+    verification: '- Main path: targeted `tests/test_state.py` coverage proves ReplayQueue
+      persist/load, round-robin replay, and expiry-by-`enqueued_at`
 
-      - Deduplication tracks seen_urls with overlap ratio check
+      - Failure path: regression coverage proves missing-file fallback, empty/clear
+      semantics, and stale-index handling after save/load
 
-      - uv run pytest tests/test_state.py -v passes
+      - Dedup path: targeted tests prove overlap-ratio calculations below threshold
+      and >80% threshold
 
-      - Cycling behavior verified: same batches repeat
-
-      '
+      - Proof: `uv run pytest tests/test_state.py -v` passes and no orchestrator wiring
+      assumptions leak into this step'
     refs:
     - ARCHITECTURE.md#2.10
     - src/sfumato/state.py
     - tests/test_state.py
     depends_on:
-    - replay.config
+    - replay.define-replayqueue-contract-tests
+    agent: python-senior
   - id: replay.scheduler-wire
     name: Wire replay queue into orchestrator
     status: pending
