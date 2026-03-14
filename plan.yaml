@@ -1986,7 +1986,7 @@ phases:
       - Orchestrator wiring intentionally not changed in this step.'
   - id: intelligence.news-queue
     name: Wire news queue and time-window into orchestrator
-    status: pending
+    status: claimed
     description: 'Integrate NewsQueue into orchestrator pipeline. Add time-window
       filtering (max_age_days) and batch splitting to news flow. orchestrator.run_once()
       now dequeues from NewsQueue; if empty, triggers on-demand refresh_news(). orchestrator.run_news_refresh()
@@ -2006,6 +2006,8 @@ phases:
     depends_on:
     - intelligence.state
     agent: python-executor
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T16:59:16.775881+00:00'
   - id: intelligence.semantic-match
     name: Wire semantic matching and caching into orchestrator
     status: pending
