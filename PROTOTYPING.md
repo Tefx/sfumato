@@ -233,7 +233,6 @@ The LLM should output JSON with these fields:
 | Wikimedia Commons | **Rate-limited** (429 after 2-3 requests) | Need browser-like User-Agent + delays between requests |
 | Art Institute of Chicago (IIIF) | **Cloudflare blocked** (403) | Cannot use programmatically |
 | Met Museum API | **JSON API works**, image download blocked | API for metadata OK, images behind Cloudflare |
-| Rijksmuseum API | **Not tested yet** | Requires free API key registration |
 
 ### Wikimedia Workaround
 ```python

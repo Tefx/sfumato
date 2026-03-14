@@ -33,7 +33,7 @@ Every 15 minutes, sfumato selects a painting that matches the current news mood,
 - **Time-window awareness** — Fetches news from the past N days (default 3), not just the latest. If you've been away, you'll catch up on what matters. Articles older than 7 days are expired.
 - **Configurable display language** — Output in any language: Chinese, English, Japanese, etc. The LLM translates and adapts summaries accordingly.
 - **Dual refresh cycle** — News is fetched every 6 hours (configurable), paintings rotate every 15 minutes. News is split into batches so each rotation shows fresh stories.
-- **Cloud art sources** — Paintings from Rijksmuseum, Met Museum, and Wikimedia Commons APIs. Locally cached, never repeats until the full pool is exhausted.
+- **Cloud art sources** — Paintings from Met Museum and Wikimedia Commons APIs. Locally cached, never repeats until the full pool is exhausted.
 - **Layout caching** — Each painting's composition analysis, description, and embedding are cached by content hash. One LLM call per painting, forever.
 - **Seed art library** — `sfumato init` pre-fetches 50 paintings from cloud APIs covering diverse styles and moods, then analyzes and embeds them all. The daemon continues backfilling to 200+ in the background.
 - **TV-aware** — Detects if the TV is off or not in Art Mode before pushing. Auto-cleans old uploads.
@@ -169,7 +169,7 @@ category = "Economy"
 cache_dir = "~/.sfumato/paintings"
 seed_size = 50                      # Pre-fetch during `sfumato init`
 pool_size = 200                     # Background backfill target
-sources = ["rijksmuseum", "met", "wikimedia"]
+sources = ["met", "wikimedia"]
 match_strategy = "semantic"         # semantic | random
 
 [ai]

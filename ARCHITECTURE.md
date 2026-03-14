@@ -43,8 +43,8 @@ must conform to these specifications. Deviations require updating this document 
                                     │       ▼                                  ▼                      │
   ┌──────────────┐                  │  ┌──────────┐    ┌────────────┐    ┌───────────┐               │
   │ Art Sources  │──────fetch──────▶│  │paintings │───▶│ matcher    │◀───│ orchestr. │               │
-  │ (Rijks/Met/  │                  │  │ (pool)   │    │ (semantic) │    │ (pipeline)│               │
-  │  Wikimedia)  │                  │  └──────────┘    └────────────┘    └─────┬─────┘               │
+  │ (Met/Wiki-   │                  │  │ (pool)   │    │ (semantic) │    │ (pipeline)│               │
+  │  media)      │                  │  └──────────┘    └────────────┘    └─────┬─────┘               │
   └──────────────┘                  │                                         │                      │
                                     │                                         ▼                      │
                                     │  ┌──────────┐    ┌────────────┐    ┌───────────┐    ┌───────┐ │
@@ -145,7 +145,7 @@ class PaintingsConfig:
     cache_dir: Path = Path("~/.sfumato/paintings")
     seed_size: int = 50
     pool_size: int = 200
-    sources: list[str] = field(default_factory=lambda: ["rijksmuseum", "met", "wikimedia"])
+    sources: list[str] = field(default_factory=lambda: ["met", "wikimedia"])
     match_strategy: str = "semantic"  # "semantic" | "random"
 
 @dataclass(frozen=True)
@@ -269,7 +269,7 @@ async def refresh_news(
 
 **File**: `src/sfumato/paintings.py`
 
-**Responsibility**: Fetch paintings from cloud art APIs (Rijksmuseum, Met Museum, Wikimedia
+**Responsibility**: Fetch paintings from cloud art APIs (Met Museum, Wikimedia
 Commons), download high-resolution images to the local cache, manage the local painting pool,
 track which paintings have been used, and provide painting metadata.
 
@@ -288,7 +288,6 @@ class Orientation(Enum):
     PORTRAIT = "portrait"
 
 class ArtSource(Enum):
-    RIJKSMUSEUM = "rijksmuseum"
     MET = "met"
     WIKIMEDIA = "wikimedia"
 
@@ -318,17 +317,6 @@ async def fetch_paintings(
     Skips paintings whose source_id is in exclude_ids.
     Returns PaintingInfo for each successfully downloaded painting.
     Individual download failures are logged and skipped.
-    """
-    ...
-
-async def fetch_from_rijksmuseum(
-    count: int,
-    cache_dir: Path,
-    exclude_ids: set[str] | None = None,
-) -> list[PaintingInfo]:
-    """Fetch paintings from Rijksmuseum API.
-    Requires RIJKSMUSEUM_API_KEY env var.
-    Filters for paintings only (type=painting), high resolution available.
     """
     ...
 
@@ -373,9 +361,6 @@ def content_hash(image_path: Path) -> str:
 
 ```
 ~/.sfumato/paintings/
-  rijksmuseum/
-    SK-A-3262.jpg          # Image file
-    SK-A-3262.json         # Sidecar metadata (PaintingInfo fields)
   met/
     436535.jpg
     436535.json
@@ -1340,19 +1325,8 @@ The serialization format for each:
 | **Deduplication**   | By article URL across all feeds in a single fetch  |
 | **Age filtering**   | Articles older than `max_age_days` are dropped     |
 
-### 4.2 Rijksmuseum API
 
-| Aspect              | Detail                                             |
-|---------------------|----------------------------------------------------|
-| **Base URL**        | `https://www.rijksmuseum.nl/api/en/collection`     |
-| **Auth**            | API key via `RIJKSMUSEUM_API_KEY` env var           |
-| **Rate limit**      | Unknown; fetch in batches with 1s delay between    |
-| **Filtering**       | `type=painting`, `imgonly=true`, `toppieces=true`  |
-| **Image download**  | Use the `webImage.url` field for high-res          |
-| **Error handling**  | Retry 2x on 429/5xx, skip painting on 404          |
-| **Deduplication**   | By `objectNumber` (source_id)                      |
-
-### 4.3 Met Museum API
+### 4.2 Met Museum API
 
 | Aspect              | Detail                                             |
 |---------------------|----------------------------------------------------|
@@ -1883,7 +1857,6 @@ The contract artifact lives in `Dockerfile`; rationale and failure conditions ar
 |----------------------|--------------------------------------|----------|
 | `SFUMATO_CONFIG`     | Path to config.toml                  | No (has defaults) |
 | `SFUMATO_DATA_DIR`   | Override `~/.sfumato` data directory | No       |
-| `RIJKSMUSEUM_API_KEY`| Rijksmuseum API key                  | Yes (for rijksmuseum source) |
 
 ### 9.3 Data Volumes
 
@@ -1891,7 +1864,6 @@ The contract artifact lives in `Dockerfile`; rationale and failure conditions ar
 /data/                          # Mounted volume
   config.toml                   # User configuration
   paintings/                    # Painting cache (persistent)
-    rijksmuseum/
     met/
     wikimedia/
   state/                        # Daemon state (persistent)
@@ -1911,7 +1883,6 @@ compose definition must provide:
 - `/data/config.toml`, `/data/paintings`, `/data/state`, and optional `/data/output` mounts
 - `SIGTERM`-based shutdown with a non-zero grace period
 - a healthcheck tied to daemon freshness rather than raw PID existence
-- runtime injection of `RIJKSMUSEUM_API_KEY`
 - host-network deployment by default on Linux hosts
 
 Note: `network_mode: host` is required because Samsung TV communication uses WebSocket
@@ -2064,9 +2035,6 @@ sfumato/
 ```
 ~/.sfumato/                      # Default data directory (configurable)
 ├── paintings/                   # Painting cache
-│   ├── rijksmuseum/
-│   │   ├── SK-A-3262.jpg
-│   │   └── SK-A-3262.json      # PaintingInfo sidecar
 │   ├── met/
 │   │   ├── 436535.jpg
 │   │   └── 436535.json
