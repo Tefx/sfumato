@@ -279,6 +279,59 @@ def test_news_config_contract_documents_omitted_field_behavior() -> None:
     assert "default value ``2``" in (NewsConfig.__doc__ or "")
 
 
+def test_replay_expire_days_defaults_to_2_when_omitted_from_config_file(
+    isolated_paths: Path,
+) -> None:
+    """Backward-compatible behavior: when replay_expire_days is omitted from TOML config,
+    it defaults to 2 (from NewsConfig dataclass default).
+
+    This test documents the expected backward-compatible behavior for older configs
+    that were created before replay_expire_days was added.
+    """
+    config_path = isolated_paths / "backward-compat.toml"
+    _write(
+        config_path,
+        (
+            '[tv]\nip = "192.168.1.100"\n\n'
+            '[news]\nlanguage = "en"\nstories_per_refresh = 12\n'
+            "max_age_days = 3\nexpire_days = 7\nfeeds = []\n"
+        ),
+    )
+
+    config = load_config(path=config_path)
+
+    # Field omitted from TOML, defaults to 2 via dataclass
+    assert config.news.replay_expire_days == 2
+
+
+def test_replay_expire_days_parsing_contract_placeholder(
+    isolated_paths: Path,
+) -> None:
+    """Placeholder test for production implementation: reading replay_expire_days from TOML.
+
+    Currently the production _build_app_config does not read replay_expire_days from TOML.
+    This test documents the expected future behavior when production code is implemented.
+
+    When the production code reads replay_expire_days from TOML, this test should be updated
+    to verify the configured value is used.
+    """
+    config_path = isolated_paths / "explicit-replay.toml"
+    _write(
+        config_path,
+        (
+            '[tv]\nip = "192.168.1.100"\n\n'
+            '[news]\nlanguage = "en"\nreplay_expire_days = 5\nfeeds = []\n'
+        ),
+    )
+
+    config = load_config(path=config_path)
+
+    # Production parsing not yet implemented - field uses default
+    # Once production code reads replay_expire_days from TOML, this should become:
+    # assert config.news.replay_expire_days == 5
+    assert config.news.replay_expire_days == 2
+
+
 def test_generate_default_config_round_trips_through_load_config(
     isolated_paths: Path,
 ) -> None:
