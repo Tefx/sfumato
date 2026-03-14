@@ -1967,7 +1967,7 @@ phases:
     agent: python-executor
   - id: intelligence.matcher.contract
     name: Define matcher module contract
-    status: claimed
+    status: done
     description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
       \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nspec_refs:\n  - ARCHITECTURE.md#2.6\n\
       \  - PROTOTYPING.md#semantic-art-news-matching\ntouch_paths:\n  - src/sfumato/matcher.py\n\
@@ -2002,6 +2002,40 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T16:05:25.803361+00:00'
+    done_at: '2026-03-14T16:11:13.796329+00:00'
+    evidence: 'Artifact:
+
+      - PR: commit efcfeb5 ([vectl] step-intelligence.matcher.contract completed),
+      source worktree commit c9f83994790b24fb1de6ef66635ef0fa3efbff68
+
+
+      Verification:
+
+      - Run: `python3 -c "import ast; ast.parse(open(''src/sfumato/matcher.py'').read())"`
+      -> valid Python syntax
+
+      - Run: `python3 -c "import ast; ast.parse(open(''tests/test_matcher.py'').read())"`
+      -> valid Python syntax
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#2.6
+
+      - PROTOTYPING.md#semantic-art-news-matching
+
+
+      Files changed:
+
+      - src/sfumato/matcher.py
+
+      - tests/test_matcher.py
+
+
+      Gaps/Notes:
+
+      - Contract step kept scope purity: signatures, semantics, and stubs were pinned;
+      no orchestrator wiring performed.'
 - id: production
   name: Production
   status: locked
