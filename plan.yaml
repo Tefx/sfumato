@@ -2111,7 +2111,7 @@ phases:
       orchestrator changes.'
   - id: intelligence.init-cmd
     name: Implement sfumato init command
-    status: pending
+    status: claimed
     description: 'Implement orchestrator.init_project() and wire it to CLI init command
       per ARCHITECTURE.md. init_project(): create config file if absent, create state
       dirs, fetch seed_size paintings from cloud sources, analyze each (layout_ai),
@@ -2131,6 +2131,8 @@ phases:
     - intelligence.paintings
     - intelligence.semantic-match
     agent: python-executor
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T17:14:10.078913+00:00'
   - id: intelligence.gate
     name: 'Gate: Intelligence'
     status: pending
