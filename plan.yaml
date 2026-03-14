@@ -534,7 +534,7 @@ phases:
     refs:
     - src/sfumato/proto.py
     depends_on:
-    - production.docker
+    - production.cli-full
     agent: python-executor
   - id: production.gate
     name: 'Gate: Production'
