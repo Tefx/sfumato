@@ -2679,7 +2679,7 @@ phases:
   steps:
   - id: production.scheduler
     name: Implement scheduler module
-    status: pending
+    status: claimed
     description: "step_type: implementation\nspec_refs:\n  - ARCHITECTURE.md#2.11\n\
       touch_paths:\n  - src/sfumato/scheduler.py\n  - tests/test_scheduler.py\nharness_refs:\n\
       \  - pytest\nagent: python-executor\n\nImplement `src/sfumato/scheduler.py`\
@@ -2714,6 +2714,8 @@ phases:
     - production.scheduler.contract
     - production.scheduler.tests
     agent: python-executor
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T17:44:27.012282+00:00'
   - id: production.watch
     name: Implement orchestrator.watch daemon loop
     status: pending
