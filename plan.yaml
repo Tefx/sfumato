@@ -3013,7 +3013,7 @@ phases:
       contract expectations.'
   - id: production.cleanup
     name: Remove proto.py and clean up
-    status: pending
+    status: claimed
     description: "step_type: implementation\nspec_refs:\n  - src/sfumato/proto.py\n\
       touch_paths:\n  - src/sfumato/proto.py\n  - src/sfumato/__main__.py\n  - src/sfumato/cli.py\n\
       harness_refs:\n  - import smoke checks\nagent: python-executor\nsimple_feature_exception:\n\
@@ -3044,6 +3044,8 @@ phases:
     depends_on:
     - production.cli-full
     agent: python-executor
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T18:22:47.753301+00:00'
   - id: production.gate
     name: 'Gate: Production'
     status: pending
