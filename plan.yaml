@@ -1934,7 +1934,7 @@ phases:
       remains stubbed/deferred as required.'
   - id: intelligence.paintings.tests
     name: Author paintings module tests
-    status: pending
+    status: claimed
     description: "step_type: test\nspec_refs:\n  - ARCHITECTURE.md#2.3\ntouch_paths:\n\
       \  - tests/test_paintings.py\n  - src/sfumato/paintings.py\nharness_refs:\n\
       \  - pytest\n  - tmp_path image fixtures\nagent: python-executor\n\nAdd contract-driven\
@@ -1965,6 +1965,8 @@ phases:
     depends_on:
     - intelligence.paintings.contract
     agent: python-executor
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T16:11:34.667239+00:00'
   - id: intelligence.matcher.contract
     name: Define matcher module contract
     status: done
