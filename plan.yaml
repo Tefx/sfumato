@@ -2680,21 +2680,39 @@ phases:
   - id: production.scheduler
     name: Implement scheduler module
     status: pending
-    description: 'Implement src/sfumato/scheduler.py per ARCHITECTURE.md section 2.11.
-      Implement Action flag enum (NONE, REFRESH_NEWS, ROTATE, BACKFILL, QUIET_ART,
-      IDLE), SchedulerState dataclass, Scheduler class. Implement what_to_do() with
-      dual-timer logic: active_hours check, quiet_hours check, news_interval elapsed,
-      rotate_interval elapsed, backfill needed. Implement seconds_until_next_action(),
-      is_quiet_hour(), is_active_hour(). File: src/sfumato/scheduler.py (new). Completion:
-      what_to_do() returns correct Action flags for all time scenarios; quiet/active
-      hours respected.'
-    verification: what_to_do() returns IDLE outside active hours; QUIET_ART during
-      quiet hours; REFRESH_NEWS|ROTATE when news interval elapsed; ROTATE when rotate
-      interval elapsed
+    description: "step_type: implementation\nspec_refs:\n  - ARCHITECTURE.md#2.11\n\
+      touch_paths:\n  - src/sfumato/scheduler.py\n  - tests/test_scheduler.py\nharness_refs:\n\
+      \  - pytest\nagent: python-executor\n\nImplement `src/sfumato/scheduler.py`\
+      \ per `ARCHITECTURE.md#2.11` and the upstream contract/test steps.\n\nScope:\n\
+      - implement `Action`, `SchedulerState`, and `Scheduler`\n- implement `what_to_do()`,\
+      \ `seconds_until_next_action()`, `is_quiet_hour()`, and `is_active_hour()`\n\
+      - honor the contracted precedence between `IDLE`, `QUIET_ART`, `REFRESH_NEWS\
+      \ | ROTATE`, `ROTATE`, `BACKFILL`, and `NONE`\n\nFailure-mode checklist:\n-\
+      \ wrap-around quiet-hours and active-hours windows behave deterministically\
+      \ at boundary timestamps\n- simultaneous due actions preserve the contracted\
+      \ precedence instead of dropping or misordering work\n- `seconds_until_next_action()`\
+      \ returns immediate wake-up when work is already due and a positive delay otherwise\n\
+      - backfill never preempts heavier work when the contract marks it as lower priority\n\
+      \nState semantics:\n- scheduler decisions are derived only from `now`, config,\
+      \ and `SchedulerState`\n- combined actions must preserve bit-flag meaning exactly\n\
+      - backward-compatible behavior is returning `NONE` when no contracted action\
+      \ is due inside active hours\n\nOut-of-scope guardrail:\n- no daemon-loop execution,\
+      \ signal handling, or state persistence changes outside scheduler surfaces"
+    verification: '- Main path: targeted tests prove active-hours, quiet-hours, refresh-due,
+      rotate-due, and backfill-due scenarios return the contracted `Action` values
+
+      - Failure path: focused regressions prove wrap-around hour boundaries, simultaneous
+      due-action precedence, and immediate wake-up timing behave exactly as contracted
+
+      - Proof: explicit scheduler tests cover both decision output and next-action
+      timing; generic smoke coverage is insufficient'
     refs:
     - ARCHITECTURE.md#2.11
     - src/sfumato/scheduler.py
-    - ARCHITECTURE.md
+    - tests/test_scheduler.py
+    depends_on:
+    - production.scheduler.contract
+    - production.scheduler.tests
     agent: python-executor
   - id: production.watch
     name: Implement orchestrator.watch daemon loop
