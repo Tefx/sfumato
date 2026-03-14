@@ -3887,7 +3887,7 @@ phases:
     claimed_at: '2026-03-14T20:34:16.060445+00:00'
   - id: hardening.config-init-fixes
     name: Config path expansion + init command fixes
-    status: pending
+    status: claimed
     description: "step_type: implementation\ntouch_paths:\n  - src/sfumato/config.py\n\
       \  - src/sfumato/cli.py (init command)\n  - tests/test_config.py\n  - tests/test_cli.py\n\
       agent: python-executor\n\n## Objective\n\nFix bugs #1, #2, #3 from the hardening\
@@ -3927,6 +3927,8 @@ phases:
     - tests/test_config.py
     - tests/test_cli.py
     agent: python-executor
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T20:34:26.238872+00:00'
   - id: hardening.llm-cli-commands
     name: LLM CLI command construction tests
     status: pending
