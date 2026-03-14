@@ -5,11 +5,19 @@ Spec source: ARCHITECTURE.md#2.1
 
 from __future__ import annotations
 
+from dataclasses import fields
 from pathlib import Path
+from typing import get_type_hints
 
 import pytest
 
-from sfumato.config import AppConfig, ConfigError, generate_default_config, load_config
+from sfumato.config import (
+    AppConfig,
+    ConfigError,
+    NewsConfig,
+    generate_default_config,
+    load_config,
+)
 
 
 @pytest.fixture
@@ -244,6 +252,31 @@ def test_generate_default_config_produces_parseable_complete_toml() -> None:
     assert "news" in parsed
     assert "paintings" in parsed
     assert "ai" in parsed
+
+
+def test_news_config_contract_declares_replay_expire_days_default() -> None:
+    replay_field = next(
+        field for field in fields(NewsConfig) if field.name == "replay_expire_days"
+    )
+    type_hints = get_type_hints(NewsConfig)
+
+    assert NewsConfig().replay_expire_days == 2
+    assert type_hints["replay_expire_days"] is int
+    assert replay_field.default == 2
+
+
+def test_generate_default_config_places_replay_expire_days_under_news() -> None:
+    import tomllib
+
+    rendered = generate_default_config()
+    parsed = tomllib.loads(rendered)
+
+    assert parsed["news"]["replay_expire_days"] == 2
+
+
+def test_news_config_contract_documents_omitted_field_behavior() -> None:
+    assert "omit" in (NewsConfig.__doc__ or "")
+    assert "default value ``2``" in (NewsConfig.__doc__ or "")
 
 
 def test_generate_default_config_round_trips_through_load_config(

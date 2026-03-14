@@ -63,12 +63,18 @@ class FeedConfig:
 
 @dataclass(frozen=True)
 class NewsConfig:
-    """Typed news configuration contract."""
+    """Typed news configuration contract.
+
+    Backward-compatibility contract: if older persisted configs omit
+    ``replay_expire_days``, loaders should treat the field as present with the
+    default value ``2``.
+    """
 
     language: str = "zh"
     stories_per_refresh: int = 12
     max_age_days: int = 3
     expire_days: int = 7
+    replay_expire_days: int = 2
     feeds: list[FeedConfig] = field(default_factory=list)
 
 
@@ -194,6 +200,8 @@ language = "zh"
 stories_per_refresh = 12
 max_age_days = 3
 expire_days = 7
+# Backward-compatible default for older configs that omit this field.
+replay_expire_days = 2
 
 # [[news.feeds]]
 # name = "Example Feed"
