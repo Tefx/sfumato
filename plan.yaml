@@ -434,7 +434,7 @@ phases:
     claimed_at: '2026-03-14T12:37:26.103689+00:00'
   - id: core.llm.contract
     name: Define LLM invocation contract
-    status: claimed
+    status: done
     description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
       \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nspec_refs:\n  - ARCHITECTURE.md#2.9\n\
       touch_paths:\n  - src/sfumato/llm.py\nharness_refs:\n  - tests/test_llm.py\n\
@@ -460,6 +460,35 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T12:37:10.089905+00:00'
+    done_at: '2026-03-14T12:50:09.552328+00:00'
+    evidence: 'Artifact:
+
+      - Worker commit: 3339422 (isolated worktree)
+
+      - Main commit: a7517fdc7777171268be1496208314b6b89eb48a
+
+
+      Verification:
+
+      - Run: `ruff check src/sfumato/llm.py tests/test_llm.py` -> All checks passed
+
+      - Run: `mypy src/sfumato/llm.py --ignore-missing-imports` -> Success: no issues
+      found in 1 source file
+
+      - Run: `pytest tests/test_llm.py -v` -> 42 passed
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#2.9
+
+      - src/sfumato/llm.py
+
+
+      Gaps/Notes:
+
+      - Contract step only: public surfaces, retry/timeout/parser boundaries pinned;
+      subprocess invocation implementation deferred.'
   - id: core.llm.tests
     name: Author LLM invocation tests
     status: pending
