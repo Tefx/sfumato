@@ -3741,7 +3741,7 @@ phases:
       - No additional sibling changes required for this config/dependency-only step.'
   - id: sdk.llm-sdk-backend
     name: LLM SDK backend implementation
-    status: claimed
+    status: done
     description: "Add SDK backend to llm.py using litellm library. Existing CLI code\
       \ stays untouched.\n\nFile: src/sfumato/llm.py\n\n1. Add routing logic to invoke_text(),\
       \ invoke_vision(), compute_embedding():\n   - Check ai_config.backend: if \"\
@@ -3788,6 +3788,34 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T21:29:26.086153+00:00'
+    done_at: '2026-03-14T21:37:18.479297+00:00'
+    evidence: 'Step: sdk.llm-sdk-backend
+
+      Commit hash(es): 066a150; merged as [main cacf398]
+
+      Files changed: src/sfumato/llm.py, tests/test_matcher.py
+
+      Verification:
+
+      - uv run pytest tests/ -v -> 711 passed
+
+      - uv run mypy src/sfumato/llm.py -> Success (no issues)
+
+      - uv run ruff check src/sfumato/llm.py -> 2 pre-existing warnings (unused imports)
+
+      - SDK path implemented for invoke_text/invoke_vision/compute_embedding; CLI
+      subprocess path retained
+
+      - Provider mapping implemented: openrouter/{model}, gemini/{model}, openai model
+      passthrough
+
+      Spec link: ARCHITECTURE.md
+
+      Gaps/Notes:
+
+      - Subagent reported no follow-up gaps for step scope.
+
+      - LiteLLM import handled as optional runtime dependency path.'
   - id: sdk.dockerfile
     name: Dockerfile SDK mode
     status: pending
