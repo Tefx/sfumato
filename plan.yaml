@@ -3012,7 +3012,7 @@ phases:
       added; full scheduling logic remains for implementation step.'
   - id: production.scheduler.tests
     name: Author scheduler tests
-    status: claimed
+    status: done
     description: "step_type: test\nspec_refs:\n  - ARCHITECTURE.md#2.11\ntouch_paths:\n\
       \  - tests/test_scheduler.py\n  - src/sfumato/scheduler.py\nharness_refs:\n\
       \  - pytest\nagent: python-executor\n\nAuthor scheduler tests that exercise\
@@ -3038,6 +3038,39 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T17:40:44.495019+00:00'
+    done_at: '2026-03-14T17:44:17.930035+00:00'
+    evidence: 'Artifact:
+
+      - PR: commit 8b0b87e ([vectl] step-production.scheduler.tests completed), source
+      worktree commit b60748503fe5d5eeb7b36126298834eb2ebec755
+
+
+      Verification:
+
+      - Run: `uv run python -m py_compile tests/test_scheduler.py` -> syntax check
+      passed
+
+      - Run: `uv run pytest tests/test_scheduler.py --collect-only -q` -> 84 tests
+      collected
+
+      - Run: `uv run pytest tests/test_scheduler.py -v` -> contract assertions pass;
+      stub-bound failures are expected prior to implementation
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#2.11
+
+
+      Files changed:
+
+      - tests/test_scheduler.py
+
+
+      Gaps/Notes:
+
+      - Test-only step completed with targeted edge/failure paths; implementation
+      behavior remains for scheduler implementation step.'
   - id: production.watch.contract
     name: Define daemon watch contract
     status: done
