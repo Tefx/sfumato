@@ -1439,6 +1439,39 @@ phases:
     depends_on:
     - core.pipeline.verify
     agent: python-executor
+  - id: core.core-pipeline-verify-retest-full-suite
+    name: core.pipeline.verify.retest-full-suite
+    status: pending
+    description: "step_type: verification\nspec_refs:\n  - ARCHITECTURE.md#2.12\n\
+      \  - ARCHITECTURE.md#2.13\n  - README.md\ntouch_paths:\n  - tests/test_orchestrator.py\n\
+      \  - src/sfumato/orchestrator.py\nharness_refs:\n  - pytest\n  - orchestrator\
+      \ seam doubles for news/layout/render/tv/state\nagent: integration-verifier\n\
+      \nAs an INDEPENDENT TESTER (`integration-verifier`), rerun the full orchestrator\
+      \ `run_once()` verification suite after the batched skip-removal fix.\n\nYOUR\
+      \ GOAL IS TO FIND REMAINING GAPS, not to confirm it works.\n\nRetest scope:\n\
+      - Full `tests/test_orchestrator.py` coverage for happy path, `--no-upload`,\
+      \ `--no-news`, TV-unavailable, error propagation, output-path guarantees, and\
+      \ stage ordering.\n- Assert no blocker skips remain for the contracted `run_once()`\
+      \ regression surface.\n- Treat any surviving `Implementation dispatch pending`\
+      \ skip, or any skip that still hides the TV-unavailable/high-risk failure branch,\
+      \ as a blocker.\n\nIndependence Level: L1\n\nEvidence must include exact pytest\
+      \ command(s), actual skip/pass counts, and an explicit statement of whether\
+      \ any orchestrator regression tests remain skipped."
+    verification: '- Run the full orchestrator verification suite (for example `pytest
+      tests/test_orchestrator.py -q` or stricter equivalent) and include the real
+      output
+
+      - Assert no blocker skips remain in `tests/test_orchestrator.py`; any remaining
+      `Implementation dispatch pending` skip is a blocker
+
+      - Verify the highest-risk failure path (`TestRunOnceTvUnavailable`) executes
+      and reports assertions rather than skip
+
+      - Report final executed/skipped counts and confirm the suite now covers happy
+      path, flag branches, output-path, error propagation, and stage ordering'
+    depends_on:
+    - core.core-pipeline-verify-fix-skip-blockers
+    agent: integration-verifier
 - id: intelligence
   name: Intelligence
   status: locked
