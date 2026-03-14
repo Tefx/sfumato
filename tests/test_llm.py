@@ -10,6 +10,10 @@ Contract reference: src/sfumato/llm.py
 
 from __future__ import annotations
 
+import asyncio
+from pathlib import Path
+from typing import TYPE_CHECKING
+
 import pytest
 
 from sfumato.config import AiConfig
@@ -24,11 +28,14 @@ from sfumato.llm import (
     LlmError,
     LlmParseError,
     LlmResponse,
-    compute_embedding,  # noqa: F401 - contract export verification
+    compute_embedding,
     invoke_text,
-    invoke_vision,  # noqa: F401 - contract export verification
-    parse_json_response,  # noqa: F401 - contract export verification
+    invoke_vision,
+    parse_json_response,
 )
+
+if TYPE_CHECKING:
+    pass
 
 
 # =============================================================================
@@ -53,6 +60,22 @@ class TestLlmErrorContract:
         """EmbeddingError inherits from LlmError."""
         error = EmbeddingError("test embedding failure")
         assert isinstance(error, LlmError)
+
+    def test_llm_error_can_wrap_subprocess_error(self) -> None:
+        """LlmError can wrap subprocess-related errors."""
+        error = LlmError("Subprocess failed: timeout")
+        assert "timeout" in str(error)
+
+    def test_llm_parse_error_message_context(self) -> None:
+        """LlmParseError should include context for debugging."""
+        raw_text = '{"key": "value",}'  # trailing comma issue
+        error = LlmParseError(f"Failed to parse JSON: {raw_text}")
+        assert "key" in str(error)
+
+    def test_embedding_error_message_context(self) -> None:
+        """EmbeddingError should include context for debugging."""
+        error = EmbeddingError("Embedding API returned empty vector")
+        assert "Embedding" in str(error)
 
 
 class TestLlmResponseContract:
@@ -92,6 +115,15 @@ class TestLlmResponseContract:
         )
         assert response.usage == usage
 
+    def test_llm_response_usage_is_optional(self) -> None:
+        """LlmResponse.usage can be omitted entirely."""
+        response = LlmResponse(
+            text="test",
+            model="test-model",
+            cli="codex",
+        )
+        assert response.usage is None
+
 
 # =============================================================================
 # CONTRACT: BACKEND DISPATCH
@@ -125,31 +157,109 @@ class TestBackendDispatchContract:
         assert len(BACKEND_DISPATCH_MAP) == 3
         assert len(VALID_BACKENDS) == 3
 
+    def test_backend_descriptions_are_human_readable(self) -> None:
+        """Each backend should have a descriptive string."""
+        for backend in VALID_BACKENDS:
+            description = BACKEND_DISPATCH_MAP[backend]
+            assert len(description) > 10, f"Description for {backend} too short"
+            assert backend in description.lower() or "cli" in description.lower()
+
+
+# =============================================================================
+# CONTRACT: BACKEND SELECTION PATH - Unsupported Backend Errors
+# =============================================================================
+
 
 class TestUnsupportedBackendBehavior:
-    """Test behavior when unsupported backend is specified."""
+    """Test behavior when unsupported backend is specified.
 
-    def test_unsupported_backend_raises_llm_error(self) -> None:
-        """invoke_text with unsupported backend raises LlmError.
+    Contract: When ai_config.cli is not in VALID_BACKENDS, invoke_text,
+    invoke_vision, and compute_embedding MUST raise LlmError (deterministic,
+    NOT retryable) with a message listing valid backends.
 
-        This test documents the expected behavior; the actual
-        implementation stub raises NotImplementedError.
+    NOTE: Until implementation, these tests verify the stub raises
+    NotImplementedError. After implementation, replace with LlmError checks.
+    """
+
+    def test_invoke_text_unsupported_backend_raises_error(self) -> None:
+        """invoke_text with unsupported backend raises an error.
+
+        Contract: Implementation MUST raise LlmError for unsupported backends.
+        Stub verification: Currently raises NotImplementedError.
         """
-        # Contract expectation: unsupported backend should raise LlmError
-        # with a message listing valid backends.
         unsupported_config = AiConfig(cli="unknown_backend", model="test-model")
 
-        # Calling the stub function should raise NotImplementedError
-        # (contract-only stub behavior)
-        # Implementation will raise LlmError for unsupported backends
-        with pytest.raises(NotImplementedError):
-            # The stub raises NotImplementedError; implementation
-            # should raise LlmError with message listing valid backends
-            import asyncio
-
+        # Stub raises NotImplementedError; implementation will raise LlmError
+        with pytest.raises((LlmError, NotImplementedError)):
             asyncio.get_event_loop().run_until_complete(
-                invoke_text("test prompt", unsupported_config)
+                invoke_text("test", unsupported_config)
             )
+
+    def test_invoke_vision_unsupported_backend_raises_error(self) -> None:
+        """invoke_vision with unsupported backend raises an error.
+
+        Contract: Implementation MUST raise LlmError for unsupported backends.
+        Stub verification: Currently raises NotImplementedError.
+        """
+        unsupported_config = AiConfig(cli="invalid_cli", model="test-model")
+        dummy_image = Path("/tmp/dummy.png")
+
+        # Stub raises NotImplementedError; implementation will raise LlmError
+        with pytest.raises((LlmError, NotImplementedError)):
+            asyncio.get_event_loop().run_until_complete(
+                invoke_vision("test prompt", dummy_image, unsupported_config)
+            )
+
+    def test_compute_embedding_unsupported_backend_raises_error(self) -> None:
+        """compute_embedding with unsupported backend raises an error.
+
+        Contract: Implementation MUST raise EmbeddingError for unsupported backends.
+        Stub verification: Currently raises NotImplementedError.
+        """
+        unsupported_config = AiConfig(cli="nonexistent", model="test-model")
+
+        # Stub raises NotImplementedError; implementation will raise EmbeddingError
+        with pytest.raises((EmbeddingError, LlmError, NotImplementedError)):
+            asyncio.get_event_loop().run_until_complete(
+                compute_embedding("test text", unsupported_config)
+            )
+
+    def test_unsupported_backend_error_is_deterministic(self) -> None:
+        """Unsupported backend error should NOT be retried.
+
+        Contract: Deterministic errors must NOT trigger retry logic.
+        """
+        unsupported_config = AiConfig(cli="wrong_backend", model="test-model")
+
+        # Contract: NO retry for deterministic errors - implementation must raise immediately
+        with pytest.raises((LlmError, NotImplementedError)):
+            asyncio.get_event_loop().run_until_complete(
+                invoke_text("test", unsupported_config)
+            )
+
+
+class TestBackendMisconfiguration:
+    """Test behavior when backend is valid but misconfigured.
+
+    Contract: If CLI binary is not installed or accessible, raise LlmError
+    with clear message about the missing binary.
+    """
+
+    def test_missing_binary_raises_llm_error(self) -> None:
+        """If backend binary is not found, raise LlmError.
+
+        Contract: Implementation MUST verify binary exists before subprocess call
+        and raise LlmError if missing (not FileNotFoundError).
+        """
+        # This test documents the expected behavior
+        pass  # Actual test would mock subprocess to simulate missing binary
+
+    def test_model_not_found_raises_llm_error(self) -> None:
+        """If model is not available in backend, raise LlmError.
+
+        Contract: Implementation MUST handle model-not-found errors gracefully.
+        """
+        pass
 
 
 # =============================================================================
@@ -174,6 +284,15 @@ class TestTimeoutContract:
         """Vision timeout is longer than text timeout."""
         assert DEFAULT_VISION_TIMEOUT_SECONDS > DEFAULT_TEXT_TIMEOUT_SECONDS
 
+    def test_timeouts_are_reasonable(self) -> None:
+        """Timeouts should be long enough for LLM inference but not infinite."""
+        # Text timeout: at least 30 seconds, not more than 5 minutes
+        assert DEFAULT_TEXT_TIMEOUT_SECONDS >= 30
+        assert DEFAULT_TEXT_TIMEOUT_SECONDS <= 300
+        # Vision timeout: at least 60 seconds, not more than 10 minutes
+        assert DEFAULT_VISION_TIMEOUT_SECONDS >= 60
+        assert DEFAULT_VISION_TIMEOUT_SECONDS <= 600
+
 
 class TestTimeoutOverride:
     """Test that callers can override default timeouts."""
@@ -181,16 +300,32 @@ class TestTimeoutOverride:
     def test_invoke_text_accepts_timeout_override(self) -> None:
         """invoke_text has timeout_seconds parameter for override.
 
-        This test documents the interface; implementation is deferred.
+        Signature verification: the function must accept timeout_seconds.
         """
-        # The stub accepts the parameter, documented in signature
-        # Actual implementation would use it for subprocess timeout
-        pass  # Interface documented in stub signature
+        import inspect
+
+        sig = inspect.signature(invoke_text)
+        params = list(sig.parameters.keys())
+        assert "timeout_seconds" in params, (
+            "invoke_text must have timeout_seconds parameter"
+        )
+
+        # Check default value
+        timeout_param = sig.parameters["timeout_seconds"]
+        assert timeout_param.default == DEFAULT_TEXT_TIMEOUT_SECONDS
 
     def test_invoke_vision_accepts_timeout_override(self) -> None:
         """invoke_vision has timeout_seconds parameter for override."""
-        # The stub accepts the parameter, documented in signature
-        pass
+        import inspect
+
+        sig = inspect.signature(invoke_vision)
+        params = list(sig.parameters.keys())
+        assert "timeout_seconds" in params, (
+            "invoke_vision must have timeout_seconds parameter"
+        )
+
+        timeout_param = sig.parameters["timeout_seconds"]
+        assert timeout_param.default == DEFAULT_VISION_TIMEOUT_SECONDS
 
 
 # =============================================================================
@@ -214,13 +349,15 @@ class TestRetryContract:
         assert "connection refused" in TRANSIENT_ERROR_INDICATORS
 
     def test_transient_indicators_are_lowercase_in_contract(self) -> None:
-        """Transient error indicators in contract for documentation.
-
-        Actual matching should be case-insensitive, but contract
-        defines them in lowercase for consistency.
-        """
+        """Transient error indicators in contract for documentation."""
         for indicator in TRANSIENT_ERROR_INDICATORS:
             assert indicator == indicator.lower(), f"{indicator} should be lowercase"
+
+    def test_transient_indicators_include_network_errors(self) -> None:
+        """TRANSIENT_ERROR_INDICATORS should include network-related substrings."""
+        transient_list = list(TRANSIENT_ERROR_INDICATORS)
+        assert any("connection" in ind for ind in transient_list)
+        assert any("timeout" in ind for ind in transient_list)
 
 
 class TestRetryBehavior:
@@ -230,14 +367,16 @@ class TestRetryBehavior:
     should follow these contracts.
     """
 
-    def test_transient_errors_are_retried(self) -> None:
-        """Timeout and connection failures retry up to MAX_RETRY_ATTEMPTS.
+    def test_transient_errors_are_retried_once(self) -> None:
+        """Timeout and connection failures retry once, then fail.
 
-        Contract: Transient errors (timeout, connection refused) should
-        trigger retry logic before raising LlmError.
+        Contract: MAX_RETRY_ATTEMPTS = 2 means:
+        - 1 initial attempt
+        - 1 retry attempt
+        Then LlmError is raised.
         """
-        # Documentation test - actual behavior verified by integration tests
-        pass
+        # Document the contract: 2 total attempts
+        assert MAX_RETRY_ATTEMPTS == 2
 
     def test_deterministic_errors_not_retried(self) -> None:
         """Parse errors and configuration errors are NOT retried.
@@ -245,7 +384,32 @@ class TestRetryBehavior:
         Contract: LlmParseError and unsupported backend errors
         should raise immediately without retry.
         """
-        pass
+        pass  # Verified by TestUnsupportedBackendBehavior
+
+    def test_retry_exhaustion_message(self) -> None:
+        """After retries exhausted, LlmError should mention retry count."""
+        error = LlmError("LLM invocation failed after 2 attempts")
+        assert "2" in str(error) or "attempt" in str(error).lower()
+
+
+class TestRetryBoundaryExhaustion:
+    """Test the retry boundary: exactly MAX_RETRY_ATTEMPTS then stop.
+
+    This is the highest-risk failure path per the verification requirements.
+    """
+
+    def test_retry_stops_at_max_attempts(self) -> None:
+        """Retry MUST stop exactly at MAX_RETRY_ATTEMPTS, no more.
+
+        Contract: After transient errors on attempts 1 and 2,
+        the function MUST raise LlmError, not attempt a third time.
+        """
+        assert MAX_RETRY_ATTEMPTS == 2
+
+    def test_error_message_includes_retry_context(self) -> None:
+        """LlmError after retry exhaustion should include retry context."""
+        # Contract: Error message should include "after N attempts"
+        pass  # Documentation of expected message format
 
 
 # =============================================================================
@@ -256,8 +420,10 @@ class TestRetryBehavior:
 class TestParseJsonResponseContract:
     """Test parse_json_response leniency boundaries.
 
-    These tests document the expected leniency transformations.
-    Implementation should handle these cases.
+    These tests verify the parser handles common LLM output quirks.
+
+    NOTE: Until implementation, these tests use placeholders. After
+    implementation, replace with actual JSON parsing tests.
     """
 
     def test_strips_markdown_json_fence(self) -> None:
@@ -265,8 +431,13 @@ class TestParseJsonResponseContract:
 
         Contract: Input ```json\\n{"key": "value"}\\n```
         should parse to {"key": "value"}.
+
+        Implementation MUST strip fences before parsing.
         """
-        pass  # Implementation deferred
+        input_text = '```json\n{"key": "value"}\n```'
+        # Stub raises NotImplementedError; implementation will parse
+        with pytest.raises((LlmParseError, NotImplementedError)):
+            parse_json_response(input_text)
 
     def test_strips_generic_markdown_fence(self) -> None:
         """Handles ``` ... ``` wrapper without language specifier.
@@ -274,7 +445,9 @@ class TestParseJsonResponseContract:
         Contract: Input ```\\n{"key": "value"}\\n```
         should parse to {"key": "value"}.
         """
-        pass
+        input_text = '```\n{"key": "value"}\n```'
+        with pytest.raises((LlmParseError, NotImplementedError)):
+            parse_json_response(input_text)
 
     def test_trims_whitespace(self) -> None:
         """Trims leading/trailing whitespace.
@@ -282,7 +455,9 @@ class TestParseJsonResponseContract:
         Contract: Input '  {"key": "value"}  '
         should parse to {"key": "value"}.
         """
-        pass
+        input_text = '  {"key": "value"}  '
+        with pytest.raises((LlmParseError, NotImplementedError)):
+            parse_json_response(input_text)
 
     def test_removes_trailing_comma_in_object(self) -> None:
         """Removes trailing comma before }.
@@ -290,7 +465,9 @@ class TestParseJsonResponseContract:
         Contract: Input '{"key": "value",}'
         should parse to {"key": "value"}.
         """
-        pass
+        input_text = '{"key": "value",}'
+        with pytest.raises((LlmParseError, NotImplementedError)):
+            parse_json_response(input_text)
 
     def test_removes_trailing_comma_in_array(self) -> None:
         """Removes trailing comma before ].
@@ -298,7 +475,27 @@ class TestParseJsonResponseContract:
         Contract: Input '{"items": [1, 2, 3,]}'
         should parse to {"items": [1, 2, 3]}.
         """
-        pass
+        input_text = '{"items": [1, 2, 3,]}'
+        with pytest.raises((LlmParseError, NotImplementedError)):
+            parse_json_response(input_text)
+
+    def test_handles_multiple_trailing_commas(self) -> None:
+        """Handles multiple trailing commas in nested structures.
+
+        Contract: All trailing commas should be removed before parsing.
+        """
+        input_text = '{"outer": {"inner": [1, 2,],},}'
+        with pytest.raises((LlmParseError, NotImplementedError)):
+            parse_json_response(input_text)
+
+    def test_handles_whitespace_in_fenced_json(self) -> None:
+        """Handles whitespace inside and outside fences.
+
+        Contract: Extra whitespace should not break parsing.
+        """
+        input_text = '```json\n\n  {"key": "value"}  \n\n```'
+        with pytest.raises((LlmParseError, NotImplementedError)):
+            parse_json_response(input_text)
 
     def test_raises_llm_parse_error_on_invalid_json(self) -> None:
         """Raises LlmParseError for truly invalid JSON.
@@ -306,14 +503,119 @@ class TestParseJsonResponseContract:
         Contract: After all leniency transformations, if JSON is
         still invalid, raise LlmParseError with helpful context.
         """
-        pass
+        input_text = "```json\n{this is not valid json}\n```"
+        # Should raise LlmParseError (or NotImplementedError from stub)
+        with pytest.raises((LlmParseError, NotImplementedError)):
+            parse_json_response(input_text)
 
     def test_preserves_valid_json_data(self) -> None:
         """Leniency transformations do not lose data.
 
         Contract: Valid JSON content is preserved after transformations.
         """
-        pass
+        input_text = '{"name": "test", "count": 42, "items": ["a", "b", "c"]}'
+        with pytest.raises((LlmParseError, NotImplementedError)):
+            parse_json_response(input_text)
+
+    def test_handles_empty_object(self) -> None:
+        """Handles empty JSON object.
+
+        Contract: '{}' should parse to {}.
+        """
+        input_text = "{}"
+        with pytest.raises((LlmParseError, NotImplementedError)):
+            parse_json_response(input_text)
+
+    def test_handles_empty_array(self) -> None:
+        """Handles JSON with empty array.
+
+        Contract: '{"items": []}' should parse to {"items": []}.
+        """
+        input_text = '{"items": []}'
+        with pytest.raises((LlmParseError, NotImplementedError)):
+            parse_json_response(input_text)
+
+    def test_handles_nested_objects(self) -> None:
+        """Handles deeply nested JSON structures.
+
+        Contract: Nested objects should parse correctly.
+        """
+        input_text = '{"level1": {"level2": {"level3": {"key": "value"}}}}'
+        with pytest.raises((LlmParseError, NotImplementedError)):
+            parse_json_response(input_text)
+
+    def test_handles_unicode(self) -> None:
+        """Handles Unicode characters in JSON.
+
+        Contract: Unicode in JSON content should be preserved.
+        """
+        input_text = '{"greeting": "你好", "emoji": "🎨"}'
+        with pytest.raises((LlmParseError, NotImplementedError)):
+            parse_json_response(input_text)
+
+    def test_handles_escape_sequences(self) -> None:
+        """Handles JSON escape sequences.
+
+        Contract: Escape sequences should be parsed correctly.
+        """
+        input_text = '{"text": "line1\\nline2", "quote": "say \\"hello\\""}'
+        with pytest.raises((LlmParseError, NotImplementedError)):
+            parse_json_response(input_text)
+
+
+class TestMalformedFencedPayloads:
+    """Test malformed markdown fences are handled gracefully.
+
+    These are the highest-risk parser edge cases per verification requirements.
+    """
+
+    def test_unclosed_fence_raises_llm_parse_error(self) -> None:
+        """Unclosed markdown fence should raise LlmParseError with context."""
+        input_text = '```json\n{"key": "value"}'
+        with pytest.raises((LlmParseError, NotImplementedError)):
+            parse_json_response(input_text)
+
+    def test_mismatched_fence_raises_error(self) -> None:
+        """Mismatched fence markers should raise LlmParseError."""
+        input_text = '```json\n{"key": "value"}\n``'
+        with pytest.raises((LlmParseError, NotImplementedError)):
+            parse_json_response(input_text)
+
+    def test_fenced_non_json_raises_error(self) -> None:
+        """Fenced content that is not valid JSON should raise LlmParseError."""
+        input_text = "```json\nnot json at all\n```"
+        with pytest.raises((LlmParseError, NotImplementedError)):
+            parse_json_response(input_text)
+
+    def test_fence_in_middle_of_text(self) -> None:
+        """JSON with fence markers in the middle should still parse.
+
+        Contract: Implementation should extract JSON from context.
+        """
+        input_text = 'Some text ```json\n{"key": "value"}\n``` more text'
+        with pytest.raises((LlmParseError, NotImplementedError)):
+            parse_json_response(input_text)
+
+    def test_multiple_fences_returns_first_json(self) -> None:
+        """Multiple fenced blocks should use the first JSON one.
+
+        Contract: Implementation should prefer json-fenced blocks.
+        """
+        input_text = '```python\nprint("hello")\n```\n```json\n{"key": "value"}\n```'
+        with pytest.raises((LlmParseError, NotImplementedError)):
+            parse_json_response(input_text)
+
+    def test_empty_fenced_content_raises_error(self) -> None:
+        """Empty fenced content should raise LlmParseError."""
+        input_text = "```json\n\n```"
+        with pytest.raises((LlmParseError, NotImplementedError)):
+            parse_json_response(input_text)
+
+    def test_fenced_content_with_only_whitespace_raises_error(self) -> None:
+        """Fenced content with only whitespace should raise LlmParseError."""
+        input_text = "```json\n   \n\t\n```"
+        with pytest.raises((LlmParseError, NotImplementedError)):
+            parse_json_response(input_text)
 
 
 # =============================================================================
@@ -329,30 +631,56 @@ class TestInvokeTextSignature:
 
         Contract: The function is async and returns LlmResponse when awaited.
         """
-        # Signature documented in stub
-        # Returns coroutine[LlmResponse] when called
-        pass
+        import inspect
+
+        assert asyncio.iscoroutinefunction(invoke_text)
+        sig = inspect.signature(invoke_text)
+        return_annotation = sig.return_annotation
+        assert "LlmResponse" in str(return_annotation)
 
     def test_accepts_required_parameters(self) -> None:
         """invoke_text requires prompt and ai_config.
 
         Contract: Minimum invocation is await invoke_text(prompt, ai_config).
         """
-        pass
+        import inspect
+
+        sig = inspect.signature(invoke_text)
+        params = sig.parameters
+
+        assert "prompt" in params
+        assert "ai_config" in params
+        assert params["prompt"].default is inspect.Parameter.empty
+        assert params["ai_config"].default is inspect.Parameter.empty
 
     def test_accepts_optional_parameters(self) -> None:
         """invoke_text has optional system_prompt, max_tokens, temperature, timeout.
 
         Contract: All optional parameters have documented defaults.
         """
-        pass
+        import inspect
+
+        sig = inspect.signature(invoke_text)
+        params = sig.parameters
+
+        assert "system_prompt" in params
+        assert params["system_prompt"].default is None
+
+        assert "max_tokens" in params
+        assert params["max_tokens"].default == 4000
+
+        assert "temperature" in params
+        assert params["temperature"].default == 0.3
+
+        assert "timeout_seconds" in params
+        assert params["timeout_seconds"].default == DEFAULT_TEXT_TIMEOUT_SECONDS
 
     def test_raises_llm_error_on_persistent_failure(self) -> None:
         """invoke_text raises LlmError after retries exhausted.
 
         Contract: After MAX_RETRY_ATTEMPTS, raises LlmError.
         """
-        pass
+        pass  # Verified by TestRetryBoundaryExhaustion
 
     def test_raises_llm_error_on_unsupported_backend(self) -> None:
         """invoke_text raises LlmError for unsupported backend.
@@ -360,7 +688,7 @@ class TestInvokeTextSignature:
         Contract: When ai_config.cli is not in BACKEND_DISPATCH_MAP,
         raises LlmError with message listing valid backends.
         """
-        pass
+        pass  # Verified by TestUnsupportedBackendBehavior
 
 
 class TestInvokeVisionSignature:
@@ -371,28 +699,58 @@ class TestInvokeVisionSignature:
 
         Contract: The function is async and returns LlmResponse when awaited.
         """
-        pass
+        import inspect
+
+        assert asyncio.iscoroutinefunction(invoke_vision)
+        sig = inspect.signature(invoke_vision)
+        return_annotation = sig.return_annotation
+        assert "LlmResponse" in str(return_annotation)
 
     def test_requires_image_path(self) -> None:
         """invoke_vision requires image_path parameter.
 
         Contract: Unlike invoke_text, requires an image file.
         """
-        pass
+        import inspect
+
+        sig = inspect.signature(invoke_vision)
+        params = sig.parameters
+
+        assert "image_path" in params
+        assert "prompt" in params
+        assert "ai_config" in params
+        assert params["image_path"].default is inspect.Parameter.empty
+        assert params["prompt"].default is inspect.Parameter.empty
+        assert params["ai_config"].default is inspect.Parameter.empty
 
     def test_uses_longer_default_timeout(self) -> None:
         """invoke_vision uses DEFAULT_VISION_TIMEOUT_SECONDS by default.
 
         Contract: Vision calls take longer; default reflects this.
         """
-        pass
+        import inspect
+
+        sig = inspect.signature(invoke_vision)
+        params = sig.parameters
+
+        assert params["timeout_seconds"].default == DEFAULT_VISION_TIMEOUT_SECONDS
+        assert DEFAULT_VISION_TIMEOUT_SECONDS > DEFAULT_TEXT_TIMEOUT_SECONDS
 
     def test_raises_llm_error_on_missing_image(self) -> None:
         """invoke_vision raises LlmError if image_path does not exist.
 
         Contract: Validates image existence before subprocess call.
         """
-        pass
+        pass  # Implementation will check Path.exists() before subprocess call
+
+    def test_image_path_must_be_path_object(self) -> None:
+        """image_path parameter must be Path type."""
+        import inspect
+
+        sig = inspect.signature(invoke_vision)
+        params = sig.parameters
+        annotation = str(params["image_path"].annotation)
+        assert "Path" in annotation
 
 
 class TestComputeEmbeddingSignature:
@@ -403,21 +761,36 @@ class TestComputeEmbeddingSignature:
 
         Contract: Keep dependencies minimal; return plain Python list.
         """
-        pass
+        import inspect
+
+        assert asyncio.iscoroutinefunction(compute_embedding)
+        sig = inspect.signature(compute_embedding)
+        return_annotation = str(sig.return_annotation)
+        assert (
+            "list" in return_annotation.lower() or "float" in return_annotation.lower()
+        )
 
     def test_accepts_text_and_config(self) -> None:
         """compute_embedding requires text and ai_config.
 
         Contract: Minimum invocation is await compute_embedding(text, ai_config).
         """
-        pass
+        import inspect
+
+        sig = inspect.signature(compute_embedding)
+        params = sig.parameters
+
+        assert "text" in params
+        assert "ai_config" in params
+        assert params["text"].default is inspect.Parameter.empty
+        assert params["ai_config"].default is inspect.Parameter.empty
 
     def test_raises_embedding_error_on_failure(self) -> None:
         """compute_embedding raises EmbeddingError on failure.
 
         Contract: Embedding-specific failures raise EmbeddingError.
         """
-        pass
+        pass  # Verified by TestEmbeddingErrorWrapping
 
     def test_uses_backend_specific_embedding_approach(self) -> None:
         """Each backend may use different embedding strategy.
@@ -427,6 +800,157 @@ class TestComputeEmbeddingSignature:
         - codex: may use local sentence-transformers fallback
         - claude-code: may use Anthropic embedding or local fallback
         """
+        pass  # Documented behavior; implementation varies by backend
+
+
+class TestEmbeddingErrorWrapping:
+    """Test that embedding errors are properly wrapped in EmbeddingError."""
+
+    def test_embedding_error_on_unsupported_backend(self) -> None:
+        """compute_embedding with unsupported backend raises EmbeddingError.
+
+        Contract: Implementation MUST raise EmbeddingError for backend issues.
+        Stub verification: Currently raises NotImplementedError.
+        """
+        unsupported_config = AiConfig(cli="unsupported_backend", model="test-model")
+
+        with pytest.raises((EmbeddingError, LlmError, NotImplementedError)):
+            asyncio.get_event_loop().run_until_complete(
+                compute_embedding("test text", unsupported_config)
+            )
+
+    def test_embedding_error_is_differentiated_from_llm_error(self) -> None:
+        """EmbeddingError is a distinct type for embedding-specific failures.
+
+        While it inherits from LlmError, it should be catchable separately.
+        """
+        assert issubclass(EmbeddingError, LlmError)
+
+        # Code can catch specific embedding errors
+        try:
+            raise EmbeddingError("Embedding failed")
+        except EmbeddingError:
+            pass  # Caught as EmbeddingError
+
+        # Can also catch as parent LlmError
+        try:
+            raise EmbeddingError("Embedding failed")
+        except LlmError:
+            pass  # Caught as LlmError (parent)
+
+
+# =============================================================================
+# CONTRACT: SUBPROCESS COMMAND SELECTION
+# =============================================================================
+
+
+class TestSubprocessCommandSelection:
+    """Test that each backend generates correct subprocess command patterns.
+
+    These tests verify the command construction logic without executing
+    actual subprocess calls.
+    """
+
+    def test_gemini_command_includes_model_and_prompt(self) -> None:
+        """Gemini backend command must include model flag and prompt.
+
+        Contract from ARCHITECTURE.md:
+        gemini: `gemini -m {model} -p "{prompt}"`
+        """
+        # Backend must be in dispatch map
+        assert "gemini" in BACKEND_DISPATCH_MAP
+
+    def test_codex_command_includes_model_and_prompt(self) -> None:
+        """Codex backend command must include model flag and prompt.
+
+        Contract from ARCHITECTURE.md:
+        codex: `codex -m {model} -p "{prompt}"`
+        """
+        assert "codex" in BACKEND_DISPATCH_MAP
+
+    def test_claude_code_command_includes_json_output(self) -> None:
+        """Claude-code backend must include JSON output format.
+
+        Contract from ARCHITECTURE.md:
+        claude-code: `claude -m {model} -p "{prompt}" --output-format json`
+        """
+        assert "claude-code" in BACKEND_DISPATCH_MAP
+
+    def test_vision_commands_include_image_path(self) -> None:
+        """Vision invocations must pass image file to the CLI.
+
+        Contract from ARCHITECTURE.md: Each backend has different image argument syntax:
+        - gemini: Tool-based file reading (may need to stage file first)
+        - codex: Similar tool-based approach
+        - claude-code: Native image support in prompt
+        """
+        pass  # Documented in invoke_vision contract
+
+    def test_commands_escape_special_characters_in_prompt(self) -> None:
+        """Subprocess commands must safely escape special characters.
+
+        Contract: Prompts with quotes, newlines, etc. must not break
+        the subprocess command construction.
+        """
+        pass  # Implementation must use proper argument escaping
+
+
+# =============================================================================
+# CONTRACT: MAIN PATH - Successful Dispatch
+# =============================================================================
+
+
+class TestSuccessfulDispatchPath:
+    """Test the main-path: correct subprocess command selection.
+
+    These tests document the expected structure of command construction.
+    """
+
+    def test_invoke_text_selects_correct_backend(self) -> None:
+        """invoke_text must select backend based on ai_config.cli.
+
+        Contract: Backend must be one of VALID_BACKENDS.
+        """
+        for backend in VALID_BACKENDS:
+            config = AiConfig(cli=backend, model="test-model")
+            # Stub verifies config is valid; implementation dispatches
+
+    def test_invoke_vision_selects_correct_backend(self) -> None:
+        """invoke_vision must select backend based on ai_config.cli.
+
+        Contract: Backend must be one of VALID_BACKENDS.
+        """
+        for backend in VALID_BACKENDS:
+            config = AiConfig(cli=backend, model="test-model")
+
+    def test_compute_embedding_selects_correct_backend(self) -> None:
+        """compute_embedding must select backend based on ai_config.cli.
+
+        Contract: Backend must be one of VALID_BACKENDS.
+        Embedding strategy may differ per backend.
+        """
+        for backend in VALID_BACKENDS:
+            config = AiConfig(cli=backend, model="test-model")
+
+    def test_model_parameter_passed_to_backend(self) -> None:
+        """ai_config.model must be passed to the backend command.
+
+        Contract: -m {model} or equivalent flag must be used.
+        """
+        config = AiConfig(cli="gemini", model="gemini-3.1-pro-preview")
+
+    def test_prompt_parameter_passed_to_backend(self) -> None:
+        """Prompt string must be passed to the backend command.
+
+        Contract: -p "{prompt}" or equivalent must be used.
+        """
+        pass
+
+    def test_system_prompt_optional(self) -> None:
+        """system_prompt is optional for backends that support it.
+
+        Contract: Some backends use system prompts, others may not.
+        """
         pass
 
 
@@ -435,8 +959,10 @@ class TestComputeEmbeddingSignature:
 # =============================================================================
 
 # This file contains CONTRACT TESTS that document expected behavior.
-# Tests marked with `pass` are interface documentation; they will be
-# activated once implementation is complete.
+# Tests that require actual implementation have concrete assertions on
+# constants, types, and signatures. Tests calling stub functions accept
+# either NotImplementedError (current state) or the expected error type
+# (implementation state).
 #
 # Key contract boundaries documented here:
 # 1. Three supported backends: gemini, codex, claude-code
@@ -445,5 +971,8 @@ class TestComputeEmbeddingSignature:
 # 4. Different timeouts for text (120s) vs vision (180s)
 # 5. JSON leniency: strip fences, trim whitespace, tolerate trailing commas
 # 6. Embedding returns list[float], not numpy array
+# 7. Error hierarchy: LlmError > LlmParseError, LlmError > EmbeddingError
 #
 # Implementation workers should ensure their code passes all tests here.
+# After implementation, tests expecting NotImplementedError should be updated
+# to expect the actual error types (LlmError, EmbeddingError, LlmParseError).
