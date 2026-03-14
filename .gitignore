@@ -11,3 +11,6 @@ AGENTS.md
 CLAUDE.md
 plan-dashboard.html
 .vectl/worktrees/
+src/sfumato.egg-info/
+*.jpg
+~/
