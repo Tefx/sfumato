@@ -40,11 +40,10 @@ from __future__ import annotations
 import asyncio
 import datetime
 import hashlib
-import signal
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, NoReturn
+from typing import TYPE_CHECKING, Any
 
 import typer
 
@@ -602,36 +601,25 @@ def watch(
         - Shutdown: "Shutting down..."
         - Verbose mode: Additional debug information
     """
-    # STUB IMPLEMENTATION - Full business logic in separate dispatch step
-    # This signature and behavior contract is complete; implementation pending.
-
     loaded_config = _load_config_or_exit(config, verbose)
 
-    # Apply CLI overrides (stub - these would modify config)
+    # Apply CLI overrides
     if cli_override:
         _verbose_print(verbose, f"Overriding AI CLI backend to: {cli_override}")
+        typer.echo(
+            f"Warning: --cli override not yet implemented. Using: {loaded_config.ai.cli}",
+            err=True,
+        )
+
     if model_override:
         _verbose_print(verbose, f"Overriding AI model to: {model_override}")
+        typer.echo(
+            f"Warning: --model override not yet implemented. Using: {loaded_config.ai.model}",
+            err=True,
+        )
 
-    # Initialize state
-    try:
-        state = AppState.load(loaded_config.data_dir)
-        _verbose_print(verbose, f"State directory: {loaded_config.data_dir}")
-    except Exception as e:
-        typer.echo(f"Failed to initialize state: {e}", err=True)
-        raise typer.Exit(code=EXIT_STATE_ERROR) from e
-
-    # Signal handling state
-    shutdown_requested = False
-
-    def handle_shutdown(signum: int, frame: Any) -> None:
-        """Set shutdown flag for graceful termination."""
-        nonlocal shutdown_requested
-        shutdown_requested = True
-        typer.echo("\nShutdown requested, finishing current action...")
-
-    signal.signal(signal.SIGINT, handle_shutdown)
-    signal.signal(signal.SIGTERM, handle_shutdown)
+    # Import orchestrator.watch for actual implementation
+    from sfumato.orchestrator import watch as orchestrator_watch
 
     typer.echo("Starting sfumato daemon...")
     typer.echo(f"TV: {loaded_config.tv.ip}:{loaded_config.tv.port}")
@@ -641,21 +629,25 @@ def watch(
     typer.echo(f"News refresh: every {loaded_config.schedule.news_interval_hours}h")
     typer.echo("Press Ctrl+C to stop.")
 
-    # STUB: Main daemon loop would be implemented in orchestrator.watch()
-    # For now, output startup info and wait for signal
-    _verbose_print(verbose, "Daemon loop initialized (stub - implementation pending)")
+    # Run the daemon loop
+    async def _watch() -> None:
+        try:
+            await orchestrator_watch(loaded_config)
+        except KeyboardInterrupt:
+            typer.echo("\nShutdown requested...")
+        except Exception as e:
+            typer.echo(f"Daemon error: {e}", err=True)
+            if verbose:
+                import traceback
 
-    # Placeholder: wait for shutdown signal
-    while not shutdown_requested:
-        typer.echo("Daemon running... (implementation pending)")
-        typer.echo(
-            "Use 'sfumato run' for single execution until daemon is implemented."
-        )
-        break
+                typer.echo(traceback.format_exc(), err=True)
+            raise typer.Exit(code=EXIT_GENERAL_ERROR) from e
 
-    typer.echo("Shutting down...")
-    state.save_all()
-    typer.echo("Goodbye.")
+    try:
+        asyncio.run(_watch())
+    except KeyboardInterrupt:
+        typer.echo("Shutting down...")
+        typer.echo("Goodbye.")
 
 
 @app.command()
@@ -801,31 +793,54 @@ def tv_status(
     Note: Exit code 0 does not guarantee Art Mode is active.
     Check the "art_mode_active" field in output for that.
     """
-    # STUB IMPLEMENTATION - Full business logic in separate dispatch step
-    # This signature and output contract is complete; implementation pending.
+    from sfumato.tv import TvConnectionError, check_status
 
     loaded_config = _load_config_or_exit(config, False)
 
-    # Placeholder output
-    if json_output:
-        _output_json(
-            {
-                "reachable": False,
-                "art_mode_supported": False,
-                "art_mode_active": False,
-                "uploaded_count": 0,
-                "error": "TV status check not implemented (stub)",
-            }
-        )
-    else:
-        typer.echo("TV Status:")
-        typer.echo("  (tv status stub - implementation pending)")
-        typer.echo("  Use 'sfumato run --no-upload' for local testing.")
+    try:
+        status = check_status(loaded_config.tv)
 
-    # Import tv module for stub reference
-    # from sfumato.tv import check_status, TvStatus
-    # status = check_status(loaded_config.tv)
-    # Then output based on json_output flag
+        if json_output:
+            _output_json(
+                {
+                    "reachable": status.reachable,
+                    "art_mode_supported": status.art_mode_supported,
+                    "art_mode_active": status.art_mode_active,
+                    "uploaded_count": status.uploaded_count,
+                    "error": status.error,
+                }
+            )
+        else:
+            typer.echo("TV Status:")
+            typer.echo(f"  Reachable: {'yes' if status.reachable else 'no'}")
+            if status.reachable:
+                typer.echo(
+                    f"  Art Mode: {'active' if status.art_mode_active else 'inactive'}"
+                )
+                typer.echo(
+                    f"  Art Mode Supported: {'yes' if status.art_mode_supported else 'no'}"
+                )
+                typer.echo(f"  Uploads: {status.uploaded_count}")
+            else:
+                typer.echo(f"  Error: {status.error}")
+
+    except TvConnectionError as e:
+        if json_output:
+            _output_json(
+                {
+                    "reachable": False,
+                    "art_mode_supported": False,
+                    "art_mode_active": False,
+                    "uploaded_count": 0,
+                    "error": str(e),
+                }
+            )
+        else:
+            typer.echo(f"TV connection error: {e}", err=True)
+        raise typer.Exit(code=EXIT_GENERAL_ERROR) from e
+    except Exception as e:
+        typer.echo(f"Unexpected error: {e}", err=True)
+        raise typer.Exit(code=EXIT_GENERAL_ERROR) from e
 
 
 @tv_app.command("list")
@@ -871,23 +886,42 @@ def tv_list(
 
     Requires TV to be reachable and paired.
     """
-    # STUB IMPLEMENTATION - Full business logic in separate dispatch step
-    # This signature and output contract is complete; implementation pending.
+    from sfumato.tv import TvConnectionError, list_uploaded
 
     loaded_config = _load_config_or_exit(config, False)
 
-    # Placeholder output
-    if json_output:
-        _output_json([])
-    else:
-        typer.echo("Uploaded Images:")
-        typer.echo("  (tv list stub - implementation pending)")
-        typer.echo("  No images to display.")
+    try:
+        images = list_uploaded(loaded_config.tv)
 
-    # Import tv module for stub reference
-    # from sfumato.tv import list_uploaded, UploadedImage
-    # images = list_uploaded(loaded_config.tv)
-    # Then output table or json
+        if json_output:
+            _output_json(
+                [
+                    {"content_id": img.content_id, "file_name": img.file_name}
+                    for img in images
+                ]
+            )
+        else:
+            if not images:
+                typer.echo("No images uploaded to TV.")
+                return
+
+            # Table format
+            typer.echo("Uploaded Images:")
+            typer.echo("-" * 50)
+            typer.echo(f"{'Content ID':<15} | {'File Name':<20}")
+            typer.echo("-" * 50)
+            for img in images:
+                file_name = img.file_name or "(unknown)"
+                typer.echo(f"{img.content_id:<15} | {file_name:<20}")
+            typer.echo("-" * 50)
+            typer.echo(f"Total: {len(images)} image(s)")
+
+    except TvConnectionError as e:
+        typer.echo(f"TV connection error: {e}", err=True)
+        raise typer.Exit(code=EXIT_GENERAL_ERROR) from e
+    except Exception as e:
+        typer.echo(f"Unexpected error: {e}", err=True)
+        raise typer.Exit(code=EXIT_GENERAL_ERROR) from e
 
 
 @tv_app.command("clean")
@@ -946,8 +980,7 @@ def tv_clean(
 
     Note: Individual delete failures are logged but do not cause exit 1.
     """
-    # STUB IMPLEMENTATION - Full business logic in separate dispatch step
-    # This signature and output contract is complete; implementation pending.
+    from sfumato.tv import TvConnectionError, clean_old_uploads, list_uploaded
 
     loaded_config = _load_config_or_exit(config, verbose)
 
@@ -955,17 +988,34 @@ def tv_clean(
         typer.echo("Error: --keep must be >= 0", err=True)
         raise typer.Exit(code=EXIT_INPUT_ERROR)
 
-    # Placeholder output
-    typer.echo(f"Clean TV uploads (stub - implementation pending)")
-    typer.echo(f"Would keep {keep} most recent uploads.")
+    try:
+        # Get initial count for verbose output
+        if verbose:
+            images_before = list_uploaded(loaded_config.tv)
+            count_before = len(images_before)
+            _verbose_print(verbose, f"Images before cleanup: {count_before}")
 
-    if verbose:
-        typer.echo("No images to clean.")
+        # Perform cleanup
+        deleted_count = clean_old_uploads(loaded_config.tv, keep=keep)
 
-    # Import tv module for stub reference
-    # from sfumato.tv import clean_old_uploads
-    # deleted = clean_old_uploads(loaded_config.tv, keep=keep)
-    # typer.echo(f"Deleted {deleted} images, keeping {keep} most recent.")
+        if verbose:
+            images_after = list_uploaded(loaded_config.tv)
+            count_after = len(images_after)
+            _verbose_print(verbose, f"Images after cleanup: {count_after}")
+            _verbose_print(verbose, f"Deleted: {deleted_count} images")
+
+        # Output result
+        if deleted_count == 0:
+            typer.echo(f"No images to clean. Keeping {keep} most recent.")
+        else:
+            typer.echo(f"Deleted {deleted_count} images, keeping {keep} most recent.")
+
+    except TvConnectionError as e:
+        typer.echo(f"TV connection error: {e}", err=True)
+        raise typer.Exit(code=EXIT_GENERAL_ERROR) from e
+    except Exception as e:
+        typer.echo(f"Unexpected error: {e}", err=True)
+        raise typer.Exit(code=EXIT_GENERAL_ERROR) from e
 
 
 def main() -> None:
