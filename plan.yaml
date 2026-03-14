@@ -4846,7 +4846,7 @@ phases:
     - replay.scheduler-wire
   - id: replay.config.contract
     name: Define replay expiry config contract
-    status: claimed
+    status: done
     description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
       \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nagent: software-architect\n\
       agent_source: default\nspec_refs:\n  - README.md\ntouch_paths:\n  - src/sfumato/config.py\n\
@@ -4868,6 +4868,26 @@ phases:
       - No implementation logic beyond schema/stub-level contract artifacts'
     claimed_by: software-architect
     claimed_at: '2026-03-14T21:46:14.511276+00:00'
+    done_at: '2026-03-14T21:52:24.378175+00:00'
+    evidence: 'Step: replay.config.contract
+
+      Commit hash(es): 1822b60b57c98065853ff63851b511822bc19d55; merged as [main 3326b80]
+
+      Files changed: src/sfumato/config.py, tests/test_config.py
+
+      Verification:
+
+      - uv run pytest tests/test_config.py -> PASS (24 passed)
+
+      - Contract checks define replay_expire_days:int=2 and default-config placement
+      under [news]
+
+      Spec link: README.md
+
+      Gaps/Notes:
+
+      - Scope limited to schema/contract artifacts and contract tests; implementation
+      follows in replay.config.'
   - id: replay.config.test
     name: Define replay config tests
     status: pending
