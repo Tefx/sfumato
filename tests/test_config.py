@@ -304,17 +304,10 @@ def test_replay_expire_days_defaults_to_2_when_omitted_from_config_file(
     assert config.news.replay_expire_days == 2
 
 
-def test_replay_expire_days_parsing_contract_placeholder(
+def test_replay_expire_days_is_parsed_from_toml(
     isolated_paths: Path,
 ) -> None:
-    """Placeholder test for production implementation: reading replay_expire_days from TOML.
-
-    Currently the production _build_app_config does not read replay_expire_days from TOML.
-    This test documents the expected future behavior when production code is implemented.
-
-    When the production code reads replay_expire_days from TOML, this test should be updated
-    to verify the configured value is used.
-    """
+    """Explicit replay_expire_days in TOML config is parsed and used."""
     config_path = isolated_paths / "explicit-replay.toml"
     _write(
         config_path,
@@ -326,10 +319,7 @@ def test_replay_expire_days_parsing_contract_placeholder(
 
     config = load_config(path=config_path)
 
-    # Production parsing not yet implemented - field uses default
-    # Once production code reads replay_expire_days from TOML, this should become:
-    # assert config.news.replay_expire_days == 5
-    assert config.news.replay_expire_days == 2
+    assert config.news.replay_expire_days == 5
 
 
 def test_generate_default_config_round_trips_through_load_config(

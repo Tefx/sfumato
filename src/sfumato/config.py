@@ -401,6 +401,13 @@ def _build_app_config(data: dict[str, Any], source_path: Path) -> AppConfig:
             source_path,
             "news",
         ),
+        replay_expire_days=_expect_int_or_default(
+            news_data,
+            "replay_expire_days",
+            defaults.news.replay_expire_days,
+            source_path,
+            "news",
+        ),
         feeds=feeds,
     )
 
