@@ -102,37 +102,38 @@ phases:
   - id: core.palette
     name: Implement palette extraction
     status: pending
-    description: 'Implement src/sfumato/palette.py per ARCHITECTURE.md section 2.4.
+    description: "step_type: implementation\nspec_refs:\n  - ARCHITECTURE.md#2.4\n\
+      touch_paths:\n  - src/sfumato/palette.py\n  - tests/test_palette.py\nharness_refs:\n\
+      \  - pytest\n  - image fixtures\nagent: python-executor\n\nImplement `src/sfumato/palette.py`\
+      \ per `ARCHITECTURE.md#2.4` and the upstream contract/test steps.\n\nScope:\n\
+      - Implement `PaletteColors` and `extract_palette()` using PIL + numpy k-means\
+      \ clustering on downsampled pixels.\n- Return deterministic canonical hex outputs\
+      \ for `dominant`, `secondary`, `accent`, `background`, `is_dark`, and ordered\
+      \ `colors`.\n\nFailure-mode checklist:\n- invalid or unreadable image input\
+      \ follows the contracted error surface\n- tiny images and monochrome/low-variance\
+      \ images preserve output invariants instead of producing malformed/empty colors\n\
+      - hex normalization is stable across all output fields\n- luminance classification\
+      \ stays deterministic for edge fixtures\n\nState semantics:\n- returned palette\
+      \ fields must preserve canonical `#RRGGBB` formatting exactly\n- `colors` ordering\
+      \ is frequency-driven and deterministic within the contracted rules\n- backward-compatible\
+      \ behavior is accepting ordinary RGB images without requiring extra metadata\n\
+      \nOut-of-scope guardrail:\n- No caching, template decisions, or text-color selection\
+      \ logic\n- No downstream layout heuristics beyond palette extraction\n"
+    verification: '- Main path: targeted tests prove valid fixtures produce a complete
+      `PaletteColors` object with canonical hex strings and deterministic ordering
 
+      - Failure path: targeted regressions prove invalid-image, tiny-image, and monochrome
+      edge cases either satisfy the contracted invariants or raise the contracted
+      error cleanly
 
-      Extract dominant colors from a painting using PIL + numpy k-means clustering.
-      Return PaletteColors dataclass with dominant, secondary, accent, background
-      colors, is_dark flag, and top colors list.
-
-
-      File: src/sfumato/palette.py
-
-      Spec: ARCHITECTURE.md section 2.4
-
-      Dependencies: PIL (Pillow), numpy
-
-
-      Completion criteria:
-
-      - PaletteColors dataclass matches arch spec
-
-      - extract_palette() uses k-means on downsampled pixels
-
-      - is_dark computed from perceived luminance
-
-      - Returns valid hex color strings'
-    verification: extract_palette() returns PaletteColors with valid hex colors for
-      a test image; is_dark correctly classifies light vs dark images
+      - Proof includes explicit normalization and `is_dark` fixture tests; generic
+      image smoke tests are insufficient'
     refs:
     - ARCHITECTURE.md#2.4
     - src/sfumato/palette.py
-    - PROTOTYPING.md
-    - ARCHITECTURE.md
+    - tests/test_palette.py
+    depends_on:
+    - core.palette.tests
     agent: python-executor
   - id: core.news
     name: Refactor news module
