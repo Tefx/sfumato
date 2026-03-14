@@ -605,7 +605,7 @@ phases:
       phase plan.'
   - id: core.cli-run
     name: Implement CLI run and preview commands
-    status: pending
+    status: claimed
     description: "step_type: implementation\nspec_refs:\n  - ARCHITECTURE.md#2.13\n\
       \  - ARCHITECTURE.md#2.12\n  - README.md\ntouch_paths:\n  - src/sfumato/cli.py\n\
       \  - src/sfumato/__main__.py\nharness_refs:\n  - pytest\n  - Typer CLI invocation\
@@ -633,6 +633,8 @@ phases:
     depends_on:
     - core.core-pipeline-verify-retest-full-suite
     agent: python-executor
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T15:11:20.120690+00:00'
   - id: core.gate
     name: 'Gate: Core Pipeline'
     status: pending
