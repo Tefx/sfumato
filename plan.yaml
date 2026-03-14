@@ -1009,7 +1009,7 @@ phases:
       stash before applying step branch content.'
   - id: core.tv.tests
     name: Author TV control tests
-    status: claimed
+    status: done
     description: "step_type: test\nspec_refs:\n  - ARCHITECTURE.md#2.8\n  - PROTOTYPING.md#1\n\
       touch_paths:\n  - tests/test_tv.py\n  - src/sfumato/tv.py\nharness_refs:\n \
       \ - pytest\n  - samsungtvws art-mode seam doubles\nagent: python-executor\n\n\
@@ -1042,6 +1042,38 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T13:48:31.790532+00:00'
+    done_at: '2026-03-14T13:55:13.304880+00:00'
+    evidence: 'Artifact:
+
+      - Worker commit: f8d5d75 (isolated worktree)
+
+      - Main commit: 487f5afc4973706ac5439dad05f8b53631b14151
+
+
+      Verification:
+
+      - Run: `uv run pytest tests/test_tv.py -v` -> 61 passed
+
+      - Run: `invar_guard --changed` -> passed (0 errors, 0 warnings)
+
+      - Coverage includes non-throwing `check_status()` timeout boundary, connection/upload
+      error mapping, keep-policy cleanup behavior, and `is_available_for_push()` convenience
+      semantics
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#2.8
+
+      - PROTOTYPING.md#1
+
+      - tests/test_tv.py
+
+
+      Gaps/Notes:
+
+      - Divergent local pre-merge `tests/test_tv.py` was preserved in stash before
+      applying step branch content.'
 - id: intelligence
   name: Intelligence
   status: locked
