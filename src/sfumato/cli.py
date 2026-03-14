@@ -173,9 +173,19 @@ class _NewsQueue:
             return None
         return self._queue.pop(0)
 
-    def enqueue(self, batch: Any) -> None:
-        """Add a batch to the queue."""
-        self._queue.append(batch)
+    def enqueue(self, result: Any, batch_size: int) -> int:
+        """Split curation result into batches and append to queue."""
+        if not hasattr(result, 'stories') or not result.stories:
+            return 0
+        enqueued = 0
+        for idx in range(0, len(result.stories), batch_size):
+            self._queue.append(_QueuedBatch(
+                stories=result.stories[idx:idx + batch_size],
+                tone_description=getattr(result, 'tone_description', ''),
+                enqueued_at=datetime.datetime.now().astimezone(),
+            ))
+            enqueued += 1
+        return enqueued
 
     def expire(self, expire_days: int) -> int:
         """Drop batches older than expire_days. Returns removed count."""
