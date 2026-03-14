@@ -608,13 +608,14 @@ phases:
 
       review_depth_rationale:
 
-      - Phase now includes contract-first chains for config, llm, and palette
+      - Phase now includes an explicit contract -> test -> implementation -> independent
+      verification chain for `core.pipeline`
 
-      - Config and LLM steps carry explicit failure-path semantics that must be checked,
-      not just happy-path completion
+      - `core.pipeline` carries flag and TV-availability failure semantics that must
+      be evidenced, not only described
 
-      - Cross-module pipeline still depends on these initial modules being contract-complete
-      before downstream refactors proceed
+      - Downstream CLI dispatch depends on the independently verified orchestrator
+      contract rather than implementation alone
 
 
       cross_cutting_focus:
@@ -623,13 +624,14 @@ phases:
 
       - llm retry/parser/backend-selection branches are evidenced, not only described
 
-      - palette output invariants and image edge cases are covered before end-to-end
-      execution'
-    verification: '- All core phase steps, including contract/test predecessors, completed
-      successfully
+      - pipeline flag behavior (`--no-upload`, `--no-news`), TV-unavailable downgrade
+      semantics, and local-output guarantees are all evidenced before phase completion'
+    verification: '- All core phase steps, including contract/test predecessors and
+      independent verification for `core.pipeline`, completed successfully
 
       - Evidence shows config precedence/fallback, llm retry/parser failure paths,
-      and palette edge cases were each exercised explicitly
+      palette edge cases, and orchestrator flag / TV-unavailable branches were each
+      exercised explicitly
 
       - `sfumato run --no-upload` reaches the real entrypoint path and produces a
       valid 4K PNG
@@ -639,9 +641,12 @@ phases:
       - No unresolved blockers remain for downstream phases'
     refs:
     - ARCHITECTURE.md
+    - ARCHITECTURE.md#2.12
     - src/sfumato/config.py
     - src/sfumato/llm.py
     - src/sfumato/palette.py
+    - src/sfumato/orchestrator.py
+    - tests/test_orchestrator.py
     depends_on:
     - core.config.contract
     - core.config.tests
@@ -656,7 +661,10 @@ phases:
     - core.layout-ai
     - core.render
     - core.tv
+    - core.pipeline.contract
+    - core.pipeline.tests
     - core.pipeline
+    - core.pipeline.verify
     - core.cli-run
     agent: gate-reviewer
   - id: core.config.contract
