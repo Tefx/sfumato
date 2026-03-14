@@ -4414,7 +4414,7 @@ phases:
   steps:
   - id: art-facts.layout-prompt
     name: Upgrade layout prompt with zones + art facts
-    status: claimed
+    status: done
     description: "step_type: implementation\nagent: python-senior\nagent_source: default\n\
       spec_refs:\n  - PROTOTYPING.md#11\n  - ARCHITECTURE.md#2.5\ntouch_paths:\n \
       \ - src/sfumato/layout_ai.py\n  - tests/test_layout_ai.py\nharness_refs:\n \
@@ -4452,6 +4452,30 @@ phases:
     - art-facts.layout-prompt.test
     claimed_by: python-senior
     claimed_at: '2026-03-14T22:00:27.866056+00:00'
+    done_at: '2026-03-14T22:05:55.266789+00:00'
+    evidence: 'Step: art-facts.layout-prompt
+
+      Commit hash(es): c529c9a; merged as [main 1bcdf87]
+
+      Files changed: src/sfumato/layout_ai.py, tests/test_layout_ai.py
+
+      Verification:
+
+      - uv run pytest tests/test_layout_ai.py -v -> PASS (19 passed)
+
+      - _build_layout_params now constructs subject_zone, whisper_zone, art_facts
+
+      - overlap validation enforced for text/subject/whisper zones
+
+      - whisper readability constraints enforced (max_width_percent bounds and readability
+      notes)
+
+      Spec link: PROTOTYPING.md#11, ARCHITECTURE.md#2.5
+
+      Gaps/Notes:
+
+      - Prompt already matched 10-item contract, so no prompt text delta required
+      in this implementation.'
   - id: art-facts.template-whisper
     name: Add whisper block to all production templates
     status: claimed
