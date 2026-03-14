@@ -4156,7 +4156,7 @@ phases:
       verification coverage.'
   - id: hardening.integration-tests
     name: End-to-end integration tests for run_once
-    status: claimed
+    status: done
     description: "step_type: implementation\ntags: [\"integration\"]\ntouch_paths:\n\
       \  - tests/test_integration.py (NEW)\n  - tests/conftest.py (shared fixtures)\n\
       agent: python-senior\n\n## Objective\n\nAdd end-to-end integration tests that\
@@ -4209,6 +4209,38 @@ phases:
     agent: python-senior
     claimed_by: python-senior
     claimed_at: '2026-03-14T21:09:50.121674+00:00'
+    done_at: '2026-03-14T21:14:29.480771+00:00'
+    evidence: 'Step: hardening.integration-tests
+
+      Commit hash(es): 3fb33a3; merged as [main 3bb97b0]
+
+      Files changed: tests/test_integration.py
+
+      Verification:
+
+      - uv run pytest tests/test_integration.py -v -> 4 passed in 13.40s
+
+      ## Integration Test Evidence
+
+      Command: uv run pytest tests/test_integration.py -v
+
+      Output: collected 4 items; test_run_once_happy_path PASSED, test_run_once_empty_queue
+      PASSED, test_run_once_respects_recommended_stories PASSED, test_enqueue_dequeue_roundtrip
+      PASSED; overall 4 passed in 13.40s
+
+      Tests added: 4
+
+      Path exercised: config.load_config -> orchestrator.run_once -> render -> PNG
+
+      Mock boundary: LLM only (everything else real)
+
+      Spec link: ARCHITECTURE.md
+
+      Gaps/Notes:
+
+      - Only test additions; no runtime code changes.
+
+      - Real state.py classes used; tmpdir-based fixtures avoid cross-test pollution.'
   - id: hardening.gate
     name: Hardening gate review
     status: pending
