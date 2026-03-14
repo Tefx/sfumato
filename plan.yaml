@@ -4934,7 +4934,7 @@ phases:
       follows in replay.config.'
   - id: replay.config.test
     name: Define replay config tests
-    status: claimed
+    status: done
     description: "step_type: test\nagent: python-executor\nagent_source: default\n\
       spec_refs:\n  - README.md\ntouch_paths:\n  - tests/test_config.py\n  - src/sfumato/config.py\n\
       harness_refs:\n  - tests/test_config.py\n\nDefine and add tests for replay_expire_days\
@@ -4952,6 +4952,30 @@ phases:
     - replay.config.contract
     claimed_by: python-executor
     claimed_at: '2026-03-14T21:53:33.180654+00:00'
+    done_at: '2026-03-14T22:00:04.027611+00:00'
+    evidence: 'Step: replay.config.test
+
+      Commit hash(es): f9858dd04b837d8b472974ec26a06148a8a67766; merged as [main 3a7e50c]
+
+      Files changed: tests/test_config.py
+
+      Verification:
+
+      - uv run pytest tests/test_config.py -v --tb=short -> 26 passed
+
+      - uv run pytest tests/ -v -k replay --tb=short -> 4 passed
+
+      - uv run ruff check tests/test_config.py src/sfumato/config.py -> passed
+
+      - Added targeted tests for replay_expire_days defaulting, default-config emission
+      under [news], and omitted-field compatibility expectations
+
+      Spec link: README.md
+
+      Gaps/Notes:
+
+      - Runtime parsing implementation for replay_expire_days remains for replay.config
+      implementation step.'
 - id: polish
   name: 'Polish: Default Model + Documentation'
   status: locked
