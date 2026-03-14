@@ -2950,7 +2950,7 @@ phases:
     agent: gate-reviewer
   - id: production.scheduler.contract
     name: Define scheduler contract
-    status: claimed
+    status: done
     description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
       \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nspec_refs:\n  - ARCHITECTURE.md#2.11\n\
       touch_paths:\n  - src/sfumato/scheduler.py\n  - tests/test_scheduler.py\nharness_refs:\n\
@@ -2975,6 +2975,41 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T17:28:17.877963+00:00'
+    done_at: '2026-03-14T17:39:57.140726+00:00'
+    evidence: 'Artifact:
+
+      - PR: commit 6802c82 ([vectl] step-production.scheduler.contract completed),
+      source worktree commit 0bd55486d6aaf1b4377b8dc03582752dc34f1c52
+
+
+      Verification:
+
+      - Run: `uv run python -m py_compile src/sfumato/scheduler.py` -> syntax check
+      passed
+
+      - Run: `uv run python -m py_compile tests/test_scheduler.py` -> syntax check
+      passed
+
+      - Run: `uv run pytest tests/test_scheduler.py -v` -> 39 collected; contract
+      assertions pass with expected stub-behavior failures for unimplemented methods
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#2.11
+
+
+      Files changed:
+
+      - src/sfumato/scheduler.py
+
+      - tests/test_scheduler.py
+
+
+      Gaps/Notes:
+
+      - Contract-only scope: signatures/enums/behavioral contracts and tests were
+      added; full scheduling logic remains for implementation step.'
   - id: production.scheduler.tests
     name: Author scheduler tests
     status: pending
