@@ -4688,3 +4688,87 @@ phases:
   depends_on:
   - art-facts
   - replay
+  steps:
+  - id: polish.default-model
+    name: Update default model to gemini-3-flash-preview
+    status: pending
+    description: "step_type: implementation\nagent: python-executor\ntouch_paths:\n\
+      \  - src/sfumato/config.py\n\nChange default model in two places:\n\nFile: src/sfumato/config.py\n\
+      1. AiConfig dataclass: change model default from \"gemini-3.1-pro-preview\"\n\
+      \   to \"gemini-3-flash-preview\"\n2. generate_default_config(): update the\
+      \ model line in the TOML template\n\nsimple_feature_exception:\n  approved:\
+      \ true\n  conditions_met:\n    - single_symbol_or_tiny_ui\n    - no_cross_module_coordination\n\
+      \    - no_meaningful_side_effects\n    - obvious_existing_pattern\n  pattern_reference:\
+      \ \"src/sfumato/config.py AiConfig.model field\"\n"
+    verification: '- AiConfig().model == "gemini-3-flash-preview"
+
+      - generate_default_config() output contains gemini-3-flash-preview
+
+      - uv run pytest tests/test_config.py -v passes
+
+      '
+    refs:
+    - src/sfumato/config.py
+  - id: polish.docs
+    name: Update README and ARCHITECTURE docs
+    status: pending
+    description: "step_type: implementation\nagent: python-executor\ntouch_paths:\n\
+      \  - README.md\n  - ARCHITECTURE.md\n\nUpdate documentation to reflect all new\
+      \ features:\n\nFile: README.md\n1. Remove any Rijksmuseum references (sources\
+      \ are Met + Wikimedia only)\n2. Add \"Whisper text\" to Features section — art\
+      \ facts displayed subtly\n3. Add \"News replay\" to Features section — news\
+      \ cycles until expired\n4. Add \"Subject avoidance\" to Features section — LLM\
+      \ avoids painting subject\n5. Update config example: add replay_expire_days\
+      \ = 2 under [news]\n6. Update default model in config example to gemini-3-flash-preview\n\
+      \nFile: ARCHITECTURE.md\n1. Add WhisperZone, SubjectZone to layout_ai module\
+      \ section\n2. Add art_facts field to LayoutParams documentation\n3. Add ReplayQueue\
+      \ to state module section\n4. Add replay_expire_days to config module section\n\
+      5. Add seen_urls deduplication to news module section\n"
+    verification: '- README mentions whisper text, replay queue, subject avoidance
+
+      - README config example has replay_expire_days
+
+      - README default model is gemini-3-flash-preview
+
+      - No Rijksmuseum references remain
+
+      - ARCHITECTURE.md documents new data types and interfaces
+
+      '
+    refs:
+    - README.md
+    - ARCHITECTURE.md
+    depends_on:
+    - polish.default-model
+  - id: polish.gate
+    name: Polish phase gate review
+    status: pending
+    description: 'As an INDEPENDENT REVIEWER (gate-reviewer), assess whether the polish
+      phase
+
+      meets the quality bar.
+
+
+      review_depth: QUICK
+
+
+      Review criteria:
+
+      1. Default model updated in config
+
+      2. README accurately reflects implemented features
+
+      3. ARCHITECTURE.md documents all new interfaces
+
+      4. No stale references (Rijksmuseum, old model name)
+
+      '
+    verification: '- Documentation matches implementation
+
+      - Config defaults are correct
+
+      - No stale references
+
+      '
+    depends_on:
+    - polish.docs
