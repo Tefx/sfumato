@@ -4795,6 +4795,28 @@ phases:
       '
     depends_on:
     - replay.scheduler-wire
+  - id: replay.config.contract
+    name: Define replay expiry config contract
+    status: pending
+    description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
+      \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nagent: software-architect\n\
+      agent_source: default\nspec_refs:\n  - README.md\ntouch_paths:\n  - src/sfumato/config.py\n\
+      \  - tests/test_config.py\nharness_refs:\n  - tests/test_config.py\n\nDefine\
+      \ the NewsConfig contract for replay_expire_days before implementation.\n\n\
+      Contract scope only:\n1. Specify the new NewsConfig field name, type, and default\
+      \ value for replay_expire_days.\n2. Specify how generate_default_config() must\
+      \ expose replay_expire_days under [news].\n3. Specify backward-compatible parsing\
+      \ expectations when the field is omitted from existing configs.\n4. No config\
+      \ parsing implementation logic beyond signatures, type definitions, interfaces,\
+      \ or stubs.\n\nDeliverables:\n- Explicit config schema addition for replay_expire_days\n\
+      - Default-config contract under [news]\n- Backward-compatibility note for omitted-field\
+      \ parsing"
+    verification: '- Contract defines replay_expire_days name, type, default, and
+      placement under [news]
+
+      - Backward-compatible omitted-field behavior is explicit
+
+      - No implementation logic beyond schema/stub-level contract artifacts'
 - id: polish
   name: 'Polish: Default Model + Documentation'
   status: locked
