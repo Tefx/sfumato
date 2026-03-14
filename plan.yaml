@@ -1344,7 +1344,7 @@ phases:
       skipped until `core.pipeline` is implemented.'
   - id: core.pipeline.verify
     name: Independently verify orchestrator.run_once
-    status: claimed
+    status: done
     description: "step_type: verification\nspec_refs:\n  - ARCHITECTURE.md#2.12\n\
       \  - ARCHITECTURE.md#2.13\n  - README.md\ntouch_paths:\n  - src/sfumato/orchestrator.py\n\
       \  - tests/test_orchestrator.py\nharness_refs:\n  - pytest\n  - orchestrator\
@@ -1382,6 +1382,58 @@ phases:
     agent: integration-verifier
     claimed_by: integration-verifier
     claimed_at: '2026-03-14T14:52:27.577029+00:00'
+    done_at: '2026-03-14T14:58:21.286570+00:00'
+    evidence: '## Verification Report
+
+
+      **Tester**: integration-verifier (independent of implementation)
+
+      **Scope**: orchestrator.run_once
+
+      **Independence Level**: L1
+
+
+      ### Test Execution
+
+      - Command: `uv run pytest tests/test_orchestrator.py -k "run_once" -v`
+
+      - Output summary: 50 collected, 7 passed, 43 skipped, 0 failed
+
+
+      ### Issues Found
+
+      - blocker | P1 Silent Skip Catastrophe (`Implementation dispatch pending`) across
+      43 tests | `tests/test_orchestrator.py` (~467-930) | `uv run pytest tests/test_orchestrator.py
+      -k "run_once" -v`
+
+      - blocker | Highest-risk failure path unverified (TV unavailable branch tests
+      skipped) | `tests/test_orchestrator.py` (~640-703) | same command
+
+      - should_fix | Execution coverage only 14% (7/50) with major branches unverified
+      | `tests/test_orchestrator.py` | same command
+
+
+      ### Coverage Assessment
+
+      - Happy path verified: NO (normal rotation path skipped)
+
+      - Flag branches verified: `--no-upload` NO, `--no-news` NO (most coverage skipped)
+
+      - Highest-risk failure path verified: NO
+
+      - Remaining gaps: remove/activate skipped regression suite and re-run full verification
+
+
+      ### Verdict
+
+      - ISSUES_FOUND (batched remediation created)
+
+
+      Follow-up steps created by planner:
+
+      - `core.core-pipeline-verify-fix-skip-blockers`
+
+      - `core.core-pipeline-verify-retest-full-suite`'
   - id: core.core-pipeline-verify-fix-skip-blockers
     name: core.pipeline.verify.fix-skip-blockers
     status: pending
