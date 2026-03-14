@@ -5425,7 +5425,7 @@ phases:
       outside this step scope.'
   - id: replay.scheduler-wire.contract
     name: Define replay scheduler wiring contract
-    status: pending
+    status: claimed
     description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
       \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nagent: software-architect\n\
       spec_refs:\n  - ARCHITECTURE.md#2.12\ntouch_paths:\n  - src/sfumato/orchestrator.py\n\
@@ -5450,6 +5450,8 @@ phases:
 
       - Downstream test step can be written without inventing behavior'
     agent: software-architect
+    claimed_by: software-architect
+    claimed_at: '2026-03-14T22:40:17.012522+00:00'
   - id: replay.scheduler-wire.test
     name: Define replay scheduler wiring tests
     status: pending
