@@ -4454,7 +4454,7 @@ phases:
     claimed_at: '2026-03-14T22:00:27.866056+00:00'
   - id: art-facts.template-whisper
     name: Add whisper block to all production templates
-    status: pending
+    status: claimed
     description: "step_type: implementation\nagent: python-executor\nagent_source:\
       \ default\nspec_refs:\n  - PROTOTYPING.md#11\ntouch_paths:\n  - templates/painting_text.html\n\
       \  - templates/magazine.html\n  - templates/portrait.html\nharness_refs:\n \
@@ -4484,6 +4484,8 @@ phases:
     - templates/portrait.html
     depends_on:
     - art-facts.template-whisper.test
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T22:01:00.898568+00:00'
   - id: art-facts.render-whisper
     name: Wire whisper into render module
     status: pending
