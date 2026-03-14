@@ -4963,6 +4963,32 @@ phases:
 
       - Downstream test step can be written without inventing behavior'
     agent: software-architect
+  - id: art-facts.orchestrator-wire.test
+    name: Define orchestrator art-facts contract tests
+    status: pending
+    description: "step_type: test\nagent: python-executor\nspec_refs:\n  - ARCHITECTURE.md#2.12\n\
+      touch_paths:\n  - tests/\n  - src/sfumato/orchestrator.py\n  - src/sfumato/render.py\n\
+      harness_refs:\n  - tests/\n\nDefine contract tests for orchestrator-side art-facts\
+      \ wiring.\n\nTest scope:\n1. Add or update targeted tests that exercise orchestrator\
+      \ -> RenderContext propagation.\n2. Assert whisper_fact_index state initialization,\
+      \ increment, and modulo rotation semantics across successive rotations.\n3.\
+      \ Assert art_facts cached on layout data are propagated through the real orchestrator\
+      \ path into RenderContext.\n4. Cover RenderContext propagation without adding\
+      \ product implementation logic beyond minimal fixtures/helpers.\n\nRequired\
+      \ acceptance checks:\n- whisper_fact_index state/rotation is observable and\
+      \ deterministic across successive rotations\n- rotation wraps modulo len(art_facts)\n\
+      - RenderContext receives the propagated whisper_fact_index and art_facts-derived\
+      \ inputs\n- Tests fail before implementation and define the intended behavior\
+      \ clearly"
+    verification: '- Targeted orchestrator wiring tests exist for whisper_fact_index
+      state/rotation and RenderContext propagation
+
+      - Test names or commands are specific enough for downstream implementation verification
+
+      - No product implementation logic added beyond minimal fixtures/helpers'
+    depends_on:
+    - art-facts.orchestrator-wire.contract
+    agent: python-executor
 - id: replay
   name: News Replay Queue
   status: in_progress
