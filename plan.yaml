@@ -4554,6 +4554,128 @@ phases:
     expired. Default 2 days replay window.'
   depends_on:
   - hardening
+  steps:
+  - id: replay.config
+    name: Add replay_expire_days to config
+    status: pending
+    description: "step_type: implementation\nagent: python-executor\nspec_refs:\n\
+      \  - README.md\ntouch_paths:\n  - src/sfumato/config.py\n  - tests/test_config.py\n\
+      \nAdd replay_expire_days field to NewsConfig:\n\nFile: src/sfumato/config.py\n\
+      - Add to NewsConfig: replay_expire_days: int = 2\n- Update generate_default_config()\
+      \ to include replay_expire_days = 2\n  under [news] section\n\nPattern: Follow\
+      \ existing NewsConfig fields (max_age_days, expire_days).\nTests: Update tests/test_config.py\
+      \ to verify new field parses correctly.\n"
+    verification: '- NewsConfig has replay_expire_days field with default 2
+
+      - generate_default_config() output includes replay_expire_days
+
+      - uv run pytest tests/test_config.py -v passes
+
+      '
+    refs:
+    - src/sfumato/config.py
+    - tests/test_config.py
+  - id: replay.queue
+    name: Implement ReplayQueue in state module
+    status: pending
+    description: "step_type: implementation\nagent: python-senior\nspec_refs:\n  -\
+      \ ARCHITECTURE.md#2.10\ntouch_paths:\n  - src/sfumato/state.py\n  - tests/test_state.py\n\
+      \nImplement ReplayQueue alongside existing NewsQueue in state.py:\n\nDesign\
+      \ decisions (python-senior scope):\n1. ReplayQueue stores consumed batches for\
+      \ infinite cycling\n2. After NewsQueue.dequeue(), the batch moves to ReplayQueue\n\
+      3. ReplayQueue.next() cycles through batches round-robin (not FIFO pop)\n4.\
+      \ ReplayQueue.expire(days) removes batches older than N days\n5. Persistence:\
+      \ replay_queue.json alongside news_queue.json\n6. Deduplication: seen_urls set\
+      \ tracks all URLs ever seen.\n   When RSS overlap ratio > 80% (seen/total),\
+      \ skip LLM curation.\n\nIntegration with existing NewsQueue:\n- NewsQueue.dequeue()\
+      \ should return batch AND move it to replay\n- Or: orchestrator handles the\
+      \ transfer (choose best design)\n\nState semantics:\n- ReplayQueue cycling is\
+      \ stateful (track current index)\n- Expiry is by enqueued_at timestamp, not\
+      \ dequeue time\n"
+    verification: '- ReplayQueue class exists with next(), expire(), persist/load
+
+      - Deduplication tracks seen_urls with overlap ratio check
+
+      - uv run pytest tests/test_state.py -v passes
+
+      - Cycling behavior verified: same batches repeat
+
+      '
+    refs:
+    - ARCHITECTURE.md#2.10
+    - src/sfumato/state.py
+    - tests/test_state.py
+    depends_on:
+    - replay.config
+  - id: replay.scheduler-wire
+    name: Wire replay queue into orchestrator
+    status: pending
+    description: "step_type: implementation\nagent: python-executor\ntags: [\"integration\"\
+      ]\nspec_refs:\n  - ARCHITECTURE.md#2.12\ntouch_paths:\n  - src/sfumato/orchestrator.py\n\
+      \nWire replay queue into orchestrator rotation logic:\n\nFile: src/sfumato/orchestrator.py\n\
+      In the rotate/dequeue path (around line where state.news_queue.dequeue() is\
+      \ called):\n\n1. Try primary queue first: batch = state.news_queue.dequeue()\n\
+      2. If primary empty: batch = state.replay_queue.next()\n3. If both empty: skip\
+      \ rotation (existing behavior)\n4. After consuming from primary: move batch\
+      \ to replay queue\n5. Call state.replay_queue.expire(config.news.replay_expire_days)\
+      \ during news refresh\n\nWire seen_urls deduplication into refresh_news flow:\n\
+      - Before LLM curation, check RSS overlap ratio\n- If >80% URLs already seen,\
+      \ skip LLM call and reuse existing batches\n\nPattern: Follow existing news_queue.dequeue()\
+      \ usage in orchestrator.py.\n"
+    verification: '- Primary queue has priority over replay
+
+      - Consumed batches move to replay queue
+
+      - Replay cycles when primary is empty
+
+      - Expiry runs during news refresh
+
+      - Dedup skips LLM when overlap >80%
+
+      '
+    refs:
+    - ARCHITECTURE.md#2.12
+    - src/sfumato/orchestrator.py
+    depends_on:
+    - replay.queue
+  - id: replay.gate
+    name: Replay phase gate review
+    status: pending
+    description: 'As an INDEPENDENT REVIEWER (gate-reviewer), assess whether the replay
+      phase
+
+      meets the quality bar.
+
+
+      review_depth: STANDARD
+
+
+      Review criteria:
+
+      1. Config has replay_expire_days with correct default
+
+      2. ReplayQueue persists and cycles correctly
+
+      3. Orchestrator uses primary queue first, replay as fallback
+
+      4. Expiry removes old batches
+
+      5. Deduplication prevents redundant LLM calls
+
+      6. All tests pass
+
+      '
+    verification: '- All implementation steps completed
+
+      - uv run pytest tests/ passes
+
+      - Replay cycling verified in tests
+
+      - Expiry verified in tests
+
+      '
+    depends_on:
+    - replay.scheduler-wire
 - id: polish
   name: 'Polish: Default Model + Documentation'
   status: locked
