@@ -4589,7 +4589,7 @@ phases:
       and verified here; no additional delta required in this implementation branch.'
   - id: art-facts.orchestrator-wire
     name: Wire art facts through orchestrator
-    status: claimed
+    status: done
     description: "step_type: implementation\nagent: python-executor\ntags: [\"integration\"\
       ]\nspec_refs:\n  - ARCHITECTURE.md#2.12\ntouch_paths:\n  - src/sfumato/orchestrator.py\n\
       \  - src/sfumato/render.py\nharness_refs:\n  - tests/\n\nWire art_facts and\
@@ -4620,6 +4620,31 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T22:58:12.413613+00:00'
+    done_at: '2026-03-14T23:07:10.485807+00:00'
+    evidence: 'Step: art-facts.orchestrator-wire
+
+      Commit hash(es): 4979863; merged as [main 60d4959]
+
+      Files changed: src/sfumato/orchestrator.py, src/sfumato/state.py, tests/test_orchestrator.py,
+      uv.lock, src/sfumato.egg-info/*
+
+      Verification:
+
+      - Subagent reported all relevant orchestrator/state tests passing, including
+      art-fact/whisper wiring contracts and rotation semantics
+
+      - run_once now wires whisper_fact_index via orchestrator-owned rotation state
+      and commits rotation after successful render
+
+      Spec link: ARCHITECTURE.md#2.12
+
+      Gaps/Notes:
+
+      - Branch contained incidental environment artifacts (`uv.lock`, `src/sfumato.egg-info/*`)
+      alongside functional changes and they were included in squash commit.
+
+      - Core functional scope delivered: whisper_fact_index propagation, rotation
+      ownership, art_facts flow into render context.'
   - id: art-facts.gate
     name: Art Facts phase gate review
     status: pending
