@@ -19,14 +19,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Protocol
 
-from sfumato.config import AppConfig
+from sfumato.config import AppConfig, NewsConfig
 from sfumato.layout_ai import LayoutParams, analyze_painting
-from sfumato.news import CurationResult, Story
+from sfumato.news import CurationResult, Story, refresh_news
 from sfumato.palette import PaletteColors, extract_palette
 from sfumato.render import Orientation, PaintingInfo, RenderContext, render_to_png
 
 if TYPE_CHECKING:
     from sfumato.render import RenderResult
+    from sfumato.state import AppState
 
 logger = logging.getLogger(__name__)
 
@@ -168,6 +169,18 @@ class NewsQueueProtocol(Protocol):
         """Remove and return the next batch."""
         ...
 
+    def enqueue(self, result: CurationResult, batch_size: int) -> int:
+        """Split curation result into batches and append to queue.
+
+        Returns:
+            Number of batches enqueued.
+        """
+        ...
+
+    def expire(self, expire_days: int) -> int:
+        """Drop batches older than ``expire_days`` and return removed count."""
+        ...
+
     @property
     def size(self) -> int:
         """Number of batches currently in queue."""
@@ -219,6 +232,70 @@ class AppStateProtocol(Protocol):
 # =============================================================================
 
 
+async def run_news_refresh(
+    config: AppConfig,
+    state: AppStateProtocol,
+) -> int:
+    """Fetch, curate, and enqueue news batches.
+
+    This is the news refresh operation triggered by the scheduler every
+    ``news_interval_hours`` or on-demand when the queue is empty.
+
+    Pipeline:
+    1. Call ``news.refresh_news()`` to fetch and curate stories
+    2. Expire old batches from the queue (using config.news.expire_days)
+    3. Split curated stories into batches (using recommended_stories from layout)
+    4. Enqueue batches into state.news_queue
+
+    Args:
+        config: Application configuration with news settings.
+        state: Application state (news queue for enqueue, caches for layout).
+
+    Returns:
+        Number of batches enqueued (0 if no stories were curated).
+
+    Raises:
+        LlmError: If the LLM call fails after retries.
+        LlmParseError: If the LLM response cannot be parsed.
+
+    Contract:
+        - Uses config.news.max_age_days for filtering old articles
+        - Uses config.news.expire_days for expiring old queue batches
+        - Uses config.news.stories_per_refresh as the target batch size default
+        - Individual feed fetch failures are non-fatal (logged, skipped)
+        - State is NOT saved; caller must call state.save_all() if persistence needed
+    """
+    # Get default batch size from config (will use layout.recommended_stories later
+    # when semantic matching is implemented)
+    batch_size = config.news.stories_per_refresh
+
+    # Fetch and curate news
+    result = await refresh_news(
+        news_config=config.news,
+        ai_config=config.ai,
+    )
+
+    if not result.stories:
+        logger.info("No stories curated from feeds")
+        return 0
+
+    # Expire old batches before adding new ones
+    expired_count = state.news_queue.expire(config.news.expire_days)
+    if expired_count > 0:
+        logger.info("Expired %d old batches from queue", expired_count)
+
+    # Enqueue in batches
+    enqueued_count = state.news_queue.enqueue(result, batch_size)
+    logger.info(
+        "Enqueued %d batches (%d stories total, %d feeds fetched)",
+        enqueued_count,
+        len(result.stories),
+        result.feed_count,
+    )
+
+    return enqueued_count
+
+
 async def run_once(
     config: AppConfig,
     state: AppStateProtocol,
@@ -257,12 +334,14 @@ async def run_once(
     """
     # Stage 1: news_dequeue_or_refresh
     # CONTRACT: Skip if no_news, propagate errors
+    # CONTRACT: If queue is empty, trigger on-demand refresh then dequeue
     batch: QueuedBatch | None = None
     if not options.no_news:
         batch = state.news_queue.dequeue()
-        # TODO: If batch is None, trigger on-demand refresh (run_news_refresh)
-        # For now, we'll continue with no stories if queue is empty
-        # This follows the Phase 1 contract where pure-art mode is valid
+        if batch is None:
+            # On-demand refresh when queue is empty
+            await run_news_refresh(config, state)
+            batch = state.news_queue.dequeue()
 
     # Stage 2: painting_selection
     # CONTRACT: Use painting_path if specified, random selection for Phase 1

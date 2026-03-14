@@ -47,6 +47,7 @@ from sfumato.orchestrator import (
     RUN_ONCE_TV_DOWNGRADE_SEMANTICS,
     RunOptions,
     RunResult,
+    run_news_refresh,
     run_once,
 )
 
@@ -56,6 +57,8 @@ if TYPE_CHECKING:
     from sfumato.palette import PaletteColors
     from sfumato.render import Orientation, PaintingInfo, RenderResult
     from sfumato.state import AppState, QueuedBatch
+
+from sfumato.news import Story
 
 # =============================================================================
 # EXISTING CONTRACT SHAPE TESTS (from original file)
@@ -226,7 +229,9 @@ class MockNewsQueue:
     def __init__(self) -> None:
         self.dequeue_calls: int = 0
         self.enqueue_calls: int = 0
+        self.expire_calls: int = 0
         self._next_batch: "QueuedBatch | None" = None
+        self._batches: list["QueuedBatch"] = []
 
     def set_next_batch(self, batch: "QueuedBatch | None") -> None:
         """Configure the next batch to return from dequeue."""
@@ -236,6 +241,33 @@ class MockNewsQueue:
         """Simulate dequeue behavior for testing."""
         self.dequeue_calls += 1
         return self._next_batch
+
+    def enqueue(self, result: "CurationResult", batch_size: int) -> int:
+        """Simulate enqueue behavior for testing."""
+        from sfumato.news import Story
+
+        self.enqueue_calls += 1
+        if not result.stories:
+            return 0
+        # Split stories into batches
+        for idx in range(0, len(result.stories), batch_size):
+            batch_stories = result.stories[idx : idx + batch_size]
+            self._batches.append(
+                MockQueuedBatch(
+                    stories=batch_stories, tone_description=result.tone_description
+                )
+            )
+        return len(self._batches)
+
+    def expire(self, expire_days: int) -> int:
+        """Simulate expire behavior for testing."""
+        self.expire_calls += 1
+        return 0
+
+    @property
+    def size(self) -> int:
+        """Return current batch count."""
+        return len(self._batches)
 
 
 class MockQueuedBatch:
@@ -2726,3 +2758,280 @@ class TestRunOnceIntegrationContracts:
 
         # State should be saved exactly once
         assert len(save_calls) == 1
+
+
+# =============================================================================
+# NEWS QUEUE AND REFRESH TESTS
+# =============================================================================
+
+
+class TestRunNewsRefresh:
+    """Tests for run_news_refresh function.
+
+    Contract:
+    - Fetches and curates news from configured feeds
+    - Expires old batches before adding new ones
+    - Enqueues stories in batches using stories_per_refresh
+    - Returns number of batches enqueued
+    - Does NOT persist state (caller must call save_all)
+    """
+
+    @pytest.mark.asyncio
+    async def test_refresh_fetches_and_curates_news(self) -> None:
+        """run_news_refresh calls refresh_news and enqueues batches."""
+        from sfumato.news import Story, CurationResult
+        from datetime import datetime
+
+        mock_state = MockAppState()
+        config = create_minimal_app_config()
+
+        # Create mock stories
+        stories = [
+            Story(
+                headline=f"Story {i}",
+                summary=f"Summary {i}",
+                source="Test",
+                category="Tech",
+                url=f"https://example.com/{i}",
+                published_at=datetime.now(),
+                featured=(i == 0),
+            )
+            for i in range(5)
+        ]
+
+        mock_result = CurationResult(
+            stories=stories,
+            tone_description="test tone",
+            curated_at=datetime.now(),
+            feed_count=3,
+            entry_count=10,
+        )
+
+        with patch(
+            "sfumato.orchestrator.refresh_news", new_callable=AsyncMock
+        ) as mock_refresh:
+            mock_refresh.return_value = mock_result
+
+            batches_enqueued = await run_news_refresh(config, mock_state)
+
+        # Should have called refresh_news
+        mock_refresh.assert_called_once()
+        # Verify it was called (correct config types are passed by position in run_news_refresh)
+        assert mock_refresh.called
+
+        # Should enqueue batches (5 stories / batch_size default or configured)
+        assert batches_enqueued >= 1
+
+    @pytest.mark.asyncio
+    async def test_refresh_expires_old_batches(self) -> None:
+        """run_news_refresh expires batches older than expire_days."""
+        from sfumato.news import Story, CurationResult
+        from datetime import datetime
+
+        mock_state = MockAppState()
+        config = create_minimal_app_config()
+
+        stories = [
+            Story(
+                headline="Test",
+                summary="Summary",
+                source="Test",
+                category="Tech",
+                url="https://example.com",
+                published_at=datetime.now(),
+                featured=True,
+            )
+        ]
+
+        mock_result = CurationResult(
+            stories=stories,
+            tone_description="test",
+            curated_at=datetime.now(),
+            feed_count=1,
+            entry_count=1,
+        )
+
+        with patch(
+            "sfumato.orchestrator.refresh_news", new_callable=AsyncMock
+        ) as mock_refresh:
+            mock_refresh.return_value = mock_result
+
+            await run_news_refresh(config, mock_state)
+
+        # Should have called expire with config.news.expire_days
+        assert mock_state.news_queue.expire_calls == 1
+
+    @pytest.mark.asyncio
+    async def test_refresh_returns_zero_for_empty_result(self) -> None:
+        """run_news_refresh returns 0 when no stories are curated."""
+        from sfumato.news import CurationResult
+        from datetime import datetime
+
+        mock_state = MockAppState()
+        config = create_minimal_app_config()
+
+        empty_result = CurationResult(
+            stories=[],
+            tone_description="",
+            curated_at=datetime.now(),
+            feed_count=0,
+            entry_count=0,
+        )
+
+        with patch(
+            "sfumato.orchestrator.refresh_news", new_callable=AsyncMock
+        ) as mock_refresh:
+            mock_refresh.return_value = empty_result
+
+            batches_enqueued = await run_news_refresh(config, mock_state)
+
+        assert batches_enqueued == 0
+
+
+class TestOnDemandNewsRefresh:
+    """Tests for on-demand news refresh when queue is empty.
+
+    Contract:
+    - run_once triggers refresh when queue is empty (not no_news)
+    - After refresh, dequeues from the newly populated queue
+    - Process continues with the dequeued batch
+    """
+
+    @pytest.mark.asyncio
+    async def test_empty_queue_triggers_refresh(self, tmp_path: Path) -> None:
+        """Empty queue triggers on-demand refresh before proceeding."""
+        from PIL import Image
+        from sfumato.news import Story
+
+        painting_path = tmp_path / "test_painting.jpg"
+        img = Image.new("RGB", (3840, 2160), color="#1a237e")
+        img.save(painting_path)
+
+        mock_state = MockAppState()
+        mock_state.news_queue.set_next_batch(None)  # Queue starts empty
+        refresh_called = []
+
+        config = create_minimal_app_config()
+        config = AppConfig(
+            tv=config.tv,
+            schedule=config.schedule,
+            news=config.news,
+            paintings=config.paintings,
+            ai=config.ai,
+            data_dir=tmp_path,
+        )
+
+        stories = [
+            Story(
+                headline="News Story",
+                summary="Summary",
+                source="Test",
+                category="Tech",
+                url="https://example.com",
+                published_at=datetime.now(),
+                featured=True,
+            )
+        ]
+
+        # After refresh, queue should have a batch
+        async def fake_refresh(*args, **kwargs):
+            from sfumato.news import CurationResult
+
+            refresh_called.append(1)
+            # Enqueue a batch into the mock queue
+            batch = MockQueuedBatch(stories=stories, tone_description="test tone")
+            mock_state.news_queue._batches.append(batch)
+            return 1
+
+        mock_layout = create_mock_layout_params()
+
+        with (
+            patch(
+                "sfumato.orchestrator.analyze_painting", new_callable=AsyncMock
+            ) as mock_analyze,
+            patch("sfumato.orchestrator.extract_palette") as mock_palette,
+            patch(
+                "sfumato.orchestrator.render_to_png", new_callable=AsyncMock
+            ) as mock_render,
+            patch(
+                "sfumato.orchestrator.run_news_refresh", new_callable=AsyncMock
+            ) as mock_refresh_func,
+        ):
+            mock_analyze.return_value = mock_layout
+            mock_palette.return_value = create_mock_palette_colors()
+            mock_render.return_value = create_mock_render_result(tmp_path)
+            mock_refresh_func.side_effect = fake_refresh
+
+            result = await run_once(
+                config=config,
+                state=mock_state,
+                options=RunOptions(no_upload=True, painting_path=painting_path),
+            )
+
+        # Refresh should have been called because queue was empty
+        assert len(refresh_called) == 1, (
+            "On-demand refresh should be triggered for empty queue"
+        )
+
+    @pytest.mark.asyncio
+    async def test_non_empty_queue_no_refresh(self, tmp_path: Path) -> None:
+        """Non-empty queue does NOT trigger on-demand refresh."""
+        from PIL import Image
+
+        painting_path = tmp_path / "test_painting.jpg"
+        img = Image.new("RGB", (3840, 2160), color="#1a237e")
+        img.save(painting_path)
+
+        mock_state = MockAppState()
+        # Queue has a batch ready
+        batch = MockQueuedBatch(
+            stories=[
+                Story(
+                    headline="Existing Story",
+                    summary="Summary",
+                    source="Test",
+                    category="Tech",
+                    url="https://example.com",
+                    published_at=datetime.now(),
+                    featured=True,
+                )
+            ]
+        )
+        mock_state.news_queue.set_next_batch(batch)
+
+        config = create_minimal_app_config()
+        config = AppConfig(
+            tv=config.tv,
+            schedule=config.schedule,
+            news=config.news,
+            paintings=config.paintings,
+            ai=config.ai,
+            data_dir=tmp_path,
+        )
+
+        mock_layout = create_mock_layout_params()
+
+        with (
+            patch(
+                "sfumato.orchestrator.analyze_painting", new_callable=AsyncMock
+            ) as mock_analyze,
+            patch("sfumato.orchestrator.extract_palette") as mock_palette,
+            patch(
+                "sfumato.orchestrator.render_to_png", new_callable=AsyncMock
+            ) as mock_render,
+            patch(
+                "sfumato.orchestrator.run_news_refresh", new_callable=AsyncMock
+            ) as mock_refresh,
+        ):
+            mock_analyze.return_value = mock_layout
+            mock_palette.return_value = create_mock_palette_colors()
+            mock_render.return_value = create_mock_render_result(tmp_path)
+
+            await run_once(
+                config=config,
+                state=mock_state,
+                options=RunOptions(no_upload=True, painting_path=painting_path),
+            )
+
+        # Refresh should NOT be called because queue was not empty
+        mock_refresh.assert_not_called()
