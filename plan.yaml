@@ -3931,7 +3931,7 @@ phases:
     claimed_at: '2026-03-14T20:34:26.238872+00:00'
   - id: hardening.llm-cli-commands
     name: LLM CLI command construction tests
-    status: pending
+    status: claimed
     description: "step_type: implementation\ntouch_paths:\n  - src/sfumato/llm.py\n\
       \  - tests/test_llm.py\nagent: python-executor\n\n## Objective\n\nFix bug #6:\
       \ gemini/codex CLI commands include unsupported arguments.\n\n## Context\n\n\
@@ -3960,6 +3960,8 @@ phases:
     - src/sfumato/llm.py
     - tests/test_llm.py
     agent: python-executor
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T20:34:28.523066+00:00'
   - id: hardening.orchestrator-batch
     name: Orchestrator batch_size and recommended_stories fix
     status: pending
