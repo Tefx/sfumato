@@ -21,41 +21,45 @@ phases:
   - id: core.config
     name: Implement config module
     status: pending
-    description: 'Implement src/sfumato/config.py per ARCHITECTURE.md section 2.1.
+    description: "step_type: implementation\nspec_refs:\n  - ARCHITECTURE.md#2.1\n\
+      touch_paths:\n  - src/sfumato/config.py\n  - tests/test_config.py\nharness_refs:\n\
+      \  - pytest\nagent: python-senior\n\nImplement `src/sfumato/config.py` per `ARCHITECTURE.md#2.1`\
+      \ and the upstream contract/test steps.\n\nScope:\n- Create all config dataclasses\
+      \ (`TvConfig`, `ScheduleConfig`, `FeedConfig`, `NewsConfig`, `PaintingsConfig`,\
+      \ `AiConfig`, `AppConfig`).\n- Implement `load_config()` with TOML parsing,\
+      \ precedence-aware source selection, `~` expansion, relative-path anchoring\
+      \ to the owning config file, type validation, and `generate_default_config()`\
+      \ for `sfumato init`.\n\nFailure-mode checklist:\n- relative vs absolute path\
+      \ behavior is deterministic and tested\n- missing-file fallback differs correctly\
+      \ between authoritative sources (`path`, `SFUMATO_CONFIG`) and optional discovery\
+      \ locations\n- malformed TOML and wrong field types surface as `ConfigError`\
+      \ with file context\n- stale-definition vs resolved-state precedence is explicit:\
+      \ once a source is selected, its values win over defaults except for unspecified\
+      \ fields\n- env override semantics are explicit: only `SFUMATO_CONFIG` participates\
+      \ in core precedence unless the contract step broadened the surface\n\nState\
+      \ semantics:\n- Last-writer-wins applies only to config source selection order\n\
+      - Path normalization must preserve the chosen source values exactly except for\
+      \ `~` expansion and absolute resolution\n- Backward-compatible behavior is returning\
+      \ default `AppConfig` when no optional config file exists anywhere in discovery\
+      \ order\n\nOut-of-scope guardrail:\n- No config watching, live reload, or per-field\
+      \ environment override matrix beyond the contract\n- No CLI command behavior\
+      \ changes outside `generate_default_config()` output\n"
+    verification: '- Main path: targeted tests prove default discovery and valid TOML
+      loading return a fully-typed `AppConfig` with absolute paths
 
+      - Failure path: targeted regressions prove authoritative-missing config targets,
+      malformed TOML, wrong field types, and relative-path anchoring edge cases raise
+      or resolve exactly as contracted
 
-      Create all config dataclasses (TvConfig, ScheduleConfig, FeedConfig, NewsConfig,
-      PaintingsConfig, AiConfig, AppConfig). Implement load_config() with TOML parsing,
-      path resolution (~/ expansion), env var lookup, and sensible defaults. Implement
-      generate_default_config() for sfumato init.
-
-
-      File: src/sfumato/config.py
-
-      Pattern: frozen dataclasses + tomllib (Python 3.12 stdlib)
-
-      Spec: ARCHITECTURE.md section 2.1
-
-
-      Completion criteria:
-
-      - All dataclasses match the arch spec signatures
-
-      - load_config() searches config locations in priority order
-
-      - Paths are resolved to absolute
-
-      - ConfigError raised on invalid TOML
-
-      - Default AppConfig returned when no config file exists'
-    verification: load_config() returns valid AppConfig with defaults; load_config(path)
-      parses a sample TOML correctly; ConfigError raised on malformed input
+      - Proof includes named tests for precedence/fallback behavior; generic ''pytest
+      passes'' is insufficient'
     refs:
     - ARCHITECTURE.md#2.1
     - src/sfumato/config.py
-    - PROTOTYPING.md
-    - ARCHITECTURE.md
-    agent: python-executor
+    - tests/test_config.py
+    depends_on:
+    - core.config.tests
+    agent: python-senior
   - id: core.llm
     name: Implement LLM invocation layer
     status: pending
