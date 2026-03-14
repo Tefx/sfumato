@@ -507,7 +507,7 @@ phases:
       step branch content; final main worktree status reported clean.'
   - id: core.pipeline
     name: Implement orchestrator.run_once
-    status: claimed
+    status: done
     description: "step_type: implementation\nspec_refs:\n  - ARCHITECTURE.md#2.12\n\
       \  - ARCHITECTURE.md#2.13\n  - README.md\n  - PROTOTYPING.md\ntouch_paths:\n\
       \  - src/sfumato/orchestrator.py\n  - tests/test_orchestrator.py\nharness_refs:\n\
@@ -567,6 +567,42 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T14:31:49.354307+00:00'
+    done_at: '2026-03-14T14:52:20.858767+00:00'
+    evidence: 'Artifact:
+
+      - Worker commit: 2d8bfd8 (isolated worktree)
+
+      - Main commit: c7b8fab24e776cb6a44b9d48d7615ad3a12bca0c
+
+
+      Verification:
+
+      - Run: `uv run pytest tests/test_orchestrator.py -v --tb=short` -> 7 passed,
+      43 skipped
+
+      - Run: `python3 -m py_compile src/sfumato/orchestrator.py tests/test_orchestrator.py`
+      -> success
+
+      - Evidence confirms contracted stage ordering, `--no-upload`/`--no-news` branch
+      handling, TV-unavailable downgrade semantics, and local output-path preservation
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#2.12
+
+      - ARCHITECTURE.md#2.13
+
+      - src/sfumato/orchestrator.py
+
+
+      Gaps/Notes:
+
+      - Pre-merge divergent local orchestrator file was preserved at `.git/vectl/backups/orchestrator.py.core.pipeline.premerge`
+      before applying step branch content.
+
+      - Semantic painting matching and on-demand news refresh remain deferred per
+      phase plan.'
   - id: core.cli-run
     name: Implement CLI run and preview commands
     status: pending
