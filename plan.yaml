@@ -4817,6 +4817,24 @@ phases:
       - Backward-compatible omitted-field behavior is explicit
 
       - No implementation logic beyond schema/stub-level contract artifacts'
+  - id: replay.config.test
+    name: Define replay config tests
+    status: pending
+    description: "step_type: test\nagent: python-executor\nagent_source: default\n\
+      spec_refs:\n  - README.md\ntouch_paths:\n  - tests/test_config.py\n  - src/sfumato/config.py\n\
+      harness_refs:\n  - tests/test_config.py\n\nDefine and add tests for replay_expire_days\
+      \ before implementation.\n\nTest scope only:\n1. Add targeted parsing tests\
+      \ for replay_expire_days defaulting to 2.\n2. Add coverage that generate_default_config()\
+      \ emits replay_expire_days under [news].\n3. Add backward-compatibility coverage\
+      \ for configs that omit replay_expire_days.\n4. Do not implement config parsing\
+      \ behavior beyond minimal fixtures required by the tests.\n\nPattern: Follow\
+      \ existing NewsConfig/config parsing test style in tests/test_config.py."
+    verification: '- Targeted tests exist for replay_expire_days parsing, default
+      output, and omitted-field compatibility
+
+      - Production config logic remains unimplemented except for minimal test fixtures'
+    depends_on:
+    - replay.config.contract
 - id: polish
   name: 'Polish: Default Model + Documentation'
   status: locked
