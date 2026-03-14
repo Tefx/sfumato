@@ -2182,6 +2182,55 @@ phases:
       - Highest-risk failure semantics are explicit for path resolution, legacy fallback,
       clear/null overwrite, stale-vs-new precedence, and partial-write/CAS handling'
     agent: python-senior
+  - id: intelligence.state.tests
+    name: Author state module tests
+    status: pending
+    description: 'step_type: test
+
+      Author state-module tests that exercise the contract for `src/sfumato/state.py`
+      before implementation.
+
+
+      Required coverage:
+
+      - main-path round trips for `NewsQueue`, `UsedPaintings`, `LayoutCache`, `EmbeddingCache`,
+      and `AppState.save_all()/load()`
+
+      - relative vs absolute `state_dir` behavior
+
+      - missing-file and legacy fallback behavior when one or more state files are
+      absent or in the prior expected layout
+
+      - explicit clear/null overwrite semantics for queue, used set, layout cache,
+      and embedding cache persistence
+
+      - stale-vs-new precedence behavior when persisted files and in-memory updates
+      conflict
+
+      - partial-write / interrupted-save / CAS-conflict behavior where applicable
+      to the chosen persistence strategy
+
+
+      Constraints:
+
+      - tests may use tmp paths and focused fixtures, but no product implementation
+      logic beyond helpers
+
+      - each failure mode above needs a named regression test if exact existing test
+      names are not yet known
+
+
+      Refs: `ARCHITECTURE.md#2.10`, `tests/test_state.py`, `src/sfumato/state.py`'
+    verification: '- Main path: targeted tests define successful save/load round-trips
+      for all four state stores and `AppState`
+
+      - Failure path: focused regressions define path handling, fallback, explicit
+      clear, precedence, and partial-write/CAS-conflict behavior
+
+      - Proof: one regression expectation exists for each required failure mode'
+    depends_on:
+    - intelligence.state.contract
+    agent: python-executor
 - id: production
   name: Production
   status: locked
