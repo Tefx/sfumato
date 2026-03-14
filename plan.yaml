@@ -5212,7 +5212,7 @@ phases:
       LayoutParams fields so state suite passes.'
   - id: replay.scheduler-wire
     name: Wire replay queue into orchestrator
-    status: claimed
+    status: done
     description: "step_type: implementation\nagent: python-executor\ntags: [\"integration\"\
       ]\nspec_refs:\n  - ARCHITECTURE.md#2.12\ntouch_paths:\n  - src/sfumato/orchestrator.py\n\
       \  - src/sfumato/state.py\nharness_refs:\n  - tests/\n\nWire replay queue into\
@@ -5246,6 +5246,26 @@ phases:
     agent: python-executor
     claimed_by: python-senior
     claimed_at: '2026-03-14T22:58:40.513217+00:00'
+    done_at: '2026-03-14T23:07:18.550824+00:00'
+    evidence: 'Step: replay.scheduler-wire
+
+      Commit hash(es): 3496002bf840e8e8563d269f4fbaabb05377db55; merged as [main 5979f31]
+
+      Files changed: src/sfumato/orchestrator.py, tests/test_orchestrator.py
+
+      Verification:
+
+      - Targeted replay wiring tests passed for precedence, transfer, fallback, expiry
+      trigger, and >80% overlap skip contract
+
+      - Additional orchestrator-relevant subsets passed per subagent evidence
+
+      Spec link: ARCHITECTURE.md#2.12
+
+      Gaps/Notes:
+
+      - Scope kept to orchestrator runtime wiring and tests; no direct state module
+      changes in this step.'
   - id: replay.gate
     name: Replay phase gate review
     status: pending
