@@ -3676,3 +3676,37 @@ phases:
     coexist: cli (existing) and sdk (new).'
   depends_on:
   - production
+  steps:
+  - id: sdk.config-and-deps
+    name: Config extension + litellm dependency
+    status: pending
+    description: "Add SDK backend support to AiConfig and project dependencies.\n\n\
+      File: src/sfumato/config.py\n- Add `backend: str = \"cli\"` field to AiConfig\
+      \ (valid values: \"cli\" | \"sdk\")\n- Add `sdk_provider: str = \"openrouter\"\
+      ` field to AiConfig (valid values: \"openrouter\" | \"google\" | \"openai\"\
+      )\n- Update `_build_app_config()` to parse the two new fields from [ai] table\n\
+      - Update `generate_default_config()` to include `backend` and `sdk_provider`\
+      \ with comments\n\nFile: pyproject.toml\n- Add `litellm` to the [project].dependencies\
+      \ list\n\nPattern: Follow existing AiConfig field parsing in _build_app_config()\
+      \ (lines 435-444).\nThe two new fields are simple str fields with defaults,\
+      \ identical pattern to `cli` and `model`.\n\nsimple_feature_exception:\n  approved:\
+      \ true\n  conditions_met:\n    - single_symbol_or_tiny_ui (two str fields added\
+      \ to existing dataclass)\n    - no_cross_module_coordination\n    - no_meaningful_side_effects\n\
+      \    - obvious_existing_pattern\n  pattern_reference: \"src/sfumato/config.py\
+      \ AiConfig + _build_app_config\""
+    verification: '- AiConfig(''cli'', ''gemini-3.1-pro-preview'', ''cli'', ''openrouter'')
+      constructs without error
+
+      - AiConfig defaults: backend=''cli'', sdk_provider=''openrouter''
+
+      - _build_app_config parses [ai] backend and sdk_provider from TOML
+
+      - generate_default_config() output includes backend and sdk_provider lines
+
+      - litellm appears in pyproject.toml dependencies
+
+      - Existing tests still pass: pytest tests/test_config.py -v'
+    refs:
+    - src/sfumato/config.py
+    - pyproject.toml
+    agent: python-executor
