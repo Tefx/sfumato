@@ -4965,7 +4965,7 @@ phases:
     - src/sfumato/state.py
     - tests/test_state.py
     depends_on:
-    - replay.define-replayqueue-contract-tests
+    - replay.queue.test
     agent: python-senior
   - id: replay.scheduler-wire
     name: Wire replay queue into orchestrator
@@ -5161,7 +5161,7 @@ phases:
     depends_on:
     - replay.config
     agent: software-architect
-  - id: replay.define-replayqueue-contract-tests
+  - id: replay.queue.test
     name: Define ReplayQueue contract tests
     status: pending
     description: "step_type: test\nagent_source: default\nspec_refs:\n  - ARCHITECTURE.md#2.10\n\
@@ -5174,7 +5174,7 @@ phases:
       \ and >80% skip cases deterministically\n- Explicit regression coverage for\
       \ empty replay storage, missing persistence files, and repeated save/load cycles\n\
       \nTest-only rule:\n- Add fixtures/helpers only as needed for deterministic state\
-      \ setup\n- Do not implement ReplayQueue product logic in tests\n"
+      \ setup\n- Do not implement ReplayQueue product logic in tests"
     verification: '- `tests/test_state.py` includes focused cases for persist/load,
       round-robin replay, expiry-by-enqueued_at, and overlap-ratio decisions
 
@@ -5182,6 +5182,10 @@ phases:
       save/load behavior
 
       - No product implementation logic is embedded in tests'
+    refs:
+    - ARCHITECTURE.md#2.10
+    - src/sfumato/state.py
+    - tests/test_state.py
     depends_on:
     - replay.queue.contract
     agent: python-executor
