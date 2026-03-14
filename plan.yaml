@@ -4031,7 +4031,7 @@ phases:
       verification follow-up; not changed in this step scope.'
   - id: hardening.orchestrator-batch
     name: Orchestrator batch_size and recommended_stories fix
-    status: pending
+    status: claimed
     description: "step_type: implementation\ntouch_paths:\n  - src/sfumato/orchestrator.py\n\
       \  - tests/test_orchestrator.py\nagent: python-executor\n\n## Objective\n\n\
       Fix bugs #7 and #8 from the hardening bug list.\n\n## Tasks\n\n### Bug #7: batch_size\
@@ -4064,6 +4064,8 @@ phases:
     depends_on:
     - hardening.protocol-alignment
     agent: python-executor
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T20:55:23.703033+00:00'
   - id: hardening.paintings-edge-cases
     name: Paintings module edge case fixes
     status: done
