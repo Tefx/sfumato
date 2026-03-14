@@ -2113,6 +2113,49 @@ phases:
 
       - Contract step kept scope purity: signatures, semantics, and stubs were pinned;
       no orchestrator wiring performed.'
+  - id: intelligence.matcher.tests
+    name: Author matcher module tests
+    status: pending
+    description: 'step_type: test
+
+      Author acceptance-defining tests for `src/sfumato/matcher.py` before implementation
+      changes land.
+
+
+      Scope:
+
+      - lock `cosine_similarity()` expectations for identical, orthogonal, and opposite-direction
+      vectors
+
+      - lock `select_painting()` semantic strategy against a deterministic embedding
+      fixture so the highest-similarity painting wins
+
+      - lock `select_painting()` random strategy to return a painting with score `0.0`
+
+      - lock failure behavior when no paintings are available
+
+      - lock cached-embedding behavior so the tone embedding and precomputed painting
+      embeddings can be exercised without re-deriving acceptance in implementation
+
+
+      Constraints:
+
+      - tests define behavior only; no product implementation logic
+
+      - minimal fixtures/mocks only around embedding calls
+
+
+      Refs: `ARCHITECTURE.md#2.6`, `PROTOTYPING.md`, `tests/test_matcher.py`, `src/sfumato/matcher.py`'
+    verification: '- Main path: targeted tests specify cosine similarity math and
+      semantic selection outcome
+
+      - Failure path: targeted test specifies empty-paintings `MatcherError` behavior
+
+      - Proof: test names and expected inputs/outputs are present for semantic, random,
+      cached, and failure cases'
+    depends_on:
+    - intelligence.matcher.contract
+    agent: python-executor
 - id: production
   name: Production
   status: locked
