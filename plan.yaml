@@ -270,7 +270,7 @@ phases:
     claimed_at: '2026-03-14T13:16:40.623597+00:00'
   - id: core.layout-ai
     name: Refactor layout_ai module
-    status: pending
+    status: claimed
     description: 'Refactor src/sfumato/layout_ai.py per ARCHITECTURE.md section 2.5.
       Implement full dataclass hierarchy: TextZone, LayoutColors, ScrimParams, PortraitLayout,
       LayoutParams. Refactor analyze_painting() to use llm.invoke_vision() and return
@@ -290,6 +290,8 @@ phases:
     - core.config
     - core.llm
     agent: python-executor
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T13:16:45.055748+00:00'
   - id: core.render
     name: Refactor render module
     status: pending
