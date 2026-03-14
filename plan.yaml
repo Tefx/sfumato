@@ -4617,7 +4617,7 @@ phases:
       step.'
   - id: art-facts.layout-prompt.test
     name: Define layout prompt contract tests
-    status: claimed
+    status: done
     description: "step_type: test\nagent: python-executor\nagent_source: default\n\
       spec_refs:\n  - PROTOTYPING.md#11\n  - ARCHITECTURE.md#2.5\ntouch_paths:\n \
       \ - tests/test_layout_ai.py\n  - tests/test_integration.py\nharness_refs:\n\
@@ -4639,6 +4639,26 @@ phases:
     - art-facts.layout-prompt.contract
     claimed_by: python-executor
     claimed_at: '2026-03-14T21:52:37.118072+00:00'
+    done_at: '2026-03-14T21:59:47.516509+00:00'
+    evidence: 'Step: art-facts.layout-prompt.test
+
+      Commit hash(es): a2e14115910228fb749bd0194422c42df7e9f13f; merged as [main 44c62b7]
+
+      Files changed: tests/test_layout_ai.py, tests/test_integration.py
+
+      Verification:
+
+      - uv run pytest tests/test_layout_ai.py -v -> 15 passed
+
+      - Added tests for LayoutParams fields (subject_zone/whisper_zone/art_facts),
+      10-item prompt/response contract, and zone-overlap validation
+
+      Spec link: PROTOTYPING.md#11, ARCHITECTURE.md#2.5
+
+      Gaps/Notes:
+
+      - Integration tests expecting runtime parsing of new fields remain for implementation
+      step; production logic intentionally not implemented in this test step.'
   - id: art-facts.template-whisper.contract
     name: Define whisper template variable contract
     status: done
