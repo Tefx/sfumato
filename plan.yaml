@@ -4536,7 +4536,7 @@ phases:
       in downstream render integration work if needed.'
   - id: art-facts.render-whisper
     name: Wire whisper into render module
-    status: pending
+    status: claimed
     description: "step_type: implementation\nagent: python-executor\nspec_refs:\n\
       \  - ARCHITECTURE.md#2.7\ntouch_paths:\n  - src/sfumato/render.py\n  - tests/test_render.py\n\
       \nImplement the render whisper behavior defined by the upstream contract and\
@@ -4563,6 +4563,8 @@ phases:
     - art-facts.render-whisper.contract
     - art-facts.render-whisper.test
     agent: python-executor
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T22:27:10.079762+00:00'
   - id: art-facts.orchestrator-wire
     name: Wire art facts through orchestrator
     status: pending
