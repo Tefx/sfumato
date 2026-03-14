@@ -117,6 +117,18 @@ class ImageDownloadError(PaintingsError):
 
 
 # =============================================================================
+# RATE LIMITING CONSTANTS
+# =============================================================================
+
+# Bounded delays for API rate limiting (seconds)
+# BUG FIX #12: Ensure delays are bounded and never exceed these values
+MET_OBJECT_DELAY = 0.2  # Met API is lenient, brief pause between objects
+DOWNLOAD_DELAY = 0.5  # Pause between image downloads
+WIKIMEDIA_CATEGORY_DELAY = 1.0  # Pause between Wikimedia subcategory queries
+WIKIMEDIA_IMAGE_DELAY = 1.0  # Pause between Wikimedia image info queries
+
+
+# =============================================================================
 # LOGGING
 # =============================================================================
 
@@ -410,7 +422,8 @@ def list_cached_paintings(cache_dir: Path) -> list[PaintingInfo]:
 
     Contract:
         DISCOVERY:
-        - Walks cache_dir/{source}/ directories
+        - Walks ALL subdirectories in cache_dir (not just ArtSource enum values)
+        - Supports custom directories for user-provided painting collections
         - For each .jpg file, looks for corresponding .json sidecar
         - Returns PaintingInfo for each valid image+sidecar pair
 
@@ -418,10 +431,16 @@ def list_cached_paintings(cache_dir: Path) -> list[PaintingInfo]:
         - JSON file contains all PaintingInfo fields except image_path
         - image_path is computed from source, source_id, and cache_dir
         - Missing sidecar files are logged as warnings and skipped
+        - source field must be a valid ArtSource enum value
 
         PATH RESOLUTION:
         - cache_dir may contain ~ which is expanded
         - All paths in returned PaintingInfo are absolute
+
+        CUSTOM DIRECTORY SUPPORT:
+        - Any subdirectory with valid image+sidecar pairs is included
+        - source is derived from sidecar metadata (must be valid ArtSource)
+        - Non-ArtSource source values raise KeyError and are skipped
 
     Example:
         >>> paintings = list_cached_paintings(Path("~/.sfumato/paintings"))
@@ -435,9 +454,11 @@ def list_cached_paintings(cache_dir: Path) -> list[PaintingInfo]:
         raise FileNotFoundError(f"Cache directory not found: {resolved_cache_dir}")
 
     paintings: list[PaintingInfo] = []
-    for source in ArtSource:
-        source_dir = resolved_cache_dir / source.value
-        if not source_dir.exists() or not source_dir.is_dir():
+
+    # Walk ALL subdirectories, not just ArtSource enum values
+    # This supports custom directories (e.g., user-provided collections)
+    for source_dir in resolved_cache_dir.iterdir():
+        if not source_dir.is_dir():
             continue
 
         for image_path in sorted(source_dir.glob("*.jpg")):
@@ -600,7 +621,7 @@ async def _download_candidates(
             break
 
         if idx > 0:
-            await asyncio.sleep(0.5)  # Brief pause between downloads
+            await asyncio.sleep(DOWNLOAD_DELAY)  # Bounded pause between downloads
 
         try:
             painting = await _download_one(
@@ -778,9 +799,7 @@ async def _discover_met_candidates(count: int) -> list[_SourceCandidate]:
     import asyncio
 
     timeout = httpx.Timeout(20.0)
-    async with httpx.AsyncClient(
-        timeout=timeout, headers=_BROWSER_HEADERS
-    ) as client:
+    async with httpx.AsyncClient(timeout=timeout, headers=_BROWSER_HEADERS) as client:
         search_response = await client.get(
             "https://collectionapi.metmuseum.org/public/collection/v1/search",
             params={
@@ -795,18 +814,36 @@ async def _discover_met_candidates(count: int) -> list[_SourceCandidate]:
         object_ids = search_payload.get("objectIDs") or []
         candidates: list[_SourceCandidate] = []
         for object_id in object_ids[: max(count * 5, 20)]:
-            await asyncio.sleep(0.2)  # Met API is lenient, brief pause only
+            await asyncio.sleep(MET_OBJECT_DELAY)  # Bounded delay
             try:
                 object_response = await client.get(
                     f"https://collectionapi.metmuseum.org/public/collection/v1/objects/{object_id}"
                 )
                 object_response.raise_for_status()
+                item = object_response.json()
             except httpx.HTTPStatusError as exc:
+                # Individual object errors should NOT abort entire source fetch
                 if exc.response.status_code == 404:
                     logger.debug("Met object %s returned 404, skipping", object_id)
-                    continue
-                raise
-            item = object_response.json()
+                else:
+                    logger.warning(
+                        "Met object %s returned HTTP %d, skipping",
+                        object_id,
+                        exc.response.status_code,
+                    )
+                continue
+            except (httpx.RequestError, httpx.TimeoutException) as exc:
+                # Network/timeout errors on individual objects should not abort source
+                logger.warning(
+                    "Met object %s request failed, skipping: %s", object_id, exc
+                )
+                continue
+            except (json.JSONDecodeError, KeyError) as exc:
+                # Malformed response should not abort source
+                logger.warning(
+                    "Met object %s returned invalid JSON, skipping: %s", object_id, exc
+                )
+                continue
 
             image_url = str(item.get("primaryImage", "")).strip()
             if not image_url or not item.get("isPublicDomain", False):
@@ -847,14 +884,12 @@ async def _discover_wikimedia_candidates(count: int) -> list[_SourceCandidate]:
         "Category:Featured_pictures_of_paintings_from_Austria",
     ]
 
-    async with httpx.AsyncClient(
-        timeout=timeout, headers=_BROWSER_HEADERS
-    ) as client:
+    async with httpx.AsyncClient(timeout=timeout, headers=_BROWSER_HEADERS) as client:
         all_members: list[dict] = []
         for subcat in subcategories:
             if len(all_members) >= max(count * 5, 20):
                 break
-            await asyncio.sleep(1)  # Wikimedia subcategory pause
+            await asyncio.sleep(WIKIMEDIA_CATEGORY_DELAY)  # Bounded delay
             members_response = await client.get(
                 "https://commons.wikimedia.org/w/api.php",
                 params={
@@ -862,6 +897,8 @@ async def _discover_wikimedia_candidates(count: int) -> list[_SourceCandidate]:
                     "format": "json",
                     "list": "categorymembers",
                     "cmtitle": subcat,
+                    # BUG FIX #11: Query files only, not subcategories
+                    # Previous code lacked cmtype="file" filter
                     "cmtype": "file",
                     "cmlimit": str(max(count * 2, 10)),
                 },
@@ -878,7 +915,7 @@ async def _discover_wikimedia_candidates(count: int) -> list[_SourceCandidate]:
             if not title.startswith("File:"):
                 continue
 
-            await asyncio.sleep(1)  # Wikimedia image info pause
+            await asyncio.sleep(WIKIMEDIA_IMAGE_DELAY)  # Bounded delay
             image_response = await client.get(
                 "https://commons.wikimedia.org/w/api.php",
                 params={
