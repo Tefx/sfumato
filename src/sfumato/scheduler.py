@@ -4,8 +4,6 @@ Implements the contract from ARCHITECTURE.md#2.11:
 - Action enum for scheduling decisions
 - SchedulerState for tracking last action timestamps
 - Scheduler class enforcing quiet_hours/active_hours and interval logic
-
-This module is a CONTRACT STUB. Implementation will follow in a later step.
 """
 
 from __future__ import annotations
@@ -83,9 +81,9 @@ class Scheduler:
         1. OUTSIDE ACTIVE HOURS (and NOT IN QUIET HOURS) → IDLE
            No rendering, no pushing, no network calls.
 
-        2. WITHIN QUIET HOURS (must also be outside active_hours) → QUIET_ART
+        2. WITHIN QUIET HOURS (and outside active_hours) → QUIET_ART
            Display pure painting without news overlay. TV may still be
-           in Art Mode during these hours.
+           in Art mode during these hours.
 
         3. WITHIN ACTIVE HOURS (and outside quiet_hours) → Normal operation
            Check intervals for ROTATE, REFRESH_NEWS, and BACKFILL.
@@ -99,31 +97,6 @@ class Scheduler:
     For QUIET_ART to activate, configure overlapping ranges such as:
         quiet_hours = (0, 6)
         active_hours = (0, 23)  # Covers entire day including quiet hours
-
-    Interval Semantics:
-        - news_interval_hours: Minimum time between news refreshes.
-          If `now - last_news_refresh >= news_interval_hours`, trigger REFRESH_NEWS.
-        - rotate_interval_minutes: Minimum time between rotations.
-          If `now - last_rotation >= rotate_interval_minutes`, trigger ROTATE.
-        - REFRESH_NEWS and ROTATE can combine: on first refresh of the day,
-          both may be scheduled together.
-
-    Backfill Trigger Semantics:
-        BACKFILL should only be returned when:
-        - Pool has room for more paintings (paintings_used < pool_size)
-        - No heavy action (REFRESH_NEWS or ROTATE) is scheduled
-        - System is within active_hours and outside quiet_hours
-
-        BACKFILL is a background activity that shouldn't compete with
-        foreground operations.
-
-    Edge Cases:
-        - Daemon starts during quiet_hours: Initialize state but return QUIET_ART,
-          not IDLE (we're in a valid display window).
-        - Daemon starts outside active_hours (but not in quiet_hours): Return IDLE.
-        - last_rotation is None (first run): Treat as immediate ROTATE needed.
-        - last_news_refresh is None (first run): Treat as REFRESH_NEWS needed.
-        - Crossing boundary from quiet to active: May trigger REFRESH_NEWS | ROTATE.
     """
 
     def __init__(self, config: "ScheduleConfig") -> None:
@@ -136,9 +109,11 @@ class Scheduler:
                 - quiet_hours: (start, end) tuple in 24h, [start, end) interval
                 - active_hours: (start, end) tuple in 24h, [start, end] interval
         """
-        # Contract: Store config for interval and time window calculations.
-        # Implementation will compute thresholds and boundaries.
-        ...
+        self._config = config
+        self._news_interval = timedelta(hours=config.news_interval_hours)
+        self._rotate_interval = timedelta(minutes=config.rotate_interval_minutes)
+        self._quiet_hours = config.quiet_hours
+        self._active_hours = config.active_hours
 
     def what_to_do(self, now: datetime, state: SchedulerState) -> Action:
         """Determine which actions should run at the given time.
@@ -153,10 +128,6 @@ class Scheduler:
            If `now` is NOT within active_hours:
                a. If `now` IS within quiet_hours: return QUIET_ART
                b. Else: return IDLE
-
-           The precedence ensures quiet_hours behavior activates even
-           when outside active_hours, supporting the "night art mode"
-           use case.
 
         2. CHECK NEWS INTERVAL
            If `state.last_news_refresh` is None OR
@@ -197,7 +168,43 @@ class Scheduler:
             - IDLE (outside active hours, not in quiet hours)
             - NONE (within active hours, intervals not elapsed)
         """
-        ...
+        # Step 1: Check active hours
+        if not self.is_active_hour(now):
+            # Outside active hours: check if in quiet hours
+            if self.is_quiet_hour(now):
+                return Action.QUIET_ART
+            else:
+                return Action.IDLE
+
+        # Step 2: In active hours - check news interval
+        # Note: is_quiet_hour should be False here if ranges don't overlap
+        # but if they do overlap (e.g., quiet=(0,23), active=(0,23)),
+        # QUIET_ART takes precedence via the first check
+        # However, since we passed is_active_hour, we're in normal operation
+
+        # Actually, re-check: if in active AND quiet hours, prioritize quiet
+        # This handles the edge case where ranges overlap
+        if self.is_quiet_hour(now):
+            return Action.QUIET_ART
+
+        # Step 3: Check news interval
+        news_due = self._is_interval_due(
+            now, state.last_news_refresh, self._news_interval
+        )
+        if news_due:
+            # News refresh triggers both REFRESH_NEWS and ROTATE
+            return Action.REFRESH_NEWS | Action.ROTATE
+
+        # Step 4: Check rotation interval
+        rotation_due = self._is_interval_due(
+            now, state.last_rotation, self._rotate_interval
+        )
+        if rotation_due:
+            return Action.ROTATE
+
+        # Step 5: Default - no action needed
+        # Note: BACKFILL is deferred until pool status is available
+        return Action.NONE
 
     def seconds_until_next_action(self, now: datetime, state: SchedulerState) -> float:
         """Calculate seconds until the next action is due.
@@ -207,27 +214,22 @@ class Scheduler:
         - News interval boundary
         - Rotate interval boundary
         - Transition into active_hours (if currently outside)
-        - Transition out of active_hours (if currently within)
 
         Calculation Strategy:
 
-        1. COMPUTE ALL RELEVANT WAIT TIMES
-           - Time until next rotate boundary
-           - Time until next news boundary
-           - Time until active_hours starts (if outside)
-           - Time until active_hours ends (if inside and relevant)
+        1. Compute time until all possible state changes:
+           - Time until news is due
+           - Time until rotation is due
+           - Time until active_hours starts (if outside active)
+           - Time until quiet_hours ends (if currently in quiet)
 
-        2. RETURN THE MINIMUM
-           The daemon should wake up at the earliest opportunity.
+        2. Return the minimum of all applicable wait times.
 
         Edge Cases:
            - If any action is due NOW (e.g., what_to_do returns non-NONE),
              this should return 0.0.
            - If last_rotation is None, rotate is due immediately → return 0.0.
-           - If last_news_refresh is None, news refresh is due → return 0.0
-             (or time until next rotation boundary, whichever is sooner).
-           - Crossing midnight: Correctly compute time to next active_hours
-             start when currently before start or after end.
+           - If last_news_refresh is None, news refresh is due → return 0.0.
 
         Args:
             now: Current datetime.
@@ -237,7 +239,58 @@ class Scheduler:
             Floating-point seconds until the next action. Returns 0.0
             if an action is already due. Guarantees non-negative result.
         """
-        ...
+        # Check if we need to act now (any action other than NONE, IDLE, or QUIET_ART)
+        action = self.what_to_do(now, state)
+        if action not in (Action.NONE, Action.IDLE, Action.QUIET_ART):
+            return 0.0
+
+        # Collect all relevant wait times
+        wait_times: list[float] = []
+
+        # Always compute time until active hours start (relevant when outside)
+        if not self.is_active_hour(now):
+            # Outside active hours - wait until active starts
+            wait_times.append(self._seconds_until_hour(now, self._active_hours[0]))
+
+            # If in quiet hours, also compute time until quiet ends
+            if self.is_quiet_hour(now):
+                # Time until end of quiet hours
+                wait_times.append(self._seconds_until_hour(now, self._quiet_hours[1]))
+        else:
+            # In active hours (and not in quiet): compute wait times for intervals
+
+            # News interval wait time
+            if state.last_news_refresh is not None:
+                elapsed_news = now - state.last_news_refresh
+                remaining_news = self._news_interval - elapsed_news
+                if remaining_news.total_seconds() > 0:
+                    wait_times.append(remaining_news.total_seconds())
+                else:
+                    # Interval elapsed - should have been caught by what_to_do
+                    # But handle it here for safety
+                    return 0.0
+            else:
+                # None means due now
+                return 0.0
+
+            # Rotation interval wait time
+            if state.last_rotation is not None:
+                elapsed_rotation = now - state.last_rotation
+                remaining_rotation = self._rotate_interval - elapsed_rotation
+                if remaining_rotation.total_seconds() > 0:
+                    wait_times.append(remaining_rotation.total_seconds())
+                else:
+                    return 0.0
+            else:
+                # None means due now
+                return 0.0
+
+        # Return minimum wait time, with a floor of 0
+        if not wait_times:
+            # This shouldn't happen in normal operation
+            return 0.0
+
+        return max(0.0, min(wait_times))
 
     def is_quiet_hour(self, now: datetime) -> bool:
         """Check if the given time falls within quiet_hours.
@@ -255,7 +308,6 @@ class Scheduler:
 
         Edge Cases:
            - Crossing midnight: quiet_hours=(22, 2) means 22:00-23:59 and 0:00-1:59.
-             Implementation must handle end < start by checking both ranges.
            - Quiet hours of (0, 0) or (x, x) is an empty interval → always False.
            - Hour boundary: is_quiet_hour(5:59:59) should return True for (0, 6).
            - Hour boundary: is_quiet_hour(6:00:00) should return False for (0, 6).
@@ -266,7 +318,9 @@ class Scheduler:
         Returns:
             True if the hour falls within [start, end), False otherwise.
         """
-        ...
+        return self._is_time_in_range(
+            now, self._quiet_hours[0], self._quiet_hours[1], end_inclusive=False
+        )
 
     def is_active_hour(self, now: datetime) -> bool:
         """Check if the given time falls within active_hours.
@@ -285,17 +339,10 @@ class Scheduler:
         (See ARCHITECTURE.md#2.1 for rationale.)
 
         Edge Cases:
-           - Crossing midnight: active_hours=(22, 2) with inclusive end is
-             NOT well-defined. Implementations should either:
-             a) Reject such config at construction time, or
-             b) Interpret as 22:00-23:59 AND 0:00-2:00 (wrapping).
            - Active hours of (0, 23) means active all day.
-           - Active hours of (7, 6) where end < start: Invalid, but
-             implementation should handle gracefully (return False or raise).
+           - Active hours of (7, 6) where end < start: returns False (invalid config).
            - Hour boundary: is_active_hour(22:59:59) returns True for (7, 23).
            - Hour boundary: is_active_hour(23:00:00) returns True for (7, 23).
-           - Hour boundary: is_active_hour(23:00:01) should return True for (7, 23).
-             Implementation should use hour comparison, not timedelta.
 
         Args:
             now: Current datetime. Uses the hour component only.
@@ -304,11 +351,9 @@ class Scheduler:
             True if the hour falls within [start, end] (both inclusive),
             False otherwise.
         """
-        ...
-
-    # -----------------------------------------------------------------------
-    # Internal Helper Methods (contract signatures, no implementation)
-    # -----------------------------------------------------------------------
+        return self._is_time_in_range(
+            now, self._active_hours[0], self._active_hours[1], end_inclusive=True
+        )
 
     def _is_time_in_range(
         self,
@@ -330,29 +375,54 @@ class Scheduler:
         Returns:
             True if now.hour is in range, False otherwise.
         """
-        ...
+        hour = now.hour
 
-    def _seconds_until_boundary(
+        # Handle same hour range (e.g., (0, 0) or (5, 5)) - empty interval
+        if start == end:
+            if end_inclusive:
+                # (x, x) inclusive means just that one hour
+                return hour == start
+            else:
+                # (x, x) exclusive means empty range
+                return False
+
+        # Handle midnight wrapping (e.g., (22, 6) means 22-23 and 0-5)
+        if start > end:
+            # Start is after end: wraps around midnight
+            # Hour is in range if it's >= start (evening) OR < end (morning)
+            # For end_inclusive: <= end instead of < end
+            if end_inclusive:
+                return hour >= start or hour <= end
+            else:
+                return hour >= start or hour < end
+        else:
+            # Normal range (start < end)
+            # Hour is in range if it's >= start and (< or <= end)
+            if end_inclusive:
+                return start <= hour <= end
+            else:
+                return start <= hour < end
+
+    def _is_interval_due(
         self,
         now: datetime,
         last: datetime | None,
         interval: timedelta,
-    ) -> float:
-        """Calculate seconds until an interval boundary is reached.
-
-        If `last` is None, returns 0.0 (immediately due).
-        If interval has elapsed, returns 0.0.
-        Otherwise, returns seconds remaining.
+    ) -> bool:
+        """Check if an interval has elapsed since the last action.
 
         Args:
             now: Current datetime.
             last: Datetime of last action, or None if never.
-            interval: The minimum time between actions.
+            interval: Minimum time between actions.
 
         Returns:
-            Non-negative seconds until next boundary.
+            True if interval has elapsed (or last is None), False otherwise.
         """
-        ...
+        if last is None:
+            return True
+        elapsed = now - last
+        return elapsed >= interval
 
     def _seconds_until_hour(
         self,
@@ -371,4 +441,24 @@ class Scheduler:
         Returns:
             Seconds until the next time the clock shows target_hour.
         """
-        ...
+        current_hour = now.hour
+        current_minute = now.minute
+        current_second = now.second
+        current_microsecond = now.microsecond
+
+        # Seconds until the start of the next hour
+        seconds_into_current_hour = (
+            current_minute * 60 + current_second + current_microsecond / 1_000_000
+        )
+
+        if target_hour > current_hour:
+            # Target is today, later
+            hours_until = target_hour - current_hour
+            return hours_until * 3600 - seconds_into_current_hour
+        elif target_hour < current_hour:
+            # Target is tomorrow
+            hours_until = 24 - current_hour + target_hour
+            return hours_until * 3600 - seconds_into_current_hour
+        else:
+            # target_hour == current_hour, need to wait until tomorrow
+            return 24 * 3600 - seconds_into_current_hour

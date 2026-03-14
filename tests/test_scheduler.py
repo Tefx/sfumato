@@ -377,14 +377,20 @@ class TestWhatToDo:
         assert Action.REFRESH_NEWS in action
         assert Action.ROTATE in action
 
-    def test_what_to_do_overdue_news(
-        self, default_config: ScheduleConfig, overdue_state: SchedulerState
-    ) -> None:
+    def test_what_to_do_overdue_news(self, default_config: ScheduleConfig) -> None:
         """Overdue news refresh should return REFRESH_NEWS | ROTATE."""
         scheduler = Scheduler(default_config)
 
         # Hour 12 is within active_hours, state has 10h old news refresh
         now = datetime(2024, 1, 15, 12, 0, 0)
+        # Create state with timestamps relative to test's 'now'
+        overdue_state = SchedulerState(
+            last_news_refresh=now
+            - timedelta(hours=10),  # 10h ago = overdue for 6h interval
+            last_rotation=now
+            - timedelta(minutes=30),  # 30 min ago = overdue for 15min interval
+            last_backfill=None,
+        )
         action = scheduler.what_to_do(now, overdue_state)
 
         # news_interval_hours=6 (default), last_news_refresh=10h ago
@@ -1336,7 +1342,7 @@ class TestActionPrecedence:
         # Backfill is NOT in action (implementation note: pool status unknown)
         assert Action.BACKFILL not in action
 
-    def test_none_result_when_nothing_due(self) -> None:
+    def test_none_result_when_nothing_due(self, default_config: ScheduleConfig) -> None:
         """When nothing is due, return NONE (not IDLE or empty)."""
         scheduler = Scheduler(default_config)
         now = datetime(2024, 1, 15, 12, 0, 0)
@@ -1362,7 +1368,9 @@ class TestActionPrecedence:
 class TestTimeArithmeticEdgeCases:
     """Tests for time arithmetic edge cases that commonly cause bugs."""
 
-    def test_rotation_interval_exactly_at_boundary(self) -> None:
+    def test_rotation_interval_exactly_at_boundary(
+        self, default_config: ScheduleConfig
+    ) -> None:
         """Rotation at exact interval boundary should be due."""
         scheduler = Scheduler(default_config)
         now = datetime(2024, 1, 15, 12, 0, 0)
@@ -1378,7 +1386,9 @@ class TestTimeArithmeticEdgeCases:
         action = scheduler.what_to_do(now, state)
         assert Action.ROTATE in action
 
-    def test_news_interval_exactly_at_boundary(self) -> None:
+    def test_news_interval_exactly_at_boundary(
+        self, default_config: ScheduleConfig
+    ) -> None:
         """News at exact interval boundary should be due."""
         scheduler = Scheduler(default_config)
         now = datetime(2024, 1, 15, 12, 0, 0)
@@ -1394,7 +1404,9 @@ class TestTimeArithmeticEdgeCases:
         action = scheduler.what_to_do(now, state)
         assert Action.REFRESH_NEWS in action
 
-    def test_seconds_one_microsecond_after_rotation(self) -> None:
+    def test_seconds_one_microsecond_after_rotation(
+        self, default_config: ScheduleConfig
+    ) -> None:
         """Microseconds after rotation: compute correct sleep."""
         scheduler = Scheduler(default_config)
         now = datetime(2024, 1, 15, 12, 0, 0)
@@ -1411,7 +1423,9 @@ class TestTimeArithmeticEdgeCases:
         # But implementation may round or truncate
         assert 895 <= seconds <= 900  # ~15 min give-or-take
 
-    def test_timezone_naive_datetime_handling(self) -> None:
+    def test_timezone_naive_datetime_handling(
+        self, default_config: ScheduleConfig
+    ) -> None:
         """Scheduler should handle timezone-naive datetimes correctly."""
         scheduler = Scheduler(default_config)
 
