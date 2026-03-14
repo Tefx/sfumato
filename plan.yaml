@@ -2787,3 +2787,28 @@ phases:
     - production.docker
     - production.cleanup
     agent: gate-reviewer
+  - id: production.scheduler.contract
+    name: Define scheduler contract
+    status: pending
+    description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
+      \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nspec_refs:\n  - ARCHITECTURE.md#2.11\n\
+      touch_paths:\n  - src/sfumato/scheduler.py\n  - tests/test_scheduler.py\nharness_refs:\n\
+      \  - pytest\nagent: python-executor\n\nDefine the acceptance contract for `src/sfumato/scheduler.py`\
+      \ without shipping scheduling implementation logic.\n\nContract scope:\n- public\
+      \ `Action` flag values, `SchedulerState`, and `Scheduler` method signatures\n\
+      - precedence rules for `IDLE`, `QUIET_ART`, `REFRESH_NEWS | ROTATE`, `ROTATE`,\
+      \ `BACKFILL`, and `NONE`\n- quiet-hours and active-hours boundary semantics,\
+      \ including wrap-around hour windows\n- `seconds_until_next_action()` guarantees\
+      \ for immediate work vs next-tick sleep calculation\n- explicit statement of\
+      \ whether backfill may co-exist with heavy actions or is deferred when refresh/rotate\
+      \ are due\n\nConstraints:\n- stubs, docstrings, enums, dataclasses, and behavioral\
+      \ notes only\n- no completed timer math or production action-selection logic\
+      \ in this step"
+    verification: '- Contract defines the full public scheduler surface and ordered
+      action precedence
+
+      - Main path semantics are explicit for ordinary active/quiet/news/rotate decisions
+
+      - Highest-risk failure semantics are explicit for wrap-around hour windows,
+      simultaneous due actions, and immediate-vs-sleep timing boundaries'
+    agent: python-executor
