@@ -3990,3 +3990,42 @@ phases:
     depends_on:
     - hardening.protocol-alignment
     agent: python-executor
+  - id: hardening.paintings-edge-cases
+    name: Paintings module edge case fixes
+    status: pending
+    description: "step_type: implementation\ntouch_paths:\n  - src/sfumato/paintings.py\n\
+      \  - tests/test_paintings.py\nagent: python-executor\n\n## Objective\n\nFix\
+      \ bugs #9, #10, #11, #12 from the hardening bug list.\n\n## Tasks\n\n### Bug\
+      \ #9: list_cached_paintings only supports ArtSource enum dirs\nFile: src/sfumato/paintings.py,\
+      \ function list_cached_paintings (~line 397)\nCurrent code at ~line 438 iterates\
+      \ only `for source in ArtSource:` meaning\ncustom directories under cache_dir\
+      \ are ignored. Fix:\n- Also iterate any subdirectory of cache_dir that is not\
+      \ an ArtSource value\n- Assign a sensible source label (or add ArtSource.CUSTOM)\
+      \ for non-standard dirs\n- Add test with a custom directory containing valid\
+      \ painting files\n\n### Bug #10: Met API single 404 kills entire source\nFile:\
+      \ src/sfumato/paintings.py, around line 805\nCurrent code skips individual 404s\
+      \ with logger.debug, verify this is correct.\nIf the 404 handler is in a per-object\
+      \ fetch loop, it should skip that object\nand continue. If it's at a higher\
+      \ level, fix the exception handling scope.\n- Add test: mock Met API returning\
+      \ 404 for 1 of 3 objects, verify other 2 succeed\n\n### Bug #11: Wikimedia discover\
+      \ queries subcategories not files\nFile: src/sfumato/paintings.py, Wikimedia\
+      \ discovery function\nThe API query may be using `cmtype=subcat` instead of\
+      \ `cmtype=file` or both.\nFix to query files (paintings), not just subcategories.\n\
+      Grep hint: `grep -n 'cmtype\\|categorymembers\\|subcats' src/sfumato/paintings.py`\n\
+      - Add test verifying the API query parameters include file type\n\n### Bug #12:\
+      \ Download delay too large (250s)\nFile: src/sfumato/paintings.py\nFind the\
+      \ download delay constant and reduce it to a reasonable value (1-5s).\nGrep\
+      \ hint: `grep -n 'sleep\\|delay\\|DELAY\\|wait' src/sfumato/paintings.py`\n\
+      - Add test or assertion that the delay is bounded"
+    verification: '- uv run pytest tests/test_paintings.py -v: all pass
+
+      - New tests: custom dir support, Met 404 resilience, Wikimedia file query, delay
+      bound
+
+      - list_cached_paintings handles non-ArtSource subdirectories
+
+      - Met single-object 404 does not abort entire source fetch'
+    refs:
+    - src/sfumato/paintings.py
+    - tests/test_paintings.py
+    agent: python-executor
