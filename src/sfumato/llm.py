@@ -364,26 +364,26 @@ def _get_backend_command(
     if cli == "codex":
         # Validated flags from PROTOTYPING.md#4:
         #   codex exec --full-auto "prompt"
-        # codex exec does NOT support: --max-tokens, --temperature, --system
+        # codex exec does NOT support: --max-tokens, --temperature, --system, -m
+        # Note: Model selection is handled by codex itself, not via -m flag
         full_prompt = prompt
         if system_prompt:
             full_prompt = f"{system_prompt}\n\n{prompt}"
         if image_path:
             full_prompt = f"Look at the image file {image_path} .\n\n{full_prompt}"
         cmd = ["codex", "exec", "--full-auto", full_prompt]
-        if model:
-            cmd.extend(["-m", model])
         return cmd
 
     if cli == "claude-code":
-        # claude -p "prompt" --output-format text
+        # claude -p "prompt" --output-format json -m {model} --max-tokens {n}
         # claude supports: -p, -m, --max-tokens, --output-format
+        # Note: --output-format should be "json" per ARCHITECTURE.md
         full_prompt = prompt
         if system_prompt:
             full_prompt = f"{system_prompt}\n\n{prompt}"
         if image_path:
             full_prompt = f"Look at the image file {image_path} .\n\n{full_prompt}"
-        cmd = ["claude", "-p", full_prompt, "--output-format", "text"]
+        cmd = ["claude", "-p", full_prompt, "--output-format", "json"]
         if model:
             cmd.extend(["-m", model])
         cmd.extend(["--max-tokens", str(max_tokens)])
@@ -513,9 +513,9 @@ async def invoke_text(
     """Invoke LLM with a text-only prompt.
 
     Dispatches to the configured CLI backend:
-        - gemini: `gemini -m {model} -p "{prompt}"`
-        - codex: `codex -m {model} -p "{prompt}"`
-        - claude-code: `claude -m {model} -p "{prompt}" --output-format json`
+        - gemini: `gemini -p "{prompt}" -y --sandbox false [-m {model}]`
+        - codex: `codex exec --full-auto "{prompt}"`
+        - claude-code: `claude -p "{prompt}" --output-format json [-m {model}] --max-tokens {n}`
 
     Args:
         prompt: The user prompt text to send to the LLM.

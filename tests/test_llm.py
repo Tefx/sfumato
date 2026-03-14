@@ -857,10 +857,11 @@ class TestSubprocessCommandSelection:
         assert "gemini" in BACKEND_DISPATCH_MAP
 
     def test_codex_command_includes_model_and_prompt(self) -> None:
-        """Codex backend command must include model flag and prompt.
+        """Codex backend command must include prompt argument.
 
         Contract from ARCHITECTURE.md:
-        codex: `codex -m {model} -p "{prompt}"`
+        codex: `codex exec --full-auto "{prompt}"`
+        Note: codex does NOT support -m flag (model handled internally).
         """
         assert "codex" in BACKEND_DISPATCH_MAP
 
@@ -889,6 +890,206 @@ class TestSubprocessCommandSelection:
         the subprocess command construction.
         """
         pass  # Implementation must use proper argument escaping
+
+
+class TestBackendCommandConstruction:
+    """Test _get_backend_command produces correct command lists.
+
+    These tests directly verify the command construction for each backend,
+    ensuring supported flags are present and unsupported flags are absent.
+    """
+
+    def test_gemini_command_construction_text_only(self) -> None:
+        """Gemini text command: gemini -p {prompt} -y --sandbox false [-m model]."""
+        from sfumato.llm import _get_backend_command
+
+        cmd = _get_backend_command(
+            cli="gemini",
+            prompt="test prompt",
+            model="gemini-3.1-pro-preview",
+            max_tokens=4000,
+            temperature=0.3,
+            system_prompt="system",
+            image_path=None,
+        )
+
+        assert cmd[0] == "gemini"
+        assert "-p" in cmd
+        assert cmd[cmd.index("-p") + 1] == "system\n\ntest prompt"
+        assert "-y" in cmd
+        assert "--sandbox" in cmd
+        assert "false" in cmd
+        assert "-m" in cmd
+        assert "gemini-3.1-pro-preview" in cmd
+
+        # Unsupported flags must NOT be present
+        assert "--max-tokens" not in cmd
+        assert "--temperature" not in cmd
+        assert "--system" not in cmd
+        assert "--image" not in cmd
+
+    def test_gemini_command_construction_vision(self) -> None:
+        """Gemini vision command: image path embedded in prompt text."""
+        from sfumato.llm import _get_backend_command
+
+        cmd = _get_backend_command(
+            cli="gemini",
+            prompt="analyze this",
+            model="gemini-3.1-pro-preview",
+            max_tokens=4000,
+            temperature=0.3,
+            system_prompt=None,
+            image_path=Path("/tmp/test.png"),
+        )
+
+        assert cmd[0] == "gemini"
+        assert "-p" in cmd
+        # Image path must be embedded in prompt, not passed via --image flag
+        prompt_idx = cmd.index("-p") + 1
+        assert "Look at the image file /tmp/test.png" in cmd[prompt_idx]
+        assert "analyze this" in cmd[prompt_idx]
+        assert "--image" not in cmd
+
+    def test_codex_command_construction_text_only(self) -> None:
+        """Codex text command: codex exec --full-auto {prompt}.
+
+        Note: codex exec does NOT support -m, --max-tokens, --temperature, --system.
+        """
+        from sfumato.llm import _get_backend_command
+
+        cmd = _get_backend_command(
+            cli="codex",
+            prompt="test prompt",
+            model="codex-model",
+            max_tokens=4000,
+            temperature=0.3,
+            system_prompt="system",
+            image_path=None,
+        )
+
+        assert cmd[0] == "codex"
+        assert "exec" in cmd
+        assert "--full-auto" in cmd
+        # Prompt is the last argument (positional)
+        assert "system\n\ntest prompt" in cmd
+
+        # Unsupported flags must NOT be present
+        assert "-m" not in cmd
+        assert "--max-tokens" not in cmd
+        assert "--temperature" not in cmd
+        assert "--system" not in cmd
+
+    def test_codex_command_construction_vision(self) -> None:
+        """Codex vision command: image path embedded in prompt text."""
+        from sfumato.llm import _get_backend_command
+
+        cmd = _get_backend_command(
+            cli="codex",
+            prompt="analyze this",
+            model="codex-model",
+            max_tokens=4000,
+            temperature=0.3,
+            system_prompt=None,
+            image_path=Path("/tmp/test.png"),
+        )
+
+        assert cmd[0] == "codex"
+        assert "exec" in cmd
+        assert "--full-auto" in cmd
+        # Image path must be embedded in prompt
+        assert "Look at the image file /tmp/test.png" in cmd[-1]
+
+    def test_claude_code_command_construction_text_only(self) -> None:
+        """Claude-code text command: claude -p {prompt} --output-format json [-m model] --max-tokens {n}."""
+        from sfumato.llm import _get_backend_command
+
+        cmd = _get_backend_command(
+            cli="claude-code",
+            prompt="test prompt",
+            model="claude-sonnet-4",
+            max_tokens=4000,
+            temperature=0.3,
+            system_prompt="system",
+            image_path=None,
+        )
+
+        assert cmd[0] == "claude"
+        assert "-p" in cmd
+        assert cmd[cmd.index("-p") + 1] == "system\n\ntest prompt"
+        assert "--output-format" in cmd
+        assert cmd[cmd.index("--output-format") + 1] == "json"
+        assert "-m" in cmd
+        assert "claude-sonnet-4" in cmd
+        assert "--max-tokens" in cmd
+        assert "4000" in cmd
+
+        # Unsupported flags must NOT be present
+        assert "--temperature" not in cmd
+        assert "--system" not in cmd
+
+    def test_claude_code_command_construction_vision(self) -> None:
+        """Claude-code vision command: image path embedded in prompt text."""
+        from sfumato.llm import _get_backend_command
+
+        cmd = _get_backend_command(
+            cli="claude-code",
+            prompt="analyze this",
+            model="claude-sonnet-4",
+            max_tokens=4000,
+            temperature=0.3,
+            system_prompt=None,
+            image_path=Path("/tmp/test.png"),
+        )
+
+        assert cmd[0] == "claude"
+        assert "-p" in cmd
+        prompt_idx = cmd.index("-p") + 1
+        assert "Look at the image file /tmp/test.png" in cmd[prompt_idx]
+        assert "--output-format" in cmd
+        assert "json" in cmd
+
+    def test_claude_code_output_format_is_json(self) -> None:
+        """Claude-code must use --output-format json (not text).
+
+        Bug fix verification: ARCHITECTURE.md specifies json output format.
+        """
+        from sfumato.llm import _get_backend_command
+
+        cmd = _get_backend_command(
+            cli="claude-code",
+            prompt="test",
+            model="claude-sonnet-4",
+            max_tokens=4000,
+            temperature=0.3,
+            system_prompt=None,
+            image_path=None,
+        )
+
+        assert "--output-format" in cmd
+        output_format_idx = cmd.index("--output-format") + 1
+        assert cmd[output_format_idx] == "json", (
+            f"Expected --output-format json, got --output-format {cmd[output_format_idx]}"
+        )
+
+    def test_codex_no_model_flag(self) -> None:
+        """Codex exec does NOT support -m flag for model selection.
+
+        Bug fix verification: codex handles model internally, not via -m.
+        """
+        from sfumato.llm import _get_backend_command
+
+        cmd = _get_backend_command(
+            cli="codex",
+            prompt="test",
+            model="some-model",
+            max_tokens=4000,
+            temperature=0.3,
+            system_prompt=None,
+            image_path=None,
+        )
+
+        assert "-m" not in cmd, "codex exec should NOT have -m flag"
+        assert "some-model" not in cmd, "codex should not receive model name in command"
 
 
 # =============================================================================
