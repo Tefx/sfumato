@@ -5857,7 +5857,7 @@ phases:
       silent replay disablement.'
   - id: replay.gate-final
     name: gate-final
-    status: pending
+    status: claimed
     description: 'Gate review: replay phase readiness after batched AppState remediation.
 
 
@@ -5919,6 +5919,8 @@ phases:
     depends_on:
     - replay.retest-app-state-replay-integration
     agent: gate-reviewer
+    claimed_by: gate-reviewer
+    claimed_at: '2026-03-14T23:25:44.854415+00:00'
 - id: polish
   name: 'Polish: Default Model + Documentation'
   status: locked
