@@ -1220,6 +1220,44 @@ phases:
     depends_on:
     - core.pipeline.contract
     agent: python-executor
+  - id: core.pipeline.verify
+    name: Independently verify orchestrator.run_once
+    status: pending
+    description: "step_type: verification\nspec_refs:\n  - ARCHITECTURE.md#2.12\n\
+      \  - ARCHITECTURE.md#2.13\n  - README.md\ntouch_paths:\n  - src/sfumato/orchestrator.py\n\
+      \  - tests/test_orchestrator.py\nharness_refs:\n  - pytest\n  - orchestrator\
+      \ seam doubles for news/layout/render/tv/state\nagent: integration-verifier\n\
+      \nAs an INDEPENDENT TESTER (`integration-verifier`), validate `run_once()` from\
+      \ a fresh perspective.\n\nYOUR GOAL IS TO FIND PROBLEMS, not to confirm it works.\n\
+      \nTest for:\n- Happy path: contracted stage ordering reaches render and upload\
+      \ with `uploaded=True`.\n- Flag boundaries: `--no-upload` and `--no-news` preserve\
+      \ the contracted skips without dropping local render output.\n- Error scenarios:\
+      \ TV-unavailable remains non-fatal, while upstream refresh/layout/palette/render\
+      \ failures still propagate.\n- Output guarantees: successful branches preserve\
+      \ a usable local `png_path` even when TV push is skipped.\n\nDocument ALL findings.\
+      \ A test that discovers issues is a SUCCESS.\nIndependence Level: L1"
+    verification: '- Main path: focused orchestrator tests prove contracted stage
+      ordering and successful upload path
+
+      - Failure path: focused regression proves the TV-unavailable branch preserves
+      the local PNG and returns `uploaded=False`; a separate regression proves upstream
+      stage failures still propagate
+
+      - Proof includes exact pytest commands and actual output, not only a pass/fail
+      summary'
+    evidence_template: "## Verification Report\n\n**Tester**: integration-verifier\
+      \ (independent of implementation)\n**Scope**: orchestrator.run_once\n**Independence\
+      \ Level**: L1\n\n### Test Execution\n- Commands executed:\n  ```\n  uv run pytest\
+      \ tests/test_orchestrator.py -k \"run_once\" -v\n  ```\n- Output summary: <key\
+      \ results>\n\n### Issues Found\n- blocker | <issue> | <location> | <reproduction>\n\
+      - should_fix | <issue> | <location> | <reproduction>\n- suggestion | <issue>\
+      \ | <location> | -\n\n### Coverage Assessment\n- Happy path verified: ✅/❌\n\
+      - Flag branches verified: `--no-upload`, `--no-news`\n- Highest-risk failure\
+      \ path verified: TV unavailable while preserving local output\n- Remaining gaps:\
+      \ <if any>\n\n### Verdict\n- PASS | ISSUES_FOUND | INCOMPLETE"
+    depends_on:
+    - core.pipeline
+    agent: integration-verifier
 - id: intelligence
   name: Intelligence
   status: locked
