@@ -227,6 +227,88 @@ def test_whisper_contract_specifies_variables_and_constraints():
     assert "Compatibility Expectations" in contract
 
 
+@pytest.mark.parametrize(
+    "template_name",
+    [
+        "painting_text.html",
+        "magazine.html",
+        "portrait.html",
+    ],
+)
+def test_templates_expose_all_required_whisper_variables(template_name: str):
+    """All three templates must expose required WHISPER_* placeholders."""
+    template_path = Path("templates") / template_name
+    template_content = template_path.read_text()
+
+    required_whisper_vars = [
+        "WHISPER_POSITION",
+        "WHISPER_COLOR",
+        "WHISPER_SHADOW",
+        "WHISPER_TEXT",
+    ]
+
+    for var in required_whisper_vars:
+        assert f"{{{{{var}}}}}" in template_content, (
+            f"Template {template_name} missing required WHISPER_* variable: {var}"
+        )
+
+
+def test_whisper_contract_uniform_structure_across_templates():
+    """Whisper contract structure should be uniform in all three templates."""
+    templates = ["painting_text.html", "magazine.html", "portrait.html"]
+
+    for template_name in templates:
+        template_path = Path("templates") / template_name
+        content = template_path.read_text()
+
+        # All must have the whisper-contract template element
+        assert '<template id="whisper-contract">' in content, (
+            f"Template {template_name} missing whisper-contract template element"
+        )
+        assert "</template>" in content, (
+            f"Template {template_name} has unclosed template element"
+        )
+
+        # All must have consistent data attributes
+        assert 'data-whisper-position="{{WHISPER_POSITION}}"' in content, (
+            f"Template {template_name} missing whisper-position data attribute"
+        )
+        assert 'data-whisper-color="{{WHISPER_COLOR}}"' in content, (
+            f"Template {template_name} missing whisper-color data attribute"
+        )
+        assert 'data-whisper-shadow="{{WHISPER_SHADOW}}"' in content, (
+            f"Template {template_name} missing whisper-shadow data attribute"
+        )
+        assert "{{WHISPER_TEXT}}</div>" in content, (
+            f"Template {template_name} missing whisper-text content"
+        )
+
+
+def test_whisper_template_syntax_valid():
+    """Smoke test: whisper placeholders have valid syntax in all templates."""
+    templates = ["painting_text.html", "magazine.html", "portrait.html"]
+
+    for template_name in templates:
+        template_path = Path("templates") / template_name
+        content = template_path.read_text()
+
+        # Verify placeholder syntax: {{VARIABLE_NAME}} with valid chars
+        import re
+
+        # Find all whisper-related placeholders
+        whisper_placeholders = re.findall(r"\{\{WHISPER_[A-Z_]+\}\}", content)
+
+        # Should have exactly 4 whisper placeholders (POSITION, COLOR, SHADOW, TEXT)
+        assert len(whisper_placeholders) == 4, (
+            f"Template {template_name} has {len(whisper_placeholders)} whisper placeholders, expected 4"
+        )
+
+        # Verify valid HTML structure around whisper contract
+        assert content.count("<template") == content.count("</template>"), (
+            f"Template {template_name} has mismatched template tags"
+        )
+
+
 # =============================================================================
 # build_template_variables TESTS
 # =============================================================================
