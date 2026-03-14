@@ -803,6 +803,44 @@ phases:
 
       - Step content was already reflected in the current main tree at integration
       time, so no additional merge commit was created.'
+  - id: core.tv.contract
+    name: Define TV control contract
+    status: pending
+    description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
+      \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nspec_refs:\n  - ARCHITECTURE.md#2.8\n\
+      \  - PROTOTYPING.md#1\ntouch_paths:\n  - src/sfumato/tv.py\n  - tests/test_tv.py\n\
+      harness_refs:\n  - pytest\n  - samsungtvws art-mode seam doubles\nagent: python-executor\n\
+      \nDefine the contract for `src/sfumato/tv.py` before implementation dispatch.\n\
+      \nContract scope:\n- Pin `TvStatus`, `UploadedImage`, `TvError`, `TvConnectionError`,\
+      \ and `TvUploadError` public surfaces.\n- Pin `check_status()` as non-throwing\
+      \ on every connection/art-mode/status-listing failure, returning `TvStatus(reachable=False,\
+      \ error=...)` rather than propagating library exceptions.\n- Pin the 10-second\
+      \ timeout boundary for status probing so workers do not improvise longer blocking\
+      \ behavior.\n- Pin error mapping boundaries: connection/setup failures raise\
+      \ `TvConnectionError`; upload-path failures after connection/art-mode setup\
+      \ raise `TvUploadError`.\n- Pin `clean_old_uploads(tv_config, keep)` keep-policy\
+      \ semantics using the prototype's TV-reported upload metadata, including the\
+      \ deterministic fallback ordering when recency metadata is unavailable.\n- Pin\
+      \ `clean_old_uploads()` as non-throwing for individual delete failures: keep\
+      \ cleanup moving, preserve the retained set, and count only confirmed deletions.\n\
+      - Pin `is_available_for_push()` as a pure convenience wrapper over the contracted\
+      \ `check_status()` fields with no new network semantics.\n\nKnown risks to encode\
+      \ in the contract:\n- `set_artmode(True)` may hang on the validated TV model;\
+      \ this module must not introduce that path while implementing display switching.\n\
+      - First-pairing prompts and transient websocket setup failures must be surfaced\
+      \ as contracted reachability/error states, not uncategorized exceptions.\n\n\
+      Non-goals:\n- No working SamsungTVWS upload/list/delete logic in this step.\n\
+      - No completed network behavior beyond stubs and contract notes."
+    verification: '- Contract artifact explicitly defines the public dataclasses/exceptions/signatures
+      and the non-throwing timeout/error-mapping boundaries
+
+      - `clean_old_uploads()` keep-policy semantics and delete-failure behavior are
+      pinned explicitly rather than deferred to implementation-time judgment
+
+      - Public stubs exist without completed samsungtvws business logic'
+    depends_on:
+    - core.config
+    agent: python-executor
 - id: intelligence
   name: Intelligence
   status: locked
