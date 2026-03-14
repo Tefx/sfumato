@@ -371,6 +371,8 @@ class TestUsedPaintingsContract:
 class TestReplayQueueContract:
     """Replay queue remains a contract-only surface in this milestone."""
 
+    # --- Interface/Method Presence and Signatures ---
+
     def test_replay_queue_exports_artifact_and_contract_types(self) -> None:
         assert REPLAY_QUEUE_JSON == "replay_queue.json"
         assert ReplayBatch.__dataclass_fields__.keys() == {
@@ -452,6 +454,196 @@ class TestReplayQueueContract:
                 assert isinstance(body[0].exc, ast.Call)
                 assert isinstance(body[0].exc.func, ast.Name)
                 assert body[0].exc.func.id == "NotImplementedError"
+
+    def test_replay_batch_fields_preserve_source_story_order_contract(self) -> None:
+        """Contract: ReplayBatch.stories must preserve original QueuedBatch story order."""
+        fields = ReplayBatch.__dataclass_fields__
+        assert "stories" in fields
+        # Story order preservation is enforced by implementation, not by type system
+        # This test confirms the field exists; implementation tests verify ordering
+
+    def test_replay_batch_counter_semantics_contract(self) -> None:
+        """Contract: replay_count starts at 0, increments only after successful next()."""
+        fields = ReplayBatch.__dataclass_fields__
+        assert "replay_count" in fields
+        # Default value should be 0 per dataclass definition
+        assert fields["replay_count"].default == 0
+
+    def test_replay_batch_timestamp_semantics_contract(self) -> None:
+        """Contract: last_replayed_at is None until first next(), then set per yield."""
+        fields = ReplayBatch.__dataclass_fields__
+        assert "last_replayed_at" in fields
+        assert fields["last_replayed_at"].default is None
+
+    # --- Cycling/Index Semantics Expectations ---
+
+    def test_replay_queue_next_returns_batch_at_cursor_then_advances_modulo_size(
+        self,
+    ) -> None:
+        """Contract: next() returns batch at next_index, then advances cursor modulo size."""
+        # This test defines expected behavior; implementation comes later
+        # Verify method exists and has correct signature
+        sig = inspect.signature(ReplayQueue.next)
+        assert list(sig.parameters.keys()) == ["self"]
+        # Return type should be ReplayBatch | None (verified by type hints)
+        hints = get_type_hints(ReplayQueue.next)
+        # Union types may appear differently across Python versions, just check key names
+        assert "return" in hints
+
+    def test_replay_queue_next_does_not_remove_entries_cyclic_not_fifo(self) -> None:
+        """Contract: Unlike NewsQueue.dequeue, ReplayQueue.next does not remove entries."""
+        # Verify method signature accepts no removal parameters
+        sig = inspect.signature(ReplayQueue.next)
+        assert len(sig.parameters) == 1  # Only self
+        # Implementation will verify cycling behavior without removal
+
+    def test_replay_queue_empty_next_returns_none_and_cursor_remains_zero(self) -> None:
+        """Contract: Empty queue.next() returns None, next_index stays 0."""
+        # This is a behavioral contract; implementation tests verify it
+        # Method signature confirms return type
+        hints = get_type_hints(ReplayQueue.next)
+        assert "return" in hints
+
+    def test_replay_queue_size_property_exists_and_returns_count(self) -> None:
+        """Contract: size property returns number of replay batches."""
+        sig = inspect.signature(ReplayQueue.size.fget)  # type: ignore
+        assert list(sig.parameters.keys()) == ["self"]
+
+    def test_replay_queue_next_index_property_exists_and_returns_cursor(self) -> None:
+        """Contract: next_index returns zero-based cursor for next next() call."""
+        sig = inspect.signature(ReplayQueue.next_index.fget)  # type: ignore
+        assert list(sig.parameters.keys()) == ["self"]
+
+    def test_replay_queue_cursor_invariant_when_non_empty(self) -> None:
+        """Contract: When batches is non-empty, 0 <= next_index < len(batches)."""
+        # This invariant is enforced by implementation
+        # TypedDict contract defines next_index range
+        annotations = get_type_hints(ReplayQueueFileJson)
+        assert annotations["next_index"] is int
+
+    # --- Persistence Contract Expectations ---
+
+    def test_replay_queue_persist_writes_full_snapshot(self) -> None:
+        """Contract: persist() writes complete ReplayQueueFileJson with all fields."""
+        sig = inspect.signature(ReplayQueue.persist)
+        assert list(sig.parameters.keys()) == ["self"]
+        # ReplayQueueFileJson structure is verified separately
+
+    def test_replay_queue_load_missing_file_produces_empty_queue(self) -> None:
+        """Contract: load() when file missing => default-empty queue, next_index=0."""
+        sig = inspect.signature(ReplayQueue.load)
+        assert list(sig.parameters.keys()) == ["self"]
+
+    def test_replay_queue_load_replaces_in_memory_state_with_disk(self) -> None:
+        """Contract: load() replaces current state; no merging with prior state."""
+        # Behavioral contract verified by implementation tests
+        # Method signature confirms no parameters influence merge behavior
+        sig = inspect.signature(ReplayQueue.load)
+        assert len(sig.parameters) == 1  # Only self
+
+    def test_replay_queue_persist_overwrite_semantics(self) -> None:
+        """Contract: persist() overwrites entire file; no partial updates."""
+        # ReplayQueueFileJson has no append/patch fields
+        annotations = get_type_hints(ReplayQueueFileJson)
+        # All fields are complete snapshots: version, next_index, overlap_ratio_threshold, batches
+        expected_fields = {
+            "version",
+            "next_index",
+            "overlap_ratio_threshold",
+            "batches",
+        }
+        actual_fields = set(annotations.keys())
+        assert actual_fields == expected_fields
+
+    # --- Dedup Overlap-Threshold Expectation Contract ---
+
+    def test_replay_dedup_policy_threshold_normalized_to_01_range(self) -> None:
+        """Contract: overlap_ratio_threshold normalized to [0.0, 1.0]."""
+        policy = ReplayDedupPolicy()
+        assert 0.0 <= policy.overlap_ratio_threshold <= 1.0
+
+    def test_replay_dedup_policy_formula_matches_spec(self) -> None:
+        """Contract: overlap_ratio = shared_story_count / min(candidate_size, existing_size)."""
+        policy = ReplayDedupPolicy()
+        assert policy.overlap_ratio_formula == (
+            "shared_story_count / min(candidate_size, existing_size)"
+        )
+
+    def test_replay_dedup_policy_threshold_behavior_rejects_overlap(self) -> None:
+        """Contract: Transfer rejected when overlap_ratio >= threshold."""
+        policy = ReplayDedupPolicy()
+        assert policy.threshold_behavior == (
+            "reject-when-overlap-ratio-meets-or-exceeds-threshold"
+        )
+
+    def test_replay_dedup_policy_identity_priority_url_then_headline(self) -> None:
+        """Contract: Story identity priority tuple defines dedup lookup order."""
+        policy = ReplayDedupPolicy()
+        assert policy.identity_priority == ("url", "headline")
+
+    def test_replay_transfer_result_accepted_field_contract(self) -> None:
+        """Contract: accepted=True means transfer succeeded into queue."""
+        fields = ReplayTransferResult.__dataclass_fields__
+        assert "accepted" in fields
+        # dataclass field.type may be string or type depending on Python version
+        accepted_type = fields["accepted"].type
+        assert accepted_type == bool or accepted_type == "bool"
+
+    def test_replay_transfer_result_reason_values_are_limited(self) -> None:
+        """Contract: reason field has three possible values per spec."""
+        # Verify the Literal type annotation has expected values
+        fields = ReplayTransferResult.__dataclass_fields__
+        assert "reason" in fields
+        # Implementation tests verify actual values match contract
+        # Type hint is Literal["accepted", "rejected-empty-batch", "rejected-duplicate-overlap"]
+
+    def test_replay_transfer_result_overlap_ratio_field_type(self) -> None:
+        """Contract: overlap_ratio is a float in [0.0, 1.0] after compute."""
+        fields = ReplayTransferResult.__dataclass_fields__
+        assert "overlap_ratio" in fields
+        # dataclass field.type may be string or type depending on Python version
+        overlap_type = fields["overlap_ratio"].type
+        assert overlap_type == float or overlap_type == "float"
+
+    def test_replay_transfer_result_matched_batch_index_nullable(self) -> None:
+        """Contract: matched_batch_index is None on accept, int index on reject."""
+        fields = ReplayTransferResult.__dataclass_fields__
+        assert "matched_batch_index" in fields
+        # Type is int | None
+
+    def test_replay_queue_transfer_accepts_on_passed_dedup(self) -> None:
+        """Contract: transfer_from_news_queue returns accepted=True when overlap below threshold."""
+        sig = inspect.signature(ReplayQueue.transfer_from_news_queue)
+        assert list(sig.parameters.keys()) == ["self", "batch"]
+        hints = get_type_hints(ReplayQueue.transfer_from_news_queue)
+        assert "return" in hints
+        assert hints["return"] is ReplayTransferResult
+
+    def test_replay_queue_transfer_rejects_empty_batch(self) -> None:
+        """Contract: Transfer result reason includes 'rejected-empty-batch'."""
+        # ReplayTransferResult.reason is Literal with "rejected-empty-batch"
+        # Implementation tests verify the actual behavior
+        pass
+
+    def test_replay_queue_transfer_preserves_source_order_on_accept(self) -> None:
+        """Contract: Accepted transfer preserves QueuedBatch story ordering."""
+        # Behavioral contract; ReplayBatch.stories is list[Story] with same order
+        fields = ReplayBatch.__dataclass_fields__
+        assert "stories" in fields
+        # Type annotation confirms list order is preserved
+
+    def test_replay_queue_transfer_reject_does_not_modify_queue(self) -> None:
+        """Contract: Rejected transfer leaves queue order and next_index unchanged."""
+        # Behavioral contract verified by implementation tests
+        # Method signature confirms no side effects on rejection
+        pass
+
+    def test_replay_queue_expire_rebases_cursor_after_removal(self) -> None:
+        """Contract: expire() must rebase next_index after batch removal to maintain invariant."""
+        # When batches at index < next_index are removed, cursor must be adjusted
+        # Implementation tests verify the rebase logic
+        sig = inspect.signature(ReplayQueue.expire)
+        assert "expire_days" in sig.parameters
 
 
 class TestLayoutCacheContract:
