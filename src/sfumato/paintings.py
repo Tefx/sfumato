@@ -11,15 +11,17 @@ Architecture reference: ARCHITECTURE.md#2.3
 
 from __future__ import annotations
 
+import json
 import hashlib
 import logging
+import os
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    pass
+import httpx
+from PIL import Image
 
 # =============================================================================
 # PUBLIC ENUMS
@@ -106,8 +108,6 @@ class PaintingInfo:
 class PaintingsError(Exception):
     """Base exception for paintings-related failures."""
 
-    pass
-
 
 class SourceAuthError(PaintingsError):
     """A source requires authentication that is not configured.
@@ -117,8 +117,6 @@ class SourceAuthError(PaintingsError):
         - For Rijksmuseum: RIJKSMUSEUM_API_KEY env var not set
         - This is a SKIP scenario - the source should be excluded gracefully
     """
-
-    pass
 
 
 class ImageDownloadError(PaintingsError):
@@ -130,8 +128,6 @@ class ImageDownloadError(PaintingsError):
         - Contains source_id in error message for debugging
     """
 
-    pass
-
 
 # =============================================================================
 # LOGGING
@@ -139,6 +135,18 @@ class ImageDownloadError(PaintingsError):
 
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class _SourceCandidate:
+    """Internal candidate representation before download."""
+
+    source_id: str
+    title: str
+    artist: str
+    year: str
+    source_url: str
+    image_url: str
 
 
 # =============================================================================
@@ -217,11 +225,46 @@ async def fetch_paintings(
         >>> len(paintings)  # depends on API responses
         18
     """
-    # Contract-only stub - implementation deferred to subsequent step
-    raise NotImplementedError(
-        "fetch_paintings contract defined in src/sfumato/paintings.py - "
-        "implementation deferred to subsequent step"
-    )
+    if count <= 0 or not sources:
+        return []
+
+    resolved_cache_dir = _resolve_cache_dir(cache_dir)
+    dispatch: dict[str, _SourceFetcher] = {
+        ArtSource.RIJKSMUSEUM.value: fetch_from_rijksmuseum,
+        ArtSource.MET.value: fetch_from_met,
+        ArtSource.WIKIMEDIA.value: fetch_from_wikimedia,
+    }
+
+    requested_sources = [source.strip().lower() for source in sources]
+    known_sources = [source for source in requested_sources if source in dispatch]
+    auth_errors: list[SourceAuthError] = []
+    paintings: list[PaintingInfo] = []
+
+    for source in requested_sources:
+        fetcher = dispatch.get(source)
+        if fetcher is None:
+            logger.warning("Unknown painting source requested: %s", source)
+            continue
+
+        try:
+            paintings.extend(await fetcher(count, resolved_cache_dir, exclude_ids))
+        except SourceAuthError as exc:
+            auth_errors.append(exc)
+            logger.warning("Skipping source '%s' due to missing auth: %s", source, exc)
+        except Exception as exc:  # pragma: no cover - defensive boundary
+            logger.warning("Skipping source '%s' due to fetch failure: %s", source, exc)
+
+    if paintings:
+        return paintings
+
+    if (
+        auth_errors
+        and known_sources
+        and all(_source_requires_auth(source_name) for source_name in known_sources)
+    ):
+        raise auth_errors[0]
+
+    return []
 
 
 async def fetch_from_rijksmuseum(
@@ -273,10 +316,17 @@ async def fetch_from_rijksmuseum(
         >>> len(paintings)
         5
     """
-    # Contract-only stub - implementation deferred to subsequent step
-    raise NotImplementedError(
-        "fetch_from_rijksmuseum contract defined in src/sfumato/paintings.py - "
-        "implementation deferred to subsequent step"
+    api_key = os.getenv("RIJKSMUSEUM_API_KEY")
+    if not api_key:
+        raise SourceAuthError("RIJKSMUSEUM_API_KEY env var is not set")
+
+    candidates = await _discover_rijksmuseum_candidates(count=count, api_key=api_key)
+    return await _download_candidates(
+        source=ArtSource.RIJKSMUSEUM,
+        candidates=candidates,
+        count=count,
+        cache_dir=cache_dir,
+        exclude_ids=exclude_ids,
     )
 
 
@@ -322,10 +372,13 @@ async def fetch_from_met(
         >>> len(paintings)
         5
     """
-    # Contract-only stub - implementation deferred to subsequent step
-    raise NotImplementedError(
-        "fetch_from_met contract defined in src/sfumato/paintings.py - "
-        "implementation deferred to subsequent step"
+    candidates = await _discover_met_candidates(count=count)
+    return await _download_candidates(
+        source=ArtSource.MET,
+        candidates=candidates,
+        count=count,
+        cache_dir=cache_dir,
+        exclude_ids=exclude_ids,
     )
 
 
@@ -376,10 +429,13 @@ async def fetch_from_wikimedia(
         >>> len(paintings)
         5
     """
-    # Contract-only stub - implementation deferred to subsequent step
-    raise NotImplementedError(
-        "fetch_from_wikimedia contract defined in src/sfumato/paintings.py - "
-        "implementation deferred to subsequent step"
+    candidates = await _discover_wikimedia_candidates(count=count)
+    return await _download_candidates(
+        source=ArtSource.WIKIMEDIA,
+        candidates=candidates,
+        count=count,
+        cache_dir=cache_dir,
+        exclude_ids=exclude_ids,
     )
 
 
@@ -429,11 +485,12 @@ def detect_orientation(image_path: Path) -> Orientation:
         >>> detect_orientation(Path("/tmp/test_square.jpg"))
         <Orientation.PORTRAIT: 'portrait'>
     """
-    # Contract-only stub - implementation deferred to subsequent step
-    raise NotImplementedError(
-        "detect_orientation contract defined in src/sfumato/paintings.py - "
-        "implementation deferred to subsequent step"
-    )
+    _validate_image_path(image_path)
+    with Image.open(image_path) as image:
+        width, height = image.size
+    if width > height:
+        return Orientation.LANDSCAPE
+    return Orientation.PORTRAIT
 
 
 # =============================================================================
@@ -477,11 +534,42 @@ def list_cached_paintings(cache_dir: Path) -> list[PaintingInfo]:
         >>> paintings[0].source
         <ArtSource.RIJKSMUSEUM: 'rijksmuseum'>
     """
-    # Contract-only stub - implementation deferred to subsequent step
-    raise NotImplementedError(
-        "list_cached_paintings contract defined in src/sfumato/paintings.py - "
-        "implementation deferred to subsequent step"
-    )
+    resolved_cache_dir = _resolve_cache_dir(cache_dir)
+    if not resolved_cache_dir.exists():
+        raise FileNotFoundError(f"Cache directory not found: {resolved_cache_dir}")
+
+    paintings: list[PaintingInfo] = []
+    for source in ArtSource:
+        source_dir = resolved_cache_dir / source.value
+        if not source_dir.exists() or not source_dir.is_dir():
+            continue
+
+        for image_path in sorted(source_dir.glob("*.jpg")):
+            sidecar_path = image_path.with_suffix(".json")
+            if not sidecar_path.exists():
+                logger.warning("Skipping cached image without sidecar: %s", image_path)
+                continue
+
+            try:
+                sidecar_data = json.loads(sidecar_path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError) as exc:
+                logger.warning("Skipping malformed sidecar %s: %s", sidecar_path, exc)
+                continue
+
+            try:
+                paintings.append(
+                    _painting_info_from_sidecar(
+                        cache_dir=resolved_cache_dir,
+                        sidecar_data=sidecar_data,
+                    )
+                )
+            except (KeyError, TypeError, ValueError) as exc:
+                logger.warning(
+                    "Skipping invalid sidecar payload %s: %s", sidecar_path, exc
+                )
+                continue
+
+    return paintings
 
 
 def content_hash(image_path: Path) -> str:
@@ -568,3 +656,376 @@ def _compute_sha256(file_path: Path) -> str:
         for chunk in iter(lambda: f.read(8192), b""):
             sha256_hash.update(chunk)
     return sha256_hash.hexdigest()
+
+
+type _SourceFetcher = Callable[
+    [int, Path, set[str] | None],
+    Awaitable[list[PaintingInfo]],
+]
+
+
+def _resolve_cache_dir(cache_dir: Path) -> Path:
+    """Resolve cache directory into a stable absolute path."""
+    return cache_dir.expanduser().resolve()
+
+
+def _source_requires_auth(source_name: str) -> bool:
+    """Return whether a source currently requires credentials."""
+    return source_name == ArtSource.RIJKSMUSEUM.value
+
+
+async def _download_candidates(
+    source: ArtSource,
+    candidates: list[_SourceCandidate],
+    count: int,
+    cache_dir: Path,
+    exclude_ids: set[str] | None,
+) -> list[PaintingInfo]:
+    """Download source candidates, write cache entries, and return metadata."""
+    if count <= 0:
+        return []
+
+    resolved_cache_dir = _resolve_cache_dir(cache_dir)
+    resolved_cache_dir.mkdir(parents=True, exist_ok=True)
+
+    existing = (
+        list_cached_paintings(resolved_cache_dir) if resolved_cache_dir.exists() else []
+    )
+    existing_hashes = {painting.content_hash for painting in existing}
+
+    filtered_candidates = [
+        candidate
+        for candidate in candidates
+        if not _is_excluded(
+            source=source, source_id=candidate.source_id, exclude_ids=exclude_ids
+        )
+    ]
+
+    downloaded: list[PaintingInfo] = []
+    for candidate in filtered_candidates:
+        if len(downloaded) >= count:
+            break
+
+        try:
+            painting = await _download_one(
+                source=source,
+                candidate=candidate,
+                cache_dir=resolved_cache_dir,
+            )
+        except ImageDownloadError as exc:
+            logger.warning(
+                "Skipping failed download for %s:%s: %s",
+                source.value,
+                candidate.source_id,
+                exc,
+            )
+            continue
+        except Exception as exc:  # pragma: no cover - defensive boundary
+            logger.warning(
+                "Skipping unusable metadata for %s:%s: %s",
+                source.value,
+                candidate.source_id,
+                exc,
+            )
+            continue
+
+        if painting.content_hash in existing_hashes and not _same_cache_entry_exists(
+            existing=existing,
+            candidate=painting,
+        ):
+            _cleanup_cache_entry(painting.image_path)
+            continue
+
+        existing_hashes.add(painting.content_hash)
+        existing.append(painting)
+        downloaded.append(painting)
+
+    return downloaded
+
+
+def _cleanup_cache_entry(image_path: Path) -> None:
+    """Remove image and sidecar files for a duplicate cache entry."""
+    image_path.unlink(missing_ok=True)
+    image_path.with_suffix(".json").unlink(missing_ok=True)
+
+
+def _is_excluded(
+    source: ArtSource, source_id: str, exclude_ids: set[str] | None
+) -> bool:
+    """Return True when source/source_id is in caller exclusion set."""
+    if not exclude_ids:
+        return False
+    return f"{source.value}:{source_id}" in exclude_ids
+
+
+def _same_cache_entry_exists(
+    existing: list[PaintingInfo], candidate: PaintingInfo
+) -> bool:
+    """Return True if the existing list already includes this source/source_id pair."""
+    return any(
+        entry.source == candidate.source and entry.source_id == candidate.source_id
+        for entry in existing
+    )
+
+
+async def _download_one(
+    source: ArtSource,
+    candidate: _SourceCandidate,
+    cache_dir: Path,
+) -> PaintingInfo:
+    """Download one candidate and write image + sidecar."""
+    source_dir = cache_dir / source.value
+    source_dir.mkdir(parents=True, exist_ok=True)
+
+    image_path = source_dir / f"{candidate.source_id}.jpg"
+
+    image_bytes = await _download_image_bytes(candidate.image_url)
+    image_path.write_bytes(image_bytes)
+
+    width, height = _image_dimensions(image_path)
+    painting = PaintingInfo(
+        image_path=image_path.resolve(),
+        content_hash=content_hash(image_path),
+        title=candidate.title,
+        artist=candidate.artist,
+        year=candidate.year,
+        source=source,
+        source_id=candidate.source_id,
+        source_url=candidate.source_url,
+        orientation=detect_orientation(image_path),
+        width=width,
+        height=height,
+    )
+
+    sidecar_path = image_path.with_suffix(".json")
+    sidecar_path.write_text(
+        json.dumps(
+            _painting_to_sidecar_dict(painting), ensure_ascii=True, sort_keys=True
+        ),
+        encoding="utf-8",
+    )
+    return painting
+
+
+def _painting_to_sidecar_dict(painting: PaintingInfo) -> dict[str, str | int]:
+    """Serialize cache metadata payload without image_path field."""
+    return {
+        "content_hash": painting.content_hash,
+        "title": painting.title,
+        "artist": painting.artist,
+        "year": painting.year,
+        "source": painting.source.value,
+        "source_id": painting.source_id,
+        "source_url": painting.source_url,
+        "orientation": painting.orientation.value,
+        "width": painting.width,
+        "height": painting.height,
+    }
+
+
+def _painting_info_from_sidecar(
+    cache_dir: Path, sidecar_data: dict[str, object]
+) -> PaintingInfo:
+    """Reconstruct PaintingInfo from sidecar metadata and cache root."""
+    source = ArtSource(str(sidecar_data["source"]))
+    source_id = str(sidecar_data["source_id"])
+    image_path = (cache_dir / source.value / f"{source_id}.jpg").resolve()
+    return PaintingInfo(
+        image_path=image_path,
+        content_hash=str(sidecar_data["content_hash"]),
+        title=str(sidecar_data["title"]),
+        artist=str(sidecar_data["artist"]),
+        year=str(sidecar_data["year"]),
+        source=source,
+        source_id=source_id,
+        source_url=str(sidecar_data["source_url"]),
+        orientation=Orientation(str(sidecar_data["orientation"])),
+        width=int(str(sidecar_data["width"])),
+        height=int(str(sidecar_data["height"])),
+    )
+
+
+def _image_dimensions(image_path: Path) -> tuple[int, int]:
+    """Read image width/height from file metadata."""
+    with Image.open(image_path) as image:
+        return image.size
+
+
+async def _download_image_bytes(image_url: str) -> bytes:
+    """Download raw image bytes from URL."""
+    timeout = httpx.Timeout(20.0)
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+        try:
+            response = await client.get(image_url)
+            response.raise_for_status()
+        except Exception as exc:
+            raise ImageDownloadError(
+                f"Failed to download image from {image_url}: {exc}"
+            ) from exc
+    return response.content
+
+
+async def _discover_rijksmuseum_candidates(
+    count: int,
+    api_key: str,
+) -> list[_SourceCandidate]:
+    """Discover candidate paintings from the Rijksmuseum API."""
+    params = {
+        "key": api_key,
+        "format": "json",
+        "imgonly": "True",
+        "type": "painting",
+        "ps": str(max(count * 4, 20)),
+        "p": "1",
+    }
+
+    timeout = httpx.Timeout(20.0)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        response = await client.get(
+            "https://www.rijksmuseum.nl/api/en/collection",
+            params=params,
+        )
+        response.raise_for_status()
+        payload = response.json()
+
+    candidates: list[_SourceCandidate] = []
+    for item in payload.get("artObjects", []):
+        object_number = str(item.get("objectNumber", "")).strip()
+        web_image = item.get("webImage") or {}
+        image_url = str(web_image.get("url", "")).strip()
+        if not object_number or not image_url:
+            continue
+
+        candidates.append(
+            _SourceCandidate(
+                source_id=object_number,
+                title=str(item.get("title", "Untitled")),
+                artist=str(item.get("principalOrFirstMaker", "Unknown")),
+                year=str((item.get("dating") or {}).get("presentingDate", "")),
+                source_url=str((item.get("links") or {}).get("web", "")),
+                image_url=image_url,
+            )
+        )
+    return candidates
+
+
+async def _discover_met_candidates(count: int) -> list[_SourceCandidate]:
+    """Discover candidate paintings from the Met Museum API."""
+    timeout = httpx.Timeout(20.0)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        search_response = await client.get(
+            "https://collectionapi.metmuseum.org/public/collection/v1/search",
+            params={"hasImages": "true", "q": "painting"},
+        )
+        search_response.raise_for_status()
+        search_payload = search_response.json()
+
+        object_ids = search_payload.get("objectIDs") or []
+        candidates: list[_SourceCandidate] = []
+        for object_id in object_ids[: max(count * 5, 20)]:
+            object_response = await client.get(
+                f"https://collectionapi.metmuseum.org/public/collection/v1/objects/{object_id}"
+            )
+            object_response.raise_for_status()
+            item = object_response.json()
+
+            image_url = str(item.get("primaryImage", "")).strip()
+            if not image_url or not item.get("isPublicDomain", False):
+                continue
+
+            candidates.append(
+                _SourceCandidate(
+                    source_id=str(item.get("objectID", object_id)),
+                    title=str(item.get("title", "Untitled")),
+                    artist=str(item.get("artistDisplayName", "Unknown")),
+                    year=str(item.get("objectDate", "")),
+                    source_url=str(item.get("objectURL", "")),
+                    image_url=image_url,
+                )
+            )
+            if len(candidates) >= max(count * 3, count):
+                break
+
+    return candidates
+
+
+async def _discover_wikimedia_candidates(count: int) -> list[_SourceCandidate]:
+    """Discover candidate paintings from Wikimedia Commons."""
+    timeout = httpx.Timeout(20.0)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        members_response = await client.get(
+            "https://commons.wikimedia.org/w/api.php",
+            params={
+                "action": "query",
+                "format": "json",
+                "list": "categorymembers",
+                "cmtitle": "Category:Featured_pictures_of_paintings",
+                "cmlimit": str(max(count * 5, 20)),
+            },
+        )
+        members_response.raise_for_status()
+        members_payload = members_response.json()
+
+        candidates: list[_SourceCandidate] = []
+        for member in members_payload.get("query", {}).get("categorymembers", []):
+            title = str(member.get("title", "")).strip()
+            if not title.startswith("File:"):
+                continue
+
+            image_response = await client.get(
+                "https://commons.wikimedia.org/w/api.php",
+                params={
+                    "action": "query",
+                    "format": "json",
+                    "prop": "imageinfo",
+                    "iiprop": "url|extmetadata",
+                    "titles": title,
+                },
+            )
+            image_response.raise_for_status()
+            image_payload = image_response.json()
+            page_items = (
+                image_payload.get("query", {}).get("pages", {}) or {}
+            ).values()
+            page = next(iter(page_items), {})
+            image_info = (page.get("imageinfo") or [{}])[0]
+            image_url = str(image_info.get("url", "")).strip()
+            if not image_url:
+                continue
+
+            ext_metadata = image_info.get("extmetadata") or {}
+            artist_raw = str((ext_metadata.get("Artist") or {}).get("value", "Unknown"))
+            year_raw = str(
+                (ext_metadata.get("DateTimeOriginal") or {}).get("value", "")
+            )
+            normalized_title = title.replace(" ", "_")
+            candidates.append(
+                _SourceCandidate(
+                    source_id=normalized_title.removeprefix("File:"),
+                    title=normalized_title.removeprefix("File:"),
+                    artist=_strip_html(artist_raw),
+                    year=_strip_html(year_raw),
+                    source_url=f"https://commons.wikimedia.org/wiki/{normalized_title}",
+                    image_url=image_url,
+                )
+            )
+            if len(candidates) >= max(count * 3, count):
+                break
+
+    return candidates
+
+
+def _strip_html(raw: str) -> str:
+    """Strip simple HTML tags from metadata values."""
+    result = []
+    inside_tag = False
+    for char in raw:
+        if char == "<":
+            inside_tag = True
+            continue
+        if char == ">":
+            inside_tag = False
+            continue
+        if not inside_tag:
+            result.append(char)
+    return "".join(result).strip()
