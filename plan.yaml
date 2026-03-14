@@ -1784,19 +1784,59 @@ phases:
   - id: intelligence.matcher
     name: Implement matcher module
     status: pending
-    description: 'Implement src/sfumato/matcher.py per ARCHITECTURE.md section 2.6.
-      Implement EmbeddingResult dataclass. Implement compute_embedding() using llm.compute_embedding().
-      Implement cosine_similarity(). Implement select_painting() with semantic and
-      random strategies. File: src/sfumato/matcher.py (new). Completion: cosine_similarity()
-      correct; select_painting() returns best-matching painting by embedding similarity;
-      random fallback works.'
-    verification: cosine_similarity() returns correct values; select_painting() with
-      semantic strategy picks highest-similarity painting
+    description: 'step_type: implementation
+
+      Implement `src/sfumato/matcher.py` per `ARCHITECTURE.md#2.6` after the contract
+      and tests are in place.
+
+
+      Scope:
+
+      - implement `EmbeddingResult`
+
+      - implement `compute_embedding()` via `llm.compute_embedding()`
+
+      - implement `cosine_similarity()`
+
+      - implement `select_painting()` for `semantic` and `random` strategies
+
+
+      Acceptance:
+
+      - `cosine_similarity()` returns correct values for normalized and non-normalized
+      vectors per the test contract
+
+      - semantic selection returns the highest-similarity painting using cached painting
+      embeddings and a computed or cached tone embedding
+
+      - random selection returns a valid painting with score `0.0`
+
+      - empty input raises the contract-defined matcher error without inventing fallback
+      behavior
+
+
+      Out of scope:
+
+      - painting discovery/fetching
+
+      - orchestrator wiring for semantic matching
+
+
+      Refs: `ARCHITECTURE.md#2.6`, `src/sfumato/matcher.py`, `PROTOTYPING.md`'
+    verification: '- Main path: targeted matcher tests prove cosine similarity math
+      and semantic/random selection behavior
+
+      - Failure path: targeted matcher test proves the empty-paintings error path
+
+      - Proof: implementation satisfies the upstream contract without changing test-defined
+      acceptance'
     refs:
     - ARCHITECTURE.md#2.6
     - src/sfumato/matcher.py
     - PROTOTYPING.md
-    - ARCHITECTURE.md
+    depends_on:
+    - intelligence.matcher.contract
+    - intelligence.matcher.tests
     agent: python-executor
   - id: intelligence.state
     name: Implement state module
