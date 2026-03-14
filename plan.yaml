@@ -3208,7 +3208,7 @@ phases:
     agent: python-executor
   - id: production.docker.contract
     name: Define container deployment contract
-    status: claimed
+    status: done
     description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
       \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nspec_refs:\n  - ARCHITECTURE.md#9\n\
       \  - ARCHITECTURE.md#2.12\n  - ARCHITECTURE.md#2.13\ntouch_paths:\n  - Dockerfile\n\
@@ -3233,6 +3233,46 @@ phases:
     agent: software-architect
     claimed_by: software-architect
     claimed_at: '2026-03-14T17:29:02.132738+00:00'
+    done_at: '2026-03-14T17:40:33.778416+00:00'
+    evidence: 'Artifact:
+
+      - PR: commit 3b79de1 ([vectl] step-production.docker.contract completed), source
+      worktree commit 833738d0ab7a4495c2c74a46597fb5b93a1a93d9
+
+
+      Verification:
+
+      - Run: `git diff --check` -> passed
+
+      - Run: `docker compose config >/tmp/sfumato-compose.out` -> passed
+
+      - Run: `git rev-parse --short HEAD` -> 833738d (source branch commit)
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#9
+
+      - DEPLOYMENT_CONTRACT.md
+
+
+      Files changed:
+
+      - DEPLOYMENT_CONTRACT.md
+
+      - Dockerfile
+
+      - docker-compose.yml
+
+      - ARCHITECTURE.md
+
+      - README.md
+
+
+      Gaps/Notes:
+
+      - Contract step delivered deployment contract/stub artifacts; full deployment
+      implementation verification remains for downstream steps.'
   - id: production.docker.tests
     name: Author container deployment tests
     status: pending
