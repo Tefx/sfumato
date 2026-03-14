@@ -3061,7 +3061,7 @@ phases:
     agent: python-executor
   - id: production.cli-full.contract
     name: Define production CLI contract
-    status: pending
+    status: claimed
     description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
       \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nspec_refs:\n  - ARCHITECTURE.md#2.13\n\
       \  - ARCHITECTURE.md#2.12\ntouch_paths:\n  - src/sfumato/cli.py\n  - src/sfumato/__main__.py\n\
@@ -3082,6 +3082,8 @@ phases:
       - Highest-risk failure semantics are explicit for help exposure, bad-config
       exits, and command-to-runtime miswiring'
     agent: python-executor
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T17:28:56.109698+00:00'
   - id: production.cli-full.tests
     name: Author production CLI tests
     status: pending
