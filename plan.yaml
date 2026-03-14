@@ -3167,7 +3167,7 @@ phases:
       surface; no full daemon-loop implementation shipped in this step.'
   - id: production.watch.tests
     name: Author daemon watch tests
-    status: claimed
+    status: done
     description: "step_type: test\nspec_refs:\n  - ARCHITECTURE.md#2.12\n  - ARCHITECTURE.md#2.13\n\
       touch_paths:\n  - tests/test_orchestrator.py\n  - tests/test_cli.py\n  - src/sfumato/orchestrator.py\n\
       \  - src/sfumato/cli.py\nharness_refs:\n  - pytest\n  - signal-handling harness\n\
@@ -3196,6 +3196,35 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T17:55:46.756188+00:00'
+    done_at: '2026-03-14T18:01:13.510846+00:00'
+    evidence: 'Artifact:
+
+      - PR: commit 305a51c ([vectl] step-production.watch.tests completed), source
+      worktree commit 5c608f6
+
+
+      Verification:
+
+      - Run: `uv run pytest tests/test_orchestrator.py` -> 137 passed in 3.59s
+
+      - Run: `uv run invar guard --changed` -> passed (static/doctest)
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#2.12
+
+      - ARCHITECTURE.md#2.13
+
+
+      Files changed:
+
+      - tests/test_orchestrator.py
+
+
+      Gaps/Notes:
+
+      - Test step only; daemon implementation logic remains for production.watch step.'
   - id: production.cli-full.contract
     name: Define production CLI contract
     status: done
