@@ -3978,7 +3978,7 @@ phases:
       init now creates config when missing and does not overwrite existing config.'
   - id: hardening.llm-cli-commands
     name: LLM CLI command construction tests
-    status: claimed
+    status: done
     description: "step_type: implementation\ntouch_paths:\n  - src/sfumato/llm.py\n\
       \  - tests/test_llm.py\nagent: python-executor\n\n## Objective\n\nFix bug #6:\
       \ gemini/codex CLI commands include unsupported arguments.\n\n## Context\n\n\
@@ -4009,6 +4009,26 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T20:34:28.523066+00:00'
+    done_at: '2026-03-14T20:54:58.285577+00:00'
+    evidence: 'Step: hardening.llm-cli-commands
+
+      Commit hash(es): 67c4991, 153a9dd; merged as [main 57e91e3]
+
+      Files changed: src/sfumato/llm.py, tests/test_llm.py
+
+      Verification:
+
+      - uv run pytest tests/test_llm.py -v -> 93 passed
+
+      - Added tests confirm gemini/codex/claude-code command construction omits unsupported
+      flags and keeps required flags
+
+      Spec link: ARCHITECTURE.md#4.6, PROTOTYPING.md#4
+
+      Gaps/Notes:
+
+      - Subagent noted an outdated codex pattern in docs and possible separate embedding-command
+      verification follow-up; not changed in this step scope.'
   - id: hardening.orchestrator-batch
     name: Orchestrator batch_size and recommended_stories fix
     status: pending
