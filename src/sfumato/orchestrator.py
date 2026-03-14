@@ -1080,7 +1080,14 @@ async def run_once(
 
     # Stage 6: render_4k_png
     # CONTRACT: Render to 4K PNG, propagate errors
-    stories = batch.stories if batch else []
+    # BUG #8 FIX: Apply recommended_stories from layout to limit stories rendered
+    # ARCHITECTURE.md A.4: Batch sizing is determined by selected painting's layout
+    all_stories = batch.stories if batch else []
+    if all_stories and layout.recommended_stories:
+        # Limit stories to what the layout recommends can fit
+        stories = all_stories[: layout.recommended_stories]
+    else:
+        stories = all_stories
     render_result = await _render_4k(
         painting=painting,
         stories=stories,
