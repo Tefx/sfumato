@@ -3012,7 +3012,7 @@ phases:
       added; full scheduling logic remains for implementation step.'
   - id: production.scheduler.tests
     name: Author scheduler tests
-    status: pending
+    status: claimed
     description: "step_type: test\nspec_refs:\n  - ARCHITECTURE.md#2.11\ntouch_paths:\n\
       \  - tests/test_scheduler.py\n  - src/sfumato/scheduler.py\nharness_refs:\n\
       \  - pytest\nagent: python-executor\n\nAuthor scheduler tests that exercise\
@@ -3036,6 +3036,8 @@ phases:
     depends_on:
     - production.scheduler.contract
     agent: python-executor
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T17:40:44.495019+00:00'
   - id: production.watch.contract
     name: Define daemon watch contract
     status: done
