@@ -2394,7 +2394,7 @@ phases:
       full CAS implementation in this step.'
   - id: intelligence.state.tests
     name: Author state module tests
-    status: pending
+    status: claimed
     description: 'step_type: test
 
       Author state-module tests that exercise the contract for `src/sfumato/state.py`
@@ -2441,6 +2441,8 @@ phases:
     depends_on:
     - intelligence.state.contract
     agent: python-executor
+    claimed_by: python-senior
+    claimed_at: '2026-03-14T16:46:52.576366+00:00'
 - id: production
   name: Production
   status: locked
