@@ -3955,3 +3955,38 @@ phases:
     - src/sfumato/llm.py
     - tests/test_llm.py
     agent: python-executor
+  - id: hardening.orchestrator-batch
+    name: Orchestrator batch_size and recommended_stories fix
+    status: pending
+    description: "step_type: implementation\ntouch_paths:\n  - src/sfumato/orchestrator.py\n\
+      \  - tests/test_orchestrator.py\nagent: python-executor\n\n## Objective\n\n\
+      Fix bugs #7 and #8 from the hardening bug list.\n\n## Tasks\n\n### Bug #7: batch_size\
+      \ = stories_per_refresh causes oversized batches\nFile: src/sfumato/orchestrator.py\n\
+      Current code at ~line 444: `batch_size = min(4, config.news.stories_per_refresh)`\n\
+      This caps at 4, which may be correct now. But verify:\n- The batch_size passed\
+      \ to enqueue() produces batches of the intended size\n  (3-4 stories per batch,\
+      \ not 12)\n- Add a test with stories_per_refresh=12 that verifies multiple batches\n\
+      \  are created, not one giant batch\n\n### Bug #8: recommended_stories unused\n\
+      File: src/sfumato/orchestrator.py\nThe run_once/run_news_refresh pipeline calls\
+      \ layout AI which returns\nrecommended_stories, but this value is never used\
+      \ to limit which stories\nare rendered. Fix:\n- Find where recommended_stories\
+      \ is returned (likely from layout AI call)\n- Use it to limit the stories passed\
+      \ to the render stage:\n  `stories = stories[:recommended_stories]` or equivalent\n\
+      - Add a test verifying that when recommended_stories < len(stories),\n  only\
+      \ recommended_stories stories are rendered\n\nGrep hints:\n  - `grep -n 'recommended_stories'\
+      \ src/sfumato/orchestrator.py`\n  - `grep -n 'batch_size' src/sfumato/orchestrator.py`\n\
+      \  - `grep -n 'stories_per_refresh' src/sfumato/orchestrator.py`\n\n## Depends\
+      \ on\nhardening.protocol-alignment (Protocol changes may affect enqueue signature)"
+    verification: '- uv run pytest tests/test_orchestrator.py -v: all pass
+
+      - New test: batch creation with stories_per_refresh=12 produces multiple batches
+
+      - New test: recommended_stories limits rendered story count
+
+      - recommended_stories is used in render path (not silently discarded)'
+    refs:
+    - src/sfumato/orchestrator.py
+    - tests/test_orchestrator.py
+    depends_on:
+    - hardening.protocol-alignment
+    agent: python-executor
