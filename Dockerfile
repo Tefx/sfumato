@@ -11,7 +11,12 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 ENV SFUMATO_HOME=/opt/sfumato
 ENV SFUMATO_CONFIG=/data/config.toml
 ENV SFUMATO_DATA_DIR=/data
+# SDK mode: uses LiteLLM SDK instead of CLI tools (gemini/codex/claude-code)
+# Default to SDK mode for container deployments; config.toml can override via [ai].backend
+ENV SFUMATO_AI_BACKEND=sdk
 ENV RIJKSMUSEUM_API_KEY=
+# API key for OpenRouter (SDK mode); set via environment or config.toml [ai].sdk_provider
+ENV OPENROUTER_API_KEY=
 
 WORKDIR ${SFUMATO_HOME}
 

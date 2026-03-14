@@ -627,14 +627,28 @@ def _normalize_paths(config: AppConfig, base_dir: Path) -> AppConfig:
 
 def _apply_env_overrides(config: AppConfig) -> AppConfig:
     env_data_dir = os.environ.get("SFUMATO_DATA_DIR")
-    if not env_data_dir:
+    env_ai_backend = os.environ.get("SFUMATO_AI_BACKEND")
+    if not env_data_dir and not env_ai_backend:
         return config
 
-    resolved_data_dir = _normalize_path(Path(env_data_dir), Path.cwd())
+    resolved_data_dir = (
+        _normalize_path(Path(env_data_dir), Path.cwd())
+        if env_data_dir
+        else config.data_dir
+    )
     default_cache_dir = PaintingsConfig().cache_dir.expanduser().resolve()
     resolved_cache_dir = config.paintings.cache_dir
-    if resolved_cache_dir == default_cache_dir:
+    if env_data_dir and resolved_cache_dir == default_cache_dir:
         resolved_cache_dir = resolved_data_dir / "paintings"
+
+    ai = config.ai
+    if env_ai_backend:
+        ai = AiConfig(
+            cli=config.ai.cli,
+            model=config.ai.model,
+            backend=env_ai_backend,
+            sdk_provider=config.ai.sdk_provider,
+        )
 
     return AppConfig(
         tv=config.tv,
@@ -647,7 +661,7 @@ def _apply_env_overrides(config: AppConfig) -> AppConfig:
             sources=list(config.paintings.sources),
             match_strategy=config.paintings.match_strategy,
         ),
-        ai=config.ai,
+        ai=ai,
         data_dir=resolved_data_dir,
     )
 
