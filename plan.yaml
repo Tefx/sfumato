@@ -5446,7 +5446,7 @@ phases:
       outside this step scope.'
   - id: replay.scheduler-wire.contract
     name: Define replay scheduler wiring contract
-    status: claimed
+    status: done
     description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
       \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nagent: software-architect\n\
       spec_refs:\n  - ARCHITECTURE.md#2.12\ntouch_paths:\n  - src/sfumato/orchestrator.py\n\
@@ -5473,6 +5473,29 @@ phases:
     agent: software-architect
     claimed_by: software-architect
     claimed_at: '2026-03-14T22:40:17.012522+00:00'
+    done_at: '2026-03-14T22:47:32.732115+00:00'
+    evidence: 'Step: replay.scheduler-wire.contract
+
+      Commit hash(es): d540b9f5f696b72bea6c6267856e87120b47f12d; merged with conflict
+      resolution as [main eed2cc8]
+
+      Files changed: src/sfumato/orchestrator.py, tests/test_orchestrator.py
+
+      Verification:
+
+      - uv run pytest tests/test_orchestrator.py -k ''replay_queue_wiring_contract_is_explicit
+      or refresh_replay_expiry_and_high_overlap_skip_contracts_are_pinned or replay_protocol_surfaces_are_declared_for_orchestrator_wiring''
+      -> passed
+
+      - Post-conflict combined verification with art-facts contracts: 6 passed, 137
+      deselected
+
+      Spec link: ARCHITECTURE.md#2.12
+
+      Gaps/Notes:
+
+      - Merge conflicts with art-facts contract branch resolved by preserving both
+      contract sets.'
   - id: replay.scheduler-wire.test
     name: Define replay scheduler wiring tests
     status: pending
