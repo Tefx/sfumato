@@ -507,7 +507,7 @@ phases:
       step branch content; final main worktree status reported clean.'
   - id: core.pipeline
     name: Implement orchestrator.run_once
-    status: pending
+    status: claimed
     description: "step_type: implementation\nspec_refs:\n  - ARCHITECTURE.md#2.12\n\
       \  - ARCHITECTURE.md#2.13\n  - README.md\n  - PROTOTYPING.md\ntouch_paths:\n\
       \  - src/sfumato/orchestrator.py\n  - tests/test_orchestrator.py\nharness_refs:\n\
@@ -565,6 +565,8 @@ phases:
     - core.pipeline.contract
     - core.pipeline.tests
     agent: python-executor
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T14:31:49.354307+00:00'
   - id: core.cli-run
     name: Implement CLI run and preview commands
     status: pending
