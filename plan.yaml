@@ -99,7 +99,7 @@ phases:
       beyond `SFUMATO_CONFIG`.'
   - id: core.llm
     name: Implement LLM invocation layer
-    status: claimed
+    status: done
     description: "step_type: implementation\nspec_refs:\n  - ARCHITECTURE.md#2.9\n\
       touch_paths:\n  - src/sfumato/llm.py\n  - tests/test_llm.py\nharness_refs:\n\
       \  - pytest\n  - subprocess mocking boundary\nagent: python-executor\n\nImplement\
@@ -138,6 +138,42 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T13:08:27.118259+00:00'
+    done_at: '2026-03-14T13:15:34.729405+00:00'
+    evidence: 'Artifact:
+
+      - Worker commit: dd13e4e (isolated worktree)
+
+      - Main commit: a26f76809067eb271a9ceae0046a29853fa94e97
+
+
+      Verification:
+
+      - Run: `uv run pytest tests/test_llm.py -v` -> 85 passed
+
+      - Run: `uv run pytest tests/ -v` -> 117 passed, 31 skipped
+
+      - Run: `uv run mypy src/sfumato/llm.py --ignore-missing-imports` -> Success:
+      no issues
+
+      - Run: `invar_guard --changed` -> passed (static + doctest)
+
+      - Failure-path tests confirmed: malformed fenced JSON -> `LlmParseError`, unsupported
+      backend -> `LlmError`, retry boundary enforced at 2 attempts
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#2.9
+
+      - src/sfumato/llm.py
+
+      - tests/test_llm.py
+
+
+      Gaps/Notes:
+
+      - Foundational module has no current sibling consumers in `src/`; downstream
+      integration occurs in later steps.'
   - id: core.palette
     name: Implement palette extraction
     status: claimed
