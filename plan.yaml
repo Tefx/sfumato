@@ -1872,7 +1872,7 @@ phases:
       random-vs-semantic precedence; no orchestrator wiring included in this step.'
   - id: intelligence.state
     name: Implement state module
-    status: claimed
+    status: done
     description: 'step_type: implementation
 
       Implement `src/sfumato/state.py` per `ARCHITECTURE.md#2.10` after contract and
@@ -1952,6 +1952,38 @@ phases:
     agent: python-senior
     claimed_by: python-senior
     claimed_at: '2026-03-14T16:52:55.574395+00:00'
+    done_at: '2026-03-14T16:59:07.677430+00:00'
+    evidence: 'Artifact:
+
+      - PR: commit 5c2b917 ([vectl] step-intelligence.state completed), source worktree
+      commit 35374bf
+
+
+      Verification:
+
+      - Run: `uv run python -m compileall src/sfumato/state.py` -> success
+
+      - Run: `uv run pytest -v tests/test_state.py` -> 20 passed in 0.27s
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#2.10
+
+      - PROTOTYPING.md#semantic-art-news-matching
+
+
+      Files changed:
+
+      - src/sfumato/state.py
+
+
+      Gaps/Notes:
+
+      - Kept backward-compatible pre-CAS behavior as contracted; no CAS locking/version-compare
+      added.
+
+      - Orchestrator wiring intentionally not changed in this step.'
   - id: intelligence.news-queue
     name: Wire news queue and time-window into orchestrator
     status: pending
