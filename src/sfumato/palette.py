@@ -1,13 +1,21 @@
-"""Palette extraction contracts for sfumato core.
+"""Palette extraction for sfumato core.
 
-This module intentionally pins API and behavior contracts from
-`ARCHITECTURE.md#2.4` without implementing clustering logic.
+Implementation of color extraction using PIL + numpy k-means clustering.
+Contract reference: ARCHITECTURE.md#2.4
 """
 
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+import numpy as np
+from PIL import Image
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 # -----------------------------------------------------------------------------
@@ -35,6 +43,14 @@ DEFAULT_N_COLORS = 8
 
 MAX_N_COLORS = 16
 """Maximum permitted colors to extract. Values above this are capped."""
+
+# BT.709 luminance coefficients
+BT709_R_COEFF = 0.2126
+BT709_G_COEFF = 0.7152
+BT709_B_COEFF = 0.0722
+
+# Downsampling target size
+DOWNSAMPLE_MAX_DIMENSION = 200
 
 
 # -----------------------------------------------------------------------------
@@ -85,7 +101,7 @@ class ClusteringError(PaletteError):
 
     Contract:
         - SHOULD include debugging context (image dimensions, pixel count, n_colors)
-        - Implementation SHOULD retry with adjusted parameters beforeraising
+        - Implementation SHOULD retry with adjusted parameters before raising
         - Final resort: raise this error to caller
     """
 
@@ -204,7 +220,8 @@ def extract_palette(
 ) -> PaletteColors:
     """Extract dominant color palette from a painting image.
 
-    This is a contract-only stub. Implementation deferred to a later step.
+    Uses k-means clustering on downsampled image pixels.
+    Classifies is_dark based on perceived luminance of dominant color.
 
     Args:
         image_path: Absolute path to the image file. MUST be a valid image format
@@ -277,41 +294,307 @@ def extract_palette(
         10. Thread Safety:
            The implementation MUST be safe to call concurrently from multiple
            threads (no shared mutable state without synchronization).
-
-    Performance Requirements:
-        - SHOULD complete within 5 seconds for a 4K image (3840x2160).
-        - MUST complete within 30 seconds for any supported image size.
-        - Memory usage SHOULD stay under 500MB during extraction.
-
-    Implementation Notes (for future implementer):
-        - Use PIL.Image.open() with context manager
-        - Convert to RGB if necessary (discard alpha channel)
-        - Downsample to ~200-500 pixels max dimension
-        - Reshape to (pixels, 3) for k-means
-        - Use sklearn.cluster.MiniBatchKMeans or scipy.cluster.vq.kmeans
-        - Count cluster sizes to determine frequency ordering
-        - Sample edge pixels for background (not in clustering)
-        - Compute saturation for accent selection
-        - Luminance check per BT.709 coefficients
-
-    Example:
-        >>> from pathlib import Path
-        >>> colors = extract_palette(Path("painting.jpg"))
-        >>> colors.dominant
-        '#3a5f8a'
-        >>> colors.is_dark
-        True
-        >>> len(colors.colors)
-        8
     """
-    raise NotImplementedError(
-        "Contract-only stub: implementation deferred to a later step"
+    # Validate and normalize n_colors
+    n_colors = max(MIN_COLORS_FOR_PALETTE, min(n_colors, MAX_N_COLORS))
+
+    # Step 1: Load and validate image
+    try:
+        img = _load_image(image_path)
+    except ImageReadError:
+        raise
+    except Exception as e:
+        raise ImageReadError(f"Cannot read image at {image_path}: {e}") from e
+
+    # Step 2: Check for fully transparent images (RGBA mode)
+    if img.mode == "RGBA":
+        # Check if all pixels are fully transparent (alpha = 0)
+        alpha_band = np.array(img)[:, :, 3]
+        if np.all(alpha_band == 0):
+            raise InvalidImageError("Image is fully transparent - no visible pixels")
+
+    # Step 3: Convert to RGB if necessary (discard alpha)
+    if img.mode != "RGB":
+        img = img.convert("RGB")
+
+    # Step 4: Check for invalid images
+    width, height = img.size
+    if width == 0 or height == 0:
+        raise InvalidImageError(f"Image has zero dimensions: {width}x{height}")
+
+    # Step 5: Downsample for performance
+    img = _downsample_image(img, DOWNSAMPLE_MAX_DIMENSION)
+
+    # Step 6: Extract pixel data as numpy array
+    pixels = np.array(img)
+    if pixels.size == 0:
+        raise InvalidImageError("Image has zero pixels after processing")
+
+    # Reshape to (n_pixels, 3)
+    pixel_count = pixels.shape[0] * pixels.shape[1]
+    pixels_flat = pixels.reshape(pixel_count, 3)
+
+    # Check for all-transparent edge case (should not happen after RGB conversion, but be safe)
+    if pixel_count == 0:
+        raise InvalidImageError("Image has no pixels")
+
+    # Step 7: Perform k-means clustering
+    try:
+        cluster_centers, cluster_labels = _kmeans_cluster(pixels_flat, n_colors)
+    except ClusteringError:
+        raise
+    except Exception as e:
+        raise ClusteringError(f"k-means clustering failed for {image_path}: {e}") from e
+
+    # Step 8: Compute cluster sizes and order by frequency
+    cluster_sizes = np.bincount(cluster_labels, minlength=len(cluster_centers))
+    sorted_indices = np.argsort(cluster_sizes)[::-1]  # Descending order
+
+    # Get counts of unique colors for ordering
+    unique_colors = cluster_centers[sorted_indices]
+    unique_sizes = cluster_sizes[sorted_indices]
+
+    # Step 9: Normalize colors to canonical hex
+    colors_hex = [_rgb_to_hex(int(r), int(g), int(b)) for r, g, b in unique_colors]
+
+    # Ensure we have at least MIN_COLORS_FOR_PALETTE
+    while len(colors_hex) < MIN_COLORS_FOR_PALETTE:
+        colors_hex.append(colors_hex[0])  # Pad with dominant
+
+    colors_tuple = tuple(colors_hex)
+
+    # Step 10: Assign dominant and secondary
+    dominant = colors_hex[0]
+    secondary = colors_hex[1] if len(colors_hex) > 1 else dominant
+
+    # Step 11: Find accent color (most saturated)
+    accent = _find_accent_color(cluster_centers, cluster_sizes)
+
+    # Step 12: Compute background from edge pixels
+    background = _sample_edge_pixels(image_path)
+
+    # Step 13: Compute is_dark from dominant luminance
+    is_dark = _compute_luminance(dominant) < 0.5
+
+    return PaletteColors(
+        dominant=dominant,
+        secondary=secondary,
+        accent=accent,
+        background=background,
+        is_dark=is_dark,
+        colors=colors_tuple,
     )
 
 
 # -----------------------------------------------------------------------------
-# Helper Function Contracts (for implementation use)
+# Helper Functions
 # -----------------------------------------------------------------------------
+
+
+def _load_image(image_path: Path) -> Image.Image:
+    """Load an image file with PIL.
+
+    Args:
+        image_path: Path to the image file.
+
+    Returns:
+        PIL Image object.
+
+    Raises:
+        ImageReadError: If file does not exist, is not readable, or PIL cannot decode.
+    """
+    if not image_path.exists():
+        raise ImageReadError(f"Image file does not exist: {image_path}")
+
+    if not image_path.is_file():
+        raise ImageReadError(f"Path is not a file: {image_path}")
+
+    try:
+        img = Image.open(image_path)
+        # Force load to catch corrupt images
+        img.load()
+        return img
+    except Image.UnidentifiedImageError as e:
+        raise ImageReadError(f"Cannot decode image at {image_path}: {e}") from e
+    except Image.ImageFile.IOError as e:
+        raise ImageReadError(f"Cannot read image at {image_path}: {e}") from e
+    except OSError as e:
+        raise ImageReadError(f"Cannot read image at {image_path}: {e}") from e
+
+
+def _downsample_image(img: Image.Image, max_dimension: int) -> Image.Image:
+    """Downsample image to max dimension while preserving aspect ratio.
+
+    Args:
+        img: PIL Image to downsample.
+        max_dimension: Maximum width or height.
+
+    Returns:
+        Downsampled image (or original if already small enough).
+    """
+    width, height = img.size
+
+    if width <= max_dimension and height <= max_dimension:
+        return img
+
+    # Calculate new dimensions preserving aspect ratio
+    if width > height:
+        new_width = max_dimension
+        new_height = int(height * (max_dimension / width))
+    else:
+        new_height = max_dimension
+        new_width = int(width * (max_dimension / height))
+
+    # LANCZOS is high-quality for downscaling
+    return img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+
+
+def _kmeans_cluster(
+    pixels: np.ndarray,
+    n_clusters: int,
+    max_iterations: int = 100,
+    tolerance: float = 1e-4,
+    n_init: int = 3,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Perform k-means clustering on pixel data.
+
+    Uses numpy-only implementation (no sklearn/scipy dependency).
+
+    Args:
+        pixels: Array of shape (n_pixels, 3) with RGB values in 0-255.
+        n_clusters: Number of clusters to form.
+        max_iterations: Maximum iterations per initialization.
+        tolerance: Convergence tolerance for centroid movement.
+        n_init: Number of random initializations to try.
+
+    Returns:
+        Tuple of (cluster_centers, labels) where:
+        - cluster_centers: Array of shape (n_clusters, 3) with RGB centroids
+        - labels: Array of shape (n_pixels,) with cluster assignments
+
+    Raises:
+        ClusteringError: If clustering fails to converge.
+    """
+    if len(pixels) == 0:
+        raise ClusteringError("No pixels to cluster")
+
+    # Handle case where we have fewer pixels than clusters
+    if len(pixels) < n_clusters:
+        # Each pixel becomes its own cluster, pad with duplicates
+        unique_pixels = np.unique(pixels, axis=0)
+        if len(unique_pixels) == 1:
+            # Monochromatic image - all pixels same color
+            centers = np.tile(unique_pixels[0], (n_clusters, 1))
+            labels = np.zeros(len(pixels), dtype=int)
+            return centers, labels
+
+        # Use available unique colors, pad with most common
+        centers = np.zeros((n_clusters, 3), dtype=np.float64)
+        for i in range(min(len(unique_pixels), n_clusters)):
+            centers[i] = unique_pixels[i]
+        # Pad remaining with first color (most common will be first after unique)
+        for i in range(len(unique_pixels), n_clusters):
+            centers[i] = unique_pixels[0]
+
+        # Assign labels
+        labels = np.zeros(len(pixels), dtype=int)
+        for i, pixel in enumerate(pixels):
+            distances = np.sqrt(np.sum((centers - pixel) ** 2, axis=1))
+            labels[i] = int(np.argmin(distances))
+
+        return centers, labels
+
+    best_centers = None
+    best_inertia = float("inf")
+    best_labels = None
+
+    for init_idx in range(n_init):
+        # Random initialization: choose k random pixels as initial centers
+        indices = np.random.choice(len(pixels), n_clusters, replace=False)
+        centers = pixels[indices].astype(np.float64)
+
+        labels = np.zeros(len(pixels), dtype=int)
+
+        for iteration in range(max_iterations):
+            # Assignment step: each pixel to nearest center
+            distances = np.sqrt(
+                np.sum(
+                    (pixels[:, np.newaxis, :] - centers[np.newaxis, :, :]) ** 2, axis=2
+                )
+            )
+            labels = np.argmin(distances, axis=1)
+
+            # Update step: compute new centers
+            new_centers = np.zeros_like(centers)
+            for k in range(n_clusters):
+                cluster_mask = labels == k
+                if np.any(cluster_mask):
+                    new_centers[k] = pixels[cluster_mask].mean(axis=0)
+                else:
+                    # Empty cluster: reinitialize randomly
+                    new_centers[k] = pixels[np.random.randint(len(pixels))]
+
+            # Check convergence
+            center_shift = np.sqrt(np.sum((new_centers - centers) ** 2))
+            centers = new_centers
+
+            if center_shift < tolerance:
+                break
+
+        # Compute inertia (sum of squared distances to assigned center)
+        inertia = 0.0
+        for k in range(n_clusters):
+            cluster_mask = labels == k
+            if np.any(cluster_mask):
+                inertia += np.sum((pixels[cluster_mask] - centers[k]) ** 2)
+
+        if inertia < best_inertia:
+            best_inertia = inertia
+            best_centers = centers.copy()
+            best_labels = labels.copy()
+
+    if best_centers is None or best_labels is None:
+        raise ClusteringError(
+            f"k-means failed to converge for {len(pixels)} pixels, n_clusters={n_clusters}"
+        )
+
+    return best_centers, best_labels
+
+
+def _rgb_to_hex(r: int, g: int, b: int) -> str:
+    """Convert RGB values to canonical lowercase hex string.
+
+    Args:
+        r: Red component (0-255).
+        g: Green component (0-255).
+        b: Blue component (0-255).
+
+    Returns:
+        Hex color string in #rrggbb format (lowercase).
+    """
+    # Clamp to valid range
+    r = max(0, min(255, int(r)))
+    g = max(0, min(255, int(g)))
+    b = max(0, min(255, int(b)))
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def _hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
+    """Convert hex color string to RGB tuple.
+
+    Args:
+        hex_color: Hex color in #RRGGBB format.
+
+    Returns:
+        Tuple of (r, g, b) values (0-255).
+    """
+    # Remove # prefix if present
+    hex_color = hex_color.lstrip("#")
+    return (
+        int(hex_color[0:2], 16),
+        int(hex_color[2:4], 16),
+        int(hex_color[4:6], 16),
+    )
 
 
 def _normalize_hex(color: str) -> str:
@@ -333,16 +616,25 @@ def _normalize_hex(color: str) -> str:
         - Accepts RRGGBB or RGB without # prefix (adds # prefix)
         - Rejects named colors ("red"), rgba(), hsl(), etc.
         - Strips leading/trailing whitespace.
-
-    Example:
-        >>> _normalize_hex("#FF0000")
-        '#ff0000'
-        >>> _normalize_hex("F00")
-        '#ff0000'
     """
-    raise NotImplementedError(
-        "Contract-only stub: implementation deferred to a later step"
-    )
+    import re
+
+    color = color.strip()
+
+    # Add # prefix if missing
+    if not color.startswith("#"):
+        color = "#" + color
+
+    # Handle shorthand #RGB -> #RRGGBB
+    if re.match(r"^#[0-9a-fA-F]{3}$", color):
+        r, g, b = color[1], color[2], color[3]
+        color = f"#{r}{r}{g}{g}{b}{b}"
+
+    # Validate format
+    if not re.match(r"^#[0-9a-fA-F]{6}$", color):
+        raise ValueError(f"Invalid hex color: {color!r}")
+
+    return color.lower()
 
 
 def _compute_luminance(hex_color: str) -> float:
@@ -359,18 +651,60 @@ def _compute_luminance(hex_color: str) -> float:
 
     Contract:
         Uses ITU-R BT.709 coefficients: L = 0.2126*R + 0.7152*G + 0.0722*B
-
-    Example:
-        >>> _compute_luminance("#000000")  # Black
-        0.0
-        >>> _compute_luminance("#ffffff")  # White
-        1.0
-        >>> _compute_luminance("#ff0000")  # Pure red
-        0.2126
     """
-    raise NotImplementedError(
-        "Contract-only stub: implementation deferred to a later step"
+    import re
+
+    if not re.match(HEX_PATTERN, hex_color):
+        raise ValueError(f"Invalid hex color format: {hex_color!r}")
+
+    r, g, b = _hex_to_rgb(hex_color)
+    return (
+        BT709_R_COEFF * (r / 255.0)
+        + BT709_G_COEFF * (g / 255.0)
+        + BT709_B_COEFF * (b / 255.0)
     )
+
+
+def _find_accent_color(
+    cluster_centers: np.ndarray,
+    cluster_sizes: np.ndarray,
+) -> str:
+    """Find the most saturated color among cluster centers.
+
+    Args:
+        cluster_centers: Array of shape (n_clusters, 3) with RGB values.
+        cluster_sizes: Array of cluster sizes (weights for priority).
+
+    Returns:
+        The most saturated color as #rrggbb hex string.
+        For grayscale images, returns the dominant (most frequent) color.
+    """
+    max_saturation = -1.0
+    accent_idx = 0
+
+    for i, (r, g, b) in enumerate(cluster_centers):
+        # Saturation in RGB space: S = max(R,G,B) - min(R,G,B) / 255
+        r_int, g_int, b_int = int(r), int(g), int(b)
+        color_max = max(r_int, g_int, b_int)
+        color_min = min(r_int, g_int, b_int)
+        saturation = (color_max - color_min) / 255.0
+
+        # Prefer higher saturation, weighted by cluster size for ties
+        if saturation > max_saturation:
+            max_saturation = saturation
+            accent_idx = i
+        elif saturation == max_saturation and saturation > 0:
+            # Tie-break by cluster size
+            if cluster_sizes[i] > cluster_sizes[accent_idx]:
+                accent_idx = i
+
+    # If all colors have zero saturation (grayscale), return the most frequent
+    if max_saturation == 0.0:
+        # Find the largest cluster
+        accent_idx = int(np.argmax(cluster_sizes))
+
+    r, g, b = cluster_centers[accent_idx]
+    return _rgb_to_hex(int(r), int(g), int(b))
 
 
 def _sample_edge_pixels(image_path: Path, sample_fraction: float = 0.05) -> str:
@@ -386,18 +720,63 @@ def _sample_edge_pixels(image_path: Path, sample_fraction: float = 0.05) -> str:
     Raises:
         ImageReadError: If image cannot be read.
         InvalidImageError: If image has no edge pixels (zero dimension).
-
-    Contract:
-        - Samples pixels from all four edges (top, bottom, left, right).
-        - sample_fraction is clamped to [0.01, 0.10].
-        - For each edge, take strip of width = int(sample_fraction * dimension).
-        - Computes mean RGB of all edge pixels.
-        - Returns normalized hex color.
-
-    Example:
-        >>> _sample_edge_pixels(Path("painting.jpg"), 0.05)
-        '#2a4a6a'
     """
-    raise NotImplementedError(
-        "Contract-only stub: implementation deferred to a later step"
-    )
+    # Clamp sample_fraction
+    sample_fraction = max(0.01, min(0.10, sample_fraction))
+
+    # Load original image (not downsampled)
+    img = _load_image(image_path)
+
+    # Convert to RGB
+    if img.mode != "RGB":
+        img = img.convert("RGB")
+
+    width, height = img.size
+
+    if width == 0 or height == 0:
+        raise InvalidImageError(f"Image has zero dimensions: {width}x{height}")
+
+    # Calculate edge strip width (at least 1 pixel)
+    edge_w = max(1, int(sample_fraction * width))
+    edge_h = max(1, int(sample_fraction * height))
+
+    pixels = np.array(img)
+
+    # Sample pixels from all four edges
+    edge_pixels = []
+
+    # Top edge
+    if edge_h > 0:
+        edge_pixels.append(pixels[0:edge_h, :, :].reshape(-1, 3))
+
+    # Bottom edge
+    if edge_h > 0:
+        edge_pixels.append(pixels[-edge_h:, :, :].reshape(-1, 3))
+
+    # Left edge (excluding corners already counted)
+    if edge_w > 0:
+        edge_pixels.append(
+            pixels[
+                edge_h : -edge_h if edge_h < height else height, 0:edge_w, :
+            ].reshape(-1, 3)
+        )
+
+    # Right edge (excluding corners already counted)
+    if edge_w > 0:
+        edge_pixels.append(
+            pixels[
+                edge_h : -edge_h if edge_h < height else height, -edge_w:, :
+            ].reshape(-1, 3)
+        )
+
+    if not edge_pixels:
+        # Fallback: use entire image
+        edge_pixels.append(pixels.reshape(-1, 3))
+
+    # Combine all edge pixels
+    all_edge_pixels = np.concatenate(edge_pixels, axis=0)
+
+    # Compute average RGB
+    mean_r, mean_g, mean_b = np.mean(all_edge_pixels, axis=0)
+
+    return _rgb_to_hex(int(mean_r), int(mean_g), int(mean_b))
