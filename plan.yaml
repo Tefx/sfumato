@@ -5959,7 +5959,7 @@ phases:
       - Read-only gate run; no code mutations.'
 - id: polish
   name: 'Polish: Default Model + Documentation'
-  status: pending
+  status: in_progress
   gate: Default model is gemini-3-flash-preview. README and ARCHITECTURE.md reflect
     all new features (whisper text, replay queue, subject avoidance).
   context: 'Final cleanup phase: update default model and documentation to match implemented
@@ -5970,7 +5970,7 @@ phases:
   steps:
   - id: polish.default-model
     name: Update default model to gemini-3-flash-preview
-    status: pending
+    status: claimed
     description: "step_type: implementation\nagent: python-executor\ntouch_paths:\n\
       \  - src/sfumato/config.py\n\nChange default model in two places:\n\nFile: src/sfumato/config.py\n\
       1. AiConfig dataclass: change model default from \"gemini-3.1-pro-preview\"\n\
@@ -5988,6 +5988,8 @@ phases:
       '
     refs:
     - src/sfumato/config.py
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T23:28:31.039344+00:00'
   - id: polish.docs
     name: Update README and ARCHITECTURE docs
     status: pending
