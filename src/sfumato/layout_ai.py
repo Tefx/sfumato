@@ -309,11 +309,17 @@ Output strict JSON (no markdown fence, no commentary):
   }
 }
 
-Important:
+CRITICAL RULES:
 - Colors MUST harmonize with the painting's actual palette
+- Use the BRIGHTNESS DATA below to choose text colors:
+  - If the chosen text zone is BRIGHT (>150), use DARK text (#1a1a1a to #3a3a3a range) with light text-shadow
+  - If the chosen text zone is DARK (<100), use LIGHT text (#e0e0e0 to #f0f0f0 range) with dark text-shadow
+  - NEVER put light text on light areas or dark text on dark areas
+- text_shadow blur radius MUST be 2-4px, never 10px+
 - Scrim should be subtle, not create a visible box
-- Position text at least 100-150px from screen edges
-- Text zone width should not exceed 45% of screen width for landscape
+- Position text at least 120-160px from screen edges
+- Text zone width MUST NOT exceed 38% of screen width (max ~1460px) for landscape
+- scrim size_css should cover the text zone area (e.g. "width: 40%; height: 45%;")
 - Portrait paintings MUST have portrait_layout populated
 """
 """Structured prompt for layout analysis covering all 7 analysis aspects."""
@@ -357,10 +363,14 @@ async def analyze_painting(
         - No caching (caller manages result caching)
         - No fallback strategies (failure is propagated to caller)
     """
-    # Invoke LLM with vision analysis
+    # Pre-analyze painting brightness per quadrant to help LLM make informed choices
+    brightness_info = _analyze_brightness(image_path)
+    enriched_prompt = LAYOUT_ANALYSIS_PROMPT + "\n\n" + brightness_info
+
+    # Invoke LLM with vision analysis + brightness data
     try:
         response = await invoke_vision(
-            prompt=LAYOUT_ANALYSIS_PROMPT,
+            prompt=enriched_prompt,
             image_path=image_path,
             ai_config=ai_config,
         )
@@ -389,6 +399,45 @@ async def analyze_painting(
 # =============================================================================
 # INTERNAL HELPERS
 # =============================================================================
+
+
+def _analyze_brightness(image_path: Path) -> str:
+    """Analyze painting brightness per quadrant and return as text for the prompt."""
+    try:
+        from PIL import Image
+        import numpy as np
+
+        img = Image.open(image_path).convert("L")
+        arr = np.array(img)
+        h, w = arr.shape
+
+        quadrants = {
+            "top-left": arr[: h // 2, : w // 2],
+            "top-right": arr[: h // 2, w // 2 :],
+            "bottom-left": arr[h // 2 :, : w // 2],
+            "bottom-right": arr[h // 2 :, w // 2 :],
+        }
+
+        lines = ["MEASURED BRIGHTNESS DATA (0=black, 255=white):"]
+        for name, zone in quadrants.items():
+            avg = int(np.mean(zone))
+            var = int(np.var(zone))
+            label = "BRIGHT" if avg > 150 else ("DARK" if avg < 100 else "MID-TONE")
+            flatness = "flat/uniform" if var < 1000 else "complex/detailed"
+            lines.append(f"  {name}: brightness={avg} ({label}), variance={var} ({flatness})")
+
+        # Recommend best zone
+        best_zone = min(quadrants, key=lambda k: int(np.var(quadrants[k])))
+        best_brightness = int(np.mean(quadrants[best_zone]))
+        lines.append(f"\nRECOMMENDED text zone: {best_zone} (lowest visual complexity)")
+        lines.append(
+            f"Since {best_zone} is {'BRIGHT' if best_brightness > 150 else 'DARK'} "
+            f"(brightness={best_brightness}), use {'DARK' if best_brightness > 150 else 'LIGHT'} text colors."
+        )
+
+        return "\n".join(lines)
+    except Exception:
+        return "BRIGHTNESS DATA: unavailable (analysis failed)"
 
 
 def _build_layout_params(data: dict) -> LayoutParams:

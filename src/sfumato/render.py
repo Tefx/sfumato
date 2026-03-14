@@ -233,30 +233,10 @@ def build_template_variables(ctx: RenderContext) -> dict[str, str]:
     if any(f"{n}px" in text_shadow for n in range(10, 30)):
         text_shadow = "0 1px 3px rgba(0,0,0,0.7), 0 0 8px rgba(0,0,0,0.3)"
 
-    # 2. Text color brightness validation against painting zone
-    # LLMs sometimes pick light text for light areas or dark text for dark areas.
-    # Use palette to detect and fix contrast issues.
+    # 2. Text color: trust LLM (prompt now includes brightness data from PIL analysis)
     text_primary = ctx.layout.colors.text_primary
     text_secondary = ctx.layout.colors.text_secondary
     text_dim = ctx.layout.colors.text_dim
-
-    if ctx.palette:
-        zone_brightness = _estimate_zone_brightness(ctx)
-        text_brightness = _hex_brightness(text_primary)
-
-        # If both are light (>160) or both are dark (<100), flip text colors
-        if zone_brightness > 160 and text_brightness > 160:
-            # Light text on light area — switch to dark text (proven in prototype)
-            text_primary = "#1a1a1a"
-            text_secondary = "rgba(40, 35, 30, 0.72)"
-            text_dim = "rgba(60, 55, 45, 0.55)"
-            text_shadow = "0 1px 3px rgba(255,255,255,0.3)"
-        elif zone_brightness < 80 and text_brightness < 80:
-            # Dark text on dark area — switch to light text
-            text_primary = "rgba(240, 235, 220, 0.92)"
-            text_secondary = "rgba(220, 215, 200, 0.78)"
-            text_dim = "rgba(200, 195, 180, 0.55)"
-            text_shadow = "0 1px 3px rgba(0,0,0,0.7), 0 0 8px rgba(0,0,0,0.3)"
 
     variables.update(
         {
