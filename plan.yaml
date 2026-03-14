@@ -247,7 +247,7 @@ phases:
       evidence.'
   - id: core.news
     name: Refactor news module
-    status: claimed
+    status: done
     description: 'Refactor src/sfumato/news.py per ARCHITECTURE.md section 2.2. Implement
       Story and CurationResult dataclasses. Implement fetch_feeds() with httpx+feedparser,
       URL deduplication, age filtering. Implement curate() using llm.invoke_text()
@@ -268,6 +268,35 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T13:16:40.623597+00:00'
+    done_at: '2026-03-14T13:27:45.436621+00:00'
+    evidence: 'Artifact:
+
+      - Worker commit: e3e0251e4077205c3f3cdaf504477867a3ab3d8d
+
+      - Main commit: b6658b27e54d0a0f5501e18b16ad5b5755ba10a7
+
+
+      Verification:
+
+      - Run: `uv run python -m pytest tests/ -v` -> 165 passed (includes 17 news tests)
+
+      - Run: `invar_guard` -> passed (static + doctest)
+
+      - Criteria met: `fetch_feeds()` handles feed failures gracefully, `curate()`
+      produces `Story` objects, `CurationResult` includes `tone_description`
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#2.2
+
+      - src/sfumato/news.py
+
+
+      Gaps/Notes:
+
+      - Uses `llm.invoke_text()` integration as specified; downstream orchestration
+      consumers are handled by later steps.'
   - id: core.layout-ai
     name: Refactor layout_ai module
     status: claimed
