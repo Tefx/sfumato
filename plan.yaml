@@ -5500,7 +5500,7 @@ phases:
       contract sets.'
   - id: replay.scheduler-wire.test
     name: Define replay scheduler wiring tests
-    status: pending
+    status: claimed
     description: "step_type: test\nagent: python-executor\nspec_refs:\n  - ARCHITECTURE.md#2.12\n\
       touch_paths:\n  - tests/\n  - src/sfumato/orchestrator.py\n  - src/sfumato/state.py\n\
       harness_refs:\n  - tests/\n\nDefine contract tests for orchestrator-side replay\
@@ -5522,6 +5522,8 @@ phases:
     depends_on:
     - replay.scheduler-wire.contract
     agent: python-executor
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T22:48:03.361068+00:00'
 - id: polish
   name: 'Polish: Default Model + Documentation'
   status: locked
