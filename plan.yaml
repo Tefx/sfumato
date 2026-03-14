@@ -4805,6 +4805,34 @@ phases:
 
       - Pre-existing fixture mismatches outside whisper-focused selection were reported
       by subagent as out-of-scope for this test-only step.'
+  - id: art-facts.art-facts-render-whisper-contract
+    name: art-facts.render-whisper.contract
+    status: pending
+    description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
+      \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nagent_source: default\n\
+      spec_refs:\n  - ARCHITECTURE.md#2.7\ntouch_paths:\n  - src/sfumato/render.py\n\
+      \  - tests/test_render.py\n\nDefine the render-side whisper contract without\
+      \ implementation logic.\n\nContract scope:\n- Extend `RenderContext` with `whisper_fact_index:\
+      \ int = 0` in a backward-compatible way.\n- Define the exact `WHISPER_*` template\
+      \ variables produced by `build_template_variables()`:\n  - `WHISPER_POSITION`\
+      \ <- `layout.whisper_zone.position_css`\n  - `WHISPER_COLOR` <- `layout.whisper_zone.color`\n\
+      \  - `WHISPER_SHADOW` <- `layout.whisper_zone.text_shadow`\n  - `WHISPER_TEXT`\
+      \ <- one selected fact from `layout.art_facts` using `RenderContext.whisper_fact_index`\n\
+      - Define deterministic rotation boundary behavior for fact selection.\n- Preserve\
+      \ existing non-whisper render variables and `build_template_variables()` public\
+      \ shape.\n\nContract purity:\n- Allowed: signatures, dataclass field declaration,\
+      \ behavioral notes, stubs/docstrings.\n- Forbidden: finished render logic or\
+      \ template variable population implementation.\n"
+    verification: '- Contract artifact defines `RenderContext.whisper_fact_index`
+      and `WHISPER_*` variable mapping without shipping business logic
+
+      - Rotation boundary behavior is specified clearly enough for tests to target
+
+      - No unrelated render behavior is changed'
+    depends_on:
+    - art-facts.layout-prompt
+    - art-facts.template-whisper
+    agent: software-architect
 - id: replay
   name: News Replay Queue
   status: in_progress
