@@ -10,6 +10,8 @@ from __future__ import annotations
 from dataclasses import fields
 from typing import get_type_hints
 
+import pytest
+
 from sfumato.layout_ai import (
     ArtFact,
     LAYOUT_ANALYSIS_PROMPT,
@@ -17,6 +19,7 @@ from sfumato.layout_ai import (
     LayoutParams,
     SubjectZone,
     WhisperZone,
+    _build_layout_params,
 )
 
 
@@ -177,3 +180,75 @@ class TestZoneExclusivityContract:
         hints = get_type_hints(LayoutAnalysisResponseJson)
 
         assert hints["art_facts"] == list[str]
+
+
+def _base_layout_data() -> dict:
+    return {
+        "orientation": "landscape",
+        "painting_title": "Test Title",
+        "painting_artist": "Test Artist",
+        "painting_description": "Rich composition with layered brushwork.",
+        "text_zone": {
+            "position": "top-left",
+            "reason": "Low detail and quiet tonal field.",
+        },
+        "subject_zone": {
+            "position": "bottom-right",
+            "reason": "Primary subject cluster occupies this quadrant.",
+        },
+        "whisper_zone": {
+            "position": "top-right",
+            "reason": "Secondary quiet zone for whisper facts.",
+            "max_width_percent": 18,
+            "readability_notes": "Strong local contrast keeps small text readable.",
+        },
+        "art_facts": ["Fact A", "Fact B"],
+        "colors": {
+            "text_primary": "#EAEAEA",
+            "text_secondary": "#DADADA",
+            "text_dim": "rgba(220,220,220,0.7)",
+            "text_shadow": "0 1px 3px rgba(0,0,0,0.7)",
+            "scrim_color": "rgba(0,0,0,0.3)",
+            "panel_bg": "#202020",
+            "border": "#404040",
+            "accent": "#C0A050",
+        },
+        "scrim": {
+            "position_css": "top: 120px; right: 160px;",
+            "size_css": "width: 38%; height: 45%;",
+            "gradient_css": "radial-gradient(ellipse at center, rgba(0,0,0,0.4) 0%, transparent 70%)",
+        },
+        "recommended_stories": 3,
+        "template_hint": "painting_text",
+        "portrait_layout": None,
+    }
+
+
+class TestBuildLayoutParamsValidation:
+    def test_build_layout_params_populates_subject_whisper_and_art_facts(self) -> None:
+        params = _build_layout_params(_base_layout_data())
+
+        assert params.subject_zone.position == "bottom-right"
+        assert params.whisper_zone.max_width_percent == 18
+        assert params.art_facts == [ArtFact(text="Fact A"), ArtFact(text="Fact B")]
+
+    def test_build_layout_params_rejects_overlapping_zones(self) -> None:
+        data = _base_layout_data()
+        data["whisper_zone"]["position"] = "top-left"
+
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            _build_layout_params(data)
+
+    def test_build_layout_params_rejects_invalid_whisper_width(self) -> None:
+        data = _base_layout_data()
+        data["whisper_zone"]["max_width_percent"] = 30
+
+        with pytest.raises(ValueError, match="between 12 and 24"):
+            _build_layout_params(data)
+
+    def test_build_layout_params_rejects_empty_whisper_readability_notes(self) -> None:
+        data = _base_layout_data()
+        data["whisper_zone"]["readability_notes"] = "   "
+
+        with pytest.raises(ValueError, match="readability_notes"):
+            _build_layout_params(data)

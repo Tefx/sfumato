@@ -664,6 +664,50 @@ def _build_layout_params(data: dict) -> LayoutParams:
         reason=text_zone_data["reason"],
     )
 
+    # Build SubjectZone
+    subject_zone_data = data["subject_zone"]
+    subject_zone = SubjectZone(
+        position=subject_zone_data["position"],
+        reason=subject_zone_data["reason"],
+    )
+
+    # Build WhisperZone
+    whisper_zone_data = data["whisper_zone"]
+    whisper_zone = WhisperZone(
+        position=whisper_zone_data["position"],
+        reason=whisper_zone_data["reason"],
+        max_width_percent=whisper_zone_data["max_width_percent"],
+        readability_notes=whisper_zone_data["readability_notes"],
+    )
+
+    if not 12 <= whisper_zone.max_width_percent <= 24:
+        raise ValueError(
+            "whisper_zone.max_width_percent must be between 12 and 24 inclusive"
+        )
+    if not whisper_zone.readability_notes.strip():
+        raise ValueError("whisper_zone.readability_notes must be non-empty")
+
+    if (
+        len(
+            {
+                text_zone.position,
+                subject_zone.position,
+                whisper_zone.position,
+            }
+        )
+        != 3
+    ):
+        raise ValueError(
+            "text_zone, subject_zone, and whisper_zone must be mutually exclusive"
+        )
+
+    art_facts_data = data["art_facts"]
+    if not isinstance(art_facts_data, list):
+        raise TypeError("art_facts must be a list")
+    if not 1 <= len(art_facts_data) <= 3:
+        raise ValueError("art_facts must contain between 1 and 3 items")
+    art_facts = [ArtFact(text=fact) for fact in art_facts_data]
+
     # Build LayoutColors
     colors_data = data["colors"]
     colors = LayoutColors(
@@ -703,6 +747,9 @@ def _build_layout_params(data: dict) -> LayoutParams:
         painting_artist=data["painting_artist"],
         painting_description=data["painting_description"],
         text_zone=text_zone,
+        subject_zone=subject_zone,
+        whisper_zone=whisper_zone,
+        art_facts=art_facts,
         colors=colors,
         scrim=scrim,
         recommended_stories=data["recommended_stories"],
