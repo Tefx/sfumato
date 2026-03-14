@@ -1,123 +1,459 @@
-"""Use Claude vision to analyze a painting and design optimal text layout."""
+"""LLM-powered painting composition analysis for layout design.
+
+This module analyzes paintings using vision-capable LLMs to determine
+optimal text placement, color schemes, and layout parameters for
+overlaying news content on artwork displayed on Samsung The Frame TV.
+
+Architecture reference: ARCHITECTURE.md#2.5
+"""
 
 from __future__ import annotations
 
-import anthropic
-import base64
-import json
+from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+from sfumato.config import AiConfig
+from sfumato.llm import LlmError, LlmParseError, invoke_vision, parse_json_response
+
+if TYPE_CHECKING:
+    pass
 
 
-LAYOUT_PROMPT = """\
-你是一个视觉排版设计师。我需要在这幅画作上叠加新闻文字，用于Samsung The Frame电视显示。
+# =============================================================================
+# PUBLIC ERROR TYPES
+# =============================================================================
 
-电视分辨率: 3840x2160px
-画作会全屏显示，文字直接排在画面上。
 
-请分析这幅画的构图，告诉我：
+class LayoutAnalysisError(LlmError):
+    """Raised when painting layout analysis fails.
 
-1. **文字应该放在哪里** — 找到画面中视觉密度最低的区域（天空、水面、雾气、暗角、纯色背景等）
-2. **文字颜色** — 根据该区域的明暗决定用浅色字还是深色字
-3. **是否portrait** — 判断这幅画是横幅还是竖幅构图
+    This wraps LLM invocation and parsing errors with additional context
+    specific to layout analysis failures.
 
-输出严格的JSON格式：
+    Contract:
+        - Subclass of LlmError (analysis is a category of LLM failure)
+        - Message includes the image path and failure reason
+    """
 
-```json
+    pass
+
+
+# =============================================================================
+# PUBLIC DATA TYPES
+# =============================================================================
+
+
+@dataclass(frozen=True)
+class TextZone:
+    """Identifies where text should be placed on a painting.
+
+    The position is chosen based on finding the quietest visual area
+    (lowest visual density) where text can be overlaid without obscuring
+    important elements of the artwork.
+
+    Attributes:
+        position: One of six predefined zones:
+            - "top-left": Upper left corner area
+            - "top-right": Upper right corner area
+            - "bottom-left": Lower left corner area
+            - "bottom-right": Lower right corner area
+            - "left-side": Left edge of the painting (vertical strip)
+            - "right-side": Right edge of the painting (vertical strip)
+        reason: LLM's natural language explanation for choosing this zone.
+
+    Contract:
+        - position must be one of the six valid values
+        - reason is free-form text for debugging/display
+    """
+
+    position: str
+    reason: str
+
+
+@dataclass(frozen=True)
+class LayoutColors:
+    """Color scheme for text overlays based on painting palette.
+
+    Colors are chosen to harmonize with the painting while ensuring
+    sufficient contrast for readability. The scrim_color and panel_bg
+    provide subtle backgrounds to improve text legibility.
+
+    Attributes:
+        text_primary: Primary text color for headlines and main content.
+            Format: "#RRGGBB" hex color.
+        text_secondary: Secondary text color for subheadings.
+            Format: "#RRGGBB" hex color.
+        text_dim: Dimmed text color for metadata and less important info.
+            Format: "#RRGGBB" or "rgba(R,G,B,A)" for transparency.
+        text_shadow: CSS text-shadow value for improving contrast.
+            Format: CSS text-shadow syntax (e.g., "0 2px 4px rgba(0,0,0,0.5)").
+        scrim_color: Semi-transparent background for text zone.
+            Format: "rgba(R,G,B,A)" for subtle darkening/lightening.
+        panel_bg: Background color for magazine/portrait side panels.
+            Format: "#RRGGBB" hex color.
+        border: Divider/border color for structured layouts.
+            Format: "#RRGGBB" hex color.
+        accent: Highlight color for category labels and emphasis.
+            Format: "#RRGGBB" hex color.
+
+    Contract:
+        - All colors must be valid CSS color values
+        - Colors should complement the painting's palette
+        - scrim_color should provide enough contrast for text readability
+    """
+
+    text_primary: str
+    text_secondary: str
+    text_dim: str
+    text_shadow: str
+    scrim_color: str
+    panel_bg: str
+    border: str
+    accent: str
+
+
+@dataclass(frozen=True)
+class ScrimParams:
+    """CSS styling for the semi-transparent text backdrop.
+
+    The scrim is a gradient overlay placed behind text to improve
+    readability without fully obscuring the painting. It uses radial
+    or linear gradients to create a smooth transition.
+
+    Attributes:
+        position_css: CSS position properties for the scrim div.
+            Format: CSS properties string (e.g., "top: 0; right: 0;").
+        size_css: CSS width and height for the scrim div.
+            Format: CSS dimension string (e.g., "width: 1800px; height: 1200px;").
+        gradient_css: CSS gradient value for the scrim.
+            Format: CSS gradient (e.g., "radial-gradient(ellipse at top right, ...)").
+
+    Contract:
+        - All values must be valid CSS property strings
+        - Gradient should create subtle contrast, not block the painting
+        - Position should align with text_zone position
+    """
+
+    position_css: str
+    size_css: str
+    gradient_css: str
+
+
+@dataclass(frozen=True)
+class PortraitLayout:
+    """Layout parameters specific to portrait-mode orientation.
+
+    When a painting is in portrait orientation, it's displayed between
+    two side panels. The painting occupies the center, with information
+    and news on the sides.
+
+    Attributes:
+        painting_width_percent: How much of screen width the painting occupies.
+            Range: 45-55 (typically 50 for balance).
+        left_panel_color: Background color for the left panel.
+            Format: "#RRGGBB" hex color.
+        right_panel_color: Background color for the right panel.
+            Format: "#RRGGBB" hex color.
+        info_side: Which side displays painting information.
+            Values: "left", "right", or "both".
+
+    Contract:
+        - painting_width_percent must be between 45 and 55
+        - Panel colors should be derived from painting edge colors
+        - If info_side is "both", split layout with artist info on one side
+    """
+
+    painting_width_percent: int
+    left_panel_color: str
+    right_panel_color: str
+    info_side: str
+
+
+@dataclass(frozen=True)
+class LayoutParams:
+    """Complete layout parameters for rendering news over a painting.
+
+    This is the main result of layout analysis, containing all the
+    information needed by templates to render text overlays.
+
+    Attributes:
+        orientation: Detected painting orientation.
+            Values: "landscape" or "portrait".
+        painting_title: LLM-identified title of the painting.
+            May be "Unknown" if not identifiable.
+        painting_artist: LLM-identified artist name.
+            May be "Unknown" if not identifiable.
+        painting_description: Free-form description for semantic matching.
+            Rich natural language describing mood, atmosphere, colors,
+            and subject matter. Used for embedding-based matching with
+            news tone descriptions.
+        text_zone: Where to place text overlays.
+        colors: Color scheme for text and overlays.
+        scrim: CSS parameters for the text backdrop.
+        recommended_stories: LLM's suggestion for story count.
+            Range: 2-5 stories that fit comfortably in the layout.
+        template_hint: LLM's recommendation for template selection.
+            Values: "painting_text", "magazine", "portrait", "art_overlay".
+            Final selection may differ based on orchestrator logic.
+        portrait_layout: Portrait-specific parameters.
+            Only populated when orientation is "portrait".
+            None for landscape orientations.
+
+    Contract:
+        - orientation matches the actual painting dimensions
+        - painting_description is rich enough for embedding-based matching
+        - recommended_stories is between 2 and 5
+        - portrait_layout is set when orientation is "portrait"
+        - All nested dataclass fields are populated (no None within sub-objects)
+    """
+
+    orientation: str
+    painting_title: str
+    painting_artist: str
+    painting_description: str
+    text_zone: TextZone
+    colors: LayoutColors
+    scrim: ScrimParams
+    recommended_stories: int
+    template_hint: str
+    portrait_layout: PortraitLayout | None
+
+
+# =============================================================================
+# LLM PROMPT
+# =============================================================================
+
+
+LAYOUT_ANALYSIS_PROMPT = """\
+You are a visual layout designer for Samsung The Frame TV. Analyze this painting and recommend how to overlay news text without obscuring important elements.
+
+TV resolution: 3840x2160px (4K). The painting fills the entire screen.
+
+Analyze and provide:
+
+1. **Orientation**: Is this painting landscape or portrait composition?
+
+2. **Painting Identity**: Identify the title and artist if known, or "Unknown" otherwise.
+
+3. **Quiet Zone**: Find the area of lowest visual density where text can be placed. Consider:
+   - Large uniform areas (skies, water, fog, dark corners)
+   - Areas with simple color fields rather than complex details
+   - Edges where the eye naturally rests less
+   Choose from: "top-left", "top-right", "bottom-left", "bottom-right", "left-side", "right-side"
+
+4. **Color Harmony**: Design a text color scheme that:
+   - Harmonizes with the painting's palette
+   - Has sufficient contrast for readability
+   - Uses subtle gradients/scrim for text backdrop
+   Text colors should feel like they belong to the painting, not fight with it.
+
+5. **Scrim Design**: Create a subtle gradient overlay for the text zone:
+   - Use radial-gradient or linear-gradient
+   - Should be barely visible - just enough to improve text contrast
+   - Position and size to protect the text zone
+
+6. **Story Count**: How many news stories (2-5) fit comfortably? Consider:
+   - Visual complexity of the painting
+   - Size of the available quiet zone
+   - Balance between art and information
+
+7. **Painting Description**: Write a rich, evocative description of the painting's mood, atmosphere, colors, and subject matter. This will be used for semantic matching with news stories. Write in the language most appropriate to the painting's origin or style.
+
+8. **Template Hint**: Which template works best?
+   - "painting_text": Full painting with text in quiet zone (default for landscape)
+   - "portrait": Three-column layout with painting centered (for portrait)
+   - "magazine": 72/28 split with painting left, text panel right
+   - "art_overlay": Frosted glass cards over painting (rare - only for very busy compositions)
+
+9. **Portrait Layout** (if orientation is "portrait"):
+   - What percentage of screen should the painting occupy? (45-55)
+   - Panel colors derived from painting edge colors
+   - Which side for painting info? (left/right/both)
+
+Output strict JSON (no markdown fence, no commentary):
+
 {
-  "orientation": "landscape" 或 "portrait",
-  "painting_title": "画作名称（如果能识别）",
-  "painting_artist": "画家（如果能识别）",
+  "orientation": "landscape" or "portrait",
+  "painting_title": "...",
+  "painting_artist": "...",
   "text_zone": {
-    "position": "top-left" / "top-right" / "bottom-left" / "bottom-right" / "left-side" / "right-side",
-    "reason": "简述为什么选这个区域"
+    "position": "top-left" or "top-right" or "bottom-left" or "bottom-right" or "left-side" or "right-side",
+    "reason": "Brief explanation for choosing this zone"
   },
   "colors": {
-    "text_primary": "#xxxxxx",
-    "text_secondary": "#xxxxxx",
-    "text_dim": "#xxxxxx",
+    "text_primary": "#RRGGBB",
+    "text_secondary": "#RRGGBB",
+    "text_dim": "#RRGGBB or rgba(...)",
     "text_shadow": "CSS text-shadow value",
-    "scrim_color": "rgba(x,x,x,0.x) — 用于轻微压暗/提亮文字区域的颜色"
+    "scrim_color": "rgba(R,G,B,A)",
+    "panel_bg": "#RRGGBB",
+    "border": "#RRGGBB",
+    "accent": "#RRGGBB"
   },
-  "css": {
-    "text_position": "CSS position properties (e.g. 'top: 100px; right: 160px;')",
-    "text_max_width": "e.g. '1500px'",
-    "scrim_position": "CSS position properties for the scrim div",
-    "scrim_size": "CSS width/height for scrim",
-    "scrim_gradient": "CSS radial-gradient value"
+  "scrim": {
+    "position_css": "top: 100px; right: 160px;",
+    "size_css": "width: 1500px; height: 1400px;",
+    "gradient_css": "radial-gradient(ellipse at center, rgba(0,0,0,0.4) 0%, transparent 70%)"
   },
-  "portrait_layout": null 或 {
-    "painting_width_percent": 45-55,
-    "left_panel_color": "#xxxxxx",
-    "right_panel_color": "#xxxxxx",
-    "info_side": "left" / "right" / "both"
+  "recommended_stories": 3,
+  "painting_description": "Free-form evocative description in appropriate language...",
+  "template_hint": "painting_text" or "portrait" or "magazine" or "art_overlay",
+  "portrait_layout": null or {
+    "painting_width_percent": 50,
+    "left_panel_color": "#RRGGBB",
+    "right_panel_color": "#RRGGBB",
+    "info_side": "left" or "right" or "both"
   }
 }
-```
 
-注意：
-- text_position用CSS absolute定位，距离边缘至少120px
-- text_max_width不超过画面宽度的45%（landscape时）
-- scrim是一个柔和的渐变，不是方框，用radial-gradient
-- portrait画作需要给出portrait_layout，画作居中显示，两侧面板放文字
-- 颜色要和画面协调，不突兀
-
-只输出JSON，不要其他文字。
+Important:
+- Colors MUST harmonize with the painting's actual palette
+- Scrim should be subtle, not create a visible box
+- Position text at least 100-150px from screen edges
+- Text zone width should not exceed 45% of screen width for landscape
+- Portrait paintings MUST have portrait_layout populated
 """
+"""Structured prompt for layout analysis covering all 7 analysis aspects."""
 
 
-def analyze_painting(image_path: Path) -> dict:
-    """Send painting to Claude Vision and get layout parameters."""
-    client = anthropic.Anthropic()
+# =============================================================================
+# PUBLIC API
+# =============================================================================
 
-    # Read and encode image
-    with open(image_path, "rb") as f:
-        image_data = base64.standard_b64encode(f.read()).decode("utf-8")
 
-    suffix = image_path.suffix.lower()
-    media_type = {
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".png": "image/png",
-    }.get(suffix, "image/jpeg")
+async def analyze_painting(
+    image_path: Path,
+    ai_config: AiConfig,
+) -> LayoutParams:
+    """Send painting image to LLM for composition analysis.
 
-    message = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=1500,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": media_type,
-                            "data": image_data,
-                        },
-                    },
-                    {
-                        "type": "text",
-                        "text": LAYOUT_PROMPT,
-                    },
-                ],
-            }
-        ],
+    Invokes a vision-capable LLM with the painting image and a structured
+    prompt requesting layout parameters for text overlay.
+
+    Args:
+        image_path: Path to the painting image file (PNG or JPEG).
+        ai_config: Configuration specifying the LLM backend and model.
+
+    Returns:
+        LayoutParams with all layout decisions needed for rendering.
+
+    Raises:
+        LayoutAnalysisError: If LLM invocation fails after retries.
+        LayoutAnalysisError: If LLM response cannot be parsed.
+        LayoutAnalysisError: If response is missing required fields.
+
+    Contract:
+        1. Calls llm.invoke_vision() with the painting image and prompt.
+        2. Parses the JSON response using llm.parse_json_response().
+        3. Validates all required fields are present.
+        4. Constructs and returns a complete LayoutParams object.
+        5. Results should be cached by caller using painting content_hash.
+
+    Non-goals:
+        - No image preprocessing (caller handles format conversion)
+        - No caching (caller manages result caching)
+        - No fallback strategies (failure is propagated to caller)
+    """
+    # Invoke LLM with vision analysis
+    try:
+        response = await invoke_vision(
+            prompt=LAYOUT_ANALYSIS_PROMPT,
+            image_path=image_path,
+            ai_config=ai_config,
+        )
+    except LlmError as e:
+        raise LayoutAnalysisError(
+            f"Layout analysis failed for '{image_path}': LLM invocation error: {e}"
+        ) from e
+
+    # Parse JSON response
+    try:
+        data = parse_json_response(response.text)
+    except LlmParseError as e:
+        raise LayoutAnalysisError(
+            f"Layout analysis failed for '{image_path}': Failed to parse LLM response: {e}"
+        ) from e
+
+    # Build LayoutParams from parsed JSON
+    try:
+        return _build_layout_params(data)
+    except (KeyError, TypeError, ValueError) as e:
+        raise LayoutAnalysisError(
+            f"Layout analysis failed for '{image_path}': Invalid response structure: {e}"
+        ) from e
+
+
+# =============================================================================
+# INTERNAL HELPERS
+# =============================================================================
+
+
+def _build_layout_params(data: dict) -> LayoutParams:
+    """Construct LayoutParams from parsed LLM response.
+
+    This is an internal helper that validates and constructs all nested
+    dataclass objects from the raw JSON dict.
+
+    Args:
+        data: Parsed JSON dict from LLM response.
+
+    Returns:
+        Fully constructed LayoutParams object.
+
+    Raises:
+        KeyError: If required fields are missing.
+        ValueError: If field values are invalid.
+    """
+    # Build TextZone
+    text_zone_data = data["text_zone"]
+    text_zone = TextZone(
+        position=text_zone_data["position"],
+        reason=text_zone_data["reason"],
     )
 
-    raw = message.content[0].text
-    # Strip markdown code fences if present
-    if "```" in raw:
-        raw = raw.split("```json")[-1].split("```")[0] if "```json" in raw else raw.split("```")[1].split("```")[0]
+    # Build LayoutColors
+    colors_data = data["colors"]
+    colors = LayoutColors(
+        text_primary=colors_data["text_primary"],
+        text_secondary=colors_data["text_secondary"],
+        text_dim=colors_data["text_dim"],
+        text_shadow=colors_data["text_shadow"],
+        scrim_color=colors_data["scrim_color"],
+        panel_bg=colors_data["panel_bg"],
+        border=colors_data["border"],
+        accent=colors_data["accent"],
+    )
 
-    return json.loads(raw)
+    # Build ScrimParams
+    scrim_data = data["scrim"]
+    scrim = ScrimParams(
+        position_css=scrim_data["position_css"],
+        size_css=scrim_data["size_css"],
+        gradient_css=scrim_data["gradient_css"],
+    )
 
+    # Build PortraitLayout if present
+    portrait_layout: PortraitLayout | None = None
+    if data.get("portrait_layout") is not None:
+        pl_data = data["portrait_layout"]
+        portrait_layout = PortraitLayout(
+            painting_width_percent=pl_data["painting_width_percent"],
+            left_panel_color=pl_data["left_panel_color"],
+            right_panel_color=pl_data["right_panel_color"],
+            info_side=pl_data["info_side"],
+        )
 
-if __name__ == "__main__":
-    import sys
-
-    if len(sys.argv) < 2:
-        print("Usage: python -m frame_terminal.layout_ai <image_path>")
-        sys.exit(1)
-
-    result = analyze_painting(Path(sys.argv[1]))
-    print(json.dumps(result, indent=2, ensure_ascii=False))
+    # Build main LayoutParams
+    return LayoutParams(
+        orientation=data["orientation"],
+        painting_title=data["painting_title"],
+        painting_artist=data["painting_artist"],
+        painting_description=data["painting_description"],
+        text_zone=text_zone,
+        colors=colors,
+        scrim=scrim,
+        recommended_stories=data["recommended_stories"],
+        template_hint=data["template_hint"],
+        portrait_layout=portrait_layout,
+    )
