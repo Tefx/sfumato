@@ -4638,14 +4638,17 @@ phases:
 
       3. Render module populates whisper variables correctly
 
-      4. Orchestrator wires facts and rotates index
+      4. Orchestrator wiring follows an explicit contract -> test -> implementation
+      chain
 
-      5. No overlap between news zone, whisper zone, and subject zone
+      5. whisper_fact_index state rotates correctly and wraps modulo len(art_facts)
 
-      6. Visual: 4K output shows whisper text at correct size (26-28px)
+      6. RenderContext propagation carries art_facts-derived whisper inputs and whisper_fact_index
 
-      '
-    verification: '- All implementation steps completed
+      7. No overlap between news zone, whisper zone, and subject zone
+
+      8. Visual: 4K output shows whisper text at correct size (26-28px)'
+    verification: '- All implementation and upstream contract/test steps completed
 
       - uv run pytest tests/ passes
 
@@ -4653,8 +4656,19 @@ phases:
 
       - Zone overlap validation works
 
-      '
+      - Contract-first evidence exists for orchestrator wiring'
     depends_on:
+    - art-facts.layout-prompt
+    - art-facts.layout-prompt.contract
+    - art-facts.layout-prompt.test
+    - art-facts.template-whisper
+    - art-facts.template-whisper.contract
+    - art-facts.template-whisper.test
+    - art-facts.render-whisper
+    - art-facts.render-whisper.contract
+    - art-facts.render-whisper.test
+    - art-facts.orchestrator-wire.contract
+    - art-facts.orchestrator-wire.test
     - art-facts.orchestrator-wire
   - id: art-facts.layout-prompt.contract
     name: Define layout prompt zone and art-fact contract
