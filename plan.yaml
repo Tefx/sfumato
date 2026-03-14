@@ -3910,7 +3910,7 @@ phases:
       compatibility adjusted via properties.'
   - id: hardening.config-init-fixes
     name: Config path expansion + init command fixes
-    status: claimed
+    status: done
     description: "step_type: implementation\ntouch_paths:\n  - src/sfumato/config.py\n\
       \  - src/sfumato/cli.py (init command)\n  - tests/test_config.py\n  - tests/test_cli.py\n\
       agent: python-executor\n\n## Objective\n\nFix bugs #1, #2, #3 from the hardening\
@@ -3952,6 +3952,30 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T20:34:26.238872+00:00'
+    done_at: '2026-03-14T20:54:52.158515+00:00'
+    evidence: 'Step: hardening.config-init-fixes
+
+      Commit hash(es): 0b797bc; conflict-resolved squash merged as [main 09745a4]
+
+      Files changed: src/sfumato/cli.py, tests/test_config.py, tests/test_cli.py,
+      src/sfumato.egg-info/SOURCES.txt
+
+      Verification:
+
+      - uv run pytest tests/test_config.py tests/test_cli.py -v -> 140 passed
+
+      - Conflict resolution verification: uv run python -m py_compile src/sfumato/cli.py
+      -> passed
+
+      Spec link: ARCHITECTURE.md
+
+      Gaps/Notes:
+
+      - Merge conflict in src/sfumato/cli.py resolved to preserve protocol-alignment
+      and config-init behavior.
+
+      - Path expansion and empty feeds behavior validated with added tests; non-interactive
+      init now creates config when missing and does not overwrite existing config.'
   - id: hardening.llm-cli-commands
     name: LLM CLI command construction tests
     status: claimed
