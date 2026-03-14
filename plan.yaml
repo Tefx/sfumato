@@ -4539,27 +4539,30 @@ phases:
     status: pending
     description: "step_type: implementation\nagent: python-executor\nspec_refs:\n\
       \  - ARCHITECTURE.md#2.7\ntouch_paths:\n  - src/sfumato/render.py\n  - tests/test_render.py\n\
-      \nUpdate build_template_variables() in src/sfumato/render.py to populate\nwhisper\
-      \ template variables from LayoutParams:\n\n- WHISPER_POSITION: from layout.whisper_zone.position_css\n\
-      - WHISPER_COLOR: from layout.whisper_zone.color\n- WHISPER_SHADOW: from layout.whisper_zone.text_shadow\n\
-      - WHISPER_TEXT: select one art fact from layout.art_facts (rotation index from\
-      \ RenderContext)\n\nAdd whisper_fact_index: int = 0 to RenderContext for fact\
-      \ rotation.\n\nPattern: Follow existing TEXT_POSITION / TEXT_COLOR variable\
-      \ population.\nTests: Update tests/test_render.py for whisper variable population.\n"
-    verification: '- build_template_variables() outputs WHISPER_* variables
+      \nImplement the render whisper behavior defined by the upstream contract and\
+      \ tests.\n\nUpdate `build_template_variables()` in `src/sfumato/render.py` to\
+      \ populate\nwhisper template variables from `LayoutParams`:\n\n- `WHISPER_POSITION`:\
+      \ from `layout.whisper_zone.position_css`\n- `WHISPER_COLOR`: from `layout.whisper_zone.color`\n\
+      - `WHISPER_SHADOW`: from `layout.whisper_zone.text_shadow`\n- `WHISPER_TEXT`:\
+      \ select one art fact from `layout.art_facts` using `RenderContext.whisper_fact_index`\n\
+      \nAdd `whisper_fact_index: int = 0` to `RenderContext`.\n\nPattern: Follow existing\
+      \ `TEXT_POSITION` / `TEXT_COLOR` variable population.\nTests: satisfy the upstream\
+      \ whisper contract tests in `tests/test_render.py`.\n"
+    verification: '- `build_template_variables()` outputs the contracted `WHISPER_*`
+      variables
 
-      - RenderContext has whisper_fact_index field
+      - `RenderContext` exposes `whisper_fact_index` with backward-compatible default
 
-      - uv run pytest tests/test_render.py -v passes
-
-      '
+      - Upstream whisper contract tests are implemented and passing via `uv run pytest
+      tests/test_render.py -v`'
     refs:
     - ARCHITECTURE.md#2.7
     - src/sfumato/render.py
     - tests/test_render.py
     depends_on:
-    - art-facts.layout-prompt
-    - art-facts.template-whisper
+    - art-facts.render-whisper.contract
+    - art-facts.define-render-whisper-contract-tests
+    agent: python-executor
   - id: art-facts.orchestrator-wire
     name: Wire art facts through orchestrator
     status: pending
