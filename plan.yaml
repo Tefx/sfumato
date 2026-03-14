@@ -1239,7 +1239,7 @@ phases:
       - Contract-only step intentionally leaves `run_once` unimplemented (`NotImplementedError`).'
   - id: core.pipeline.tests
     name: Author orchestrator.run_once tests
-    status: claimed
+    status: done
     description: "step_type: test\nspec_refs:\n  - ARCHITECTURE.md#2.12\n  - ARCHITECTURE.md#2.13\n\
       \  - README.md\ntouch_paths:\n  - tests/test_orchestrator.py\n  - src/sfumato/orchestrator.py\n\
       harness_refs:\n  - pytest\n  - orchestrator seam doubles for news/layout/render/tv/state\n\
@@ -1272,6 +1272,38 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T14:25:02.421925+00:00'
+    done_at: '2026-03-14T14:31:41.364948+00:00'
+    evidence: 'Artifact:
+
+      - Worker commit: c4f6978
+
+      - Main commit: bb070c778d91ecaff3d10095e1adeac4b9baa38d
+
+
+      Verification:
+
+      - Run: `uv run pytest tests/test_orchestrator.py -v --tb=short` -> 7 passed,
+      43 skipped (implementation tests pending implementation step)
+
+      - Test classes cover success path, `--no-upload`, `--no-news`, TV-unavailable
+      downgrade, error propagation, output-path guarantee, and stage-ordering contracts
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#2.12
+
+      - ARCHITECTURE.md#2.13
+
+      - README.md
+
+      - tests/test_orchestrator.py
+
+
+      Gaps/Notes:
+
+      - Contract-first test step only; implementation-path tests intentionally remain
+      skipped until `core.pipeline` is implemented.'
   - id: core.pipeline.verify
     name: Independently verify orchestrator.run_once
     status: pending
