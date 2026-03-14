@@ -1382,6 +1382,63 @@ phases:
     agent: integration-verifier
     claimed_by: integration-verifier
     claimed_at: '2026-03-14T14:52:27.577029+00:00'
+  - id: core.core-pipeline-verify-fix-skip-blockers
+    name: core.pipeline.verify.fix-skip-blockers
+    status: pending
+    description: "step_type: implementation\nspec_refs:\n  - ARCHITECTURE.md#2.12\n\
+      \  - ARCHITECTURE.md#2.13\n  - README.md\n touch_paths:\n  - tests/test_orchestrator.py\n\
+      \  - src/sfumato/orchestrator.py\nharness_refs:\n  - pytest\n  - orchestrator\
+      \ seam doubles for news/layout/render/tv/state\nagent: python-executor\n\nFix\
+      \ ALL blockers, not just the first, from `core.pipeline.verify` so the orchestrator\
+      \ verification suite actually exercises the contracted `run_once()` branches.\n\
+      \nIssue bundle to close together:\n- `tests/test_orchestrator.py` silently skips\
+      \ 43/50 tests with `Implementation dispatch pending`, collapsing the intended\
+      \ regression suite into a partial smoke run.\n- The highest-risk failure path\
+      \ (`TestRunOnceTvUnavailable`, approx lines 640-703) is currently skipped, leaving\
+      \ the non-fatal TV-unavailable branch unverified.\n- Normal news rotation plus\
+      \ multiple failure-path integrations remain effectively unverified because only\
+      \ 7/50 tests execute.\n\nRequired actions:\n- Remove or activate ALL related\
+      \ skipped regression tests across `tests/test_orchestrator.py`, not just one\
+      \ class.\n- Restore executable coverage for happy path, `--no-upload`, `--no-news`,\
+      \ TV-unavailable, error propagation, output-path guarantees, and stage ordering.\n\
+      - If any skip markers or helper gates remain intentional, narrow them to a documented\
+      \ non-blocking reason and prove they do not mask contracted `run_once()` coverage.\n\
+      - Keep the suite executable without deferring verification behind placeholder\
+      \ dispatch language.\n\nSibling search instructions:\n- Search the full file\
+      \ for every `Implementation dispatch pending` occurrence and every skip/skipif\
+      \ gate hiding orchestrator regression cases.\n- Remove or activate sibling skipped\
+      \ tests in the same families before claiming done; do not stop after the first\
+      \ class is green.\n\nGrep hints:\n- `rg -n \"Implementation dispatch pending\"\
+      \ tests/test_orchestrator.py`\n- `rg -n \"skip|skipif|pytest\\.mark\\.skip\"\
+      \ tests/test_orchestrator.py`\n- `rg -n \"TestRunOnceTvUnavailable|no_upload|no_news|stage\
+      \ ordering|output path|error propagation\" tests/test_orchestrator.py`\n\nRoot\
+      \ Cause vs Symptom:\n- Root cause: verification coverage is being structurally\
+      \ suppressed by placeholder skip gates in the orchestrator regression suite.\n\
+      - Symptom: blocker branches appear unimplemented because the suite exits through\
+      \ skips rather than exercising real assertions.\n- Why this fix is not surface-level:\
+      \ completion requires activating the full sibling regression families and proving\
+      \ the suite now executes the contracted branches instead of silently bypassing\
+      \ them.\n\nCompletion criteria:\n- ALL blocker and should-fix items above are\
+      \ addressed together in one pass.\n- No blocker-class orchestrator regression\
+      \ remains skipped behind `Implementation dispatch pending` in `tests/test_orchestrator.py`.\n\
+      - The TV-unavailable family executes for real.\n- Full orchestrator `run_once`\
+      \ regression coverage is restored across the file, with sibling search evidence\
+      \ for any remaining skips."
+    verification: '- `rg -n "Implementation dispatch pending" tests/test_orchestrator.py`
+      returns no blocker skip placeholders covering contracted `run_once()` regressions
+
+      - Sibling search evidence shows all related skipped regression families in `tests/test_orchestrator.py`
+      were activated or explicitly narrowed with non-blocking justification
+
+      - Focused pytest execution demonstrates formerly skipped happy-path, `--no-upload`,
+      `--no-news`, TV-unavailable, output-path, error-propagation, and stage-ordering
+      cases now run instead of skip
+
+      - Evidence names any intentionally retained skips and proves they do not hide
+      the contracted verification surface'
+    depends_on:
+    - core.pipeline.verify
+    agent: python-executor
 - id: intelligence
   name: Intelligence
   status: locked
