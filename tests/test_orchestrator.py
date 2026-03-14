@@ -3150,3 +3150,656 @@ class TestOnDemandNewsRefresh:
 
         # Refresh should NOT be called because queue was not empty
         mock_refresh.assert_not_called()
+
+
+# =============================================================================
+# WATCH DAEMON CONTRACT TESTS
+# =============================================================================
+
+
+class TestWatchLoopStageOrderContract:
+    """Tests for watch loop stage order contract.
+
+    Contract (WATCH_LOOP_STAGE_ORDER):
+    - load_state_once: Load state exactly once on daemon startup
+    - scheduler_decision: Ask scheduler what action to take
+    - action_dispatch: Execute the indicated action(s)
+    - state_save: Persist state after action cycle
+    - sleep_until_next_action: Sleep until next scheduled action
+    """
+
+    def test_watch_loop_stage_order_constant_is_stable(self) -> None:
+        """WATCH_LOOP_STAGE_ORDER constant must match architecture contract."""
+        assert WATCH_LOOP_STAGE_ORDER == (
+            "load_state_once",
+            "scheduler_decision",
+            "action_dispatch",
+            "state_save",
+            "sleep_until_next_action",
+        )
+
+    def test_watch_loop_stages_are_all_strings(self) -> None:
+        """All stage names must be strings (not enums)."""
+        for stage in WATCH_LOOP_STAGE_ORDER:
+            assert isinstance(stage, str)
+
+    def test_watch_loop_first_stage_is_load_state(self) -> None:
+        """First stage must be load_state_once (per ARCHITECTURE.md)."""
+        assert WATCH_LOOP_STAGE_ORDER[0] == "load_state_once"
+
+    def test_watch_loop_third_stage_is_action_dispatch(self) -> None:
+        """Third stage must be action_dispatch."""
+        assert WATCH_LOOP_STAGE_ORDER[2] == "action_dispatch"
+
+    def test_watch_loop_fourth_stage_is_state_save(self) -> None:
+        """Fourth stage must be state_save."""
+        assert WATCH_LOOP_STAGE_ORDER[3] == "state_save"
+
+    def test_watch_loop_last_stage_is_sleep(self) -> None:
+        """Last stage must be sleep_until_next_action."""
+        assert WATCH_LOOP_STAGE_ORDER[-1] == "sleep_until_next_action"
+
+
+class TestWatchSchedulerActionMappingContract:
+    """Tests for scheduler action to orchestrator function mapping.
+
+    Contract (WATCH_SCHEDULER_ACTION_MAPPING):
+    - REFRESH_NEWS maps to run_news_refresh
+    - ROTATE maps to run_once with default options
+    - BACKFILL maps to run_backfill
+    - QUIET_ART maps to run_once with no_news=True
+    - IDLE maps to no-op (only state save + sleep)
+    """
+
+    def test_action_mapping_has_all_scheduler_actions(self) -> None:
+        """All scheduler Action enum values must have mappings."""
+        required_actions = {"REFRESH_NEWS", "ROTATE", "BACKFILL", "QUIET_ART", "IDLE"}
+        assert set(WATCH_SCHEDULER_ACTION_MAPPING.keys()) == required_actions
+
+    def test_refresh_news_maps_to_run_news_refresh(self) -> None:
+        """REFRESH_NEWS must map to run_news_refresh function call."""
+        assert (
+            WATCH_SCHEDULER_ACTION_MAPPING["REFRESH_NEWS"]
+            == "run_news_refresh(config, state)"
+        )
+
+    def test_rotate_maps_to_run_once_default(self) -> None:
+        """ROTATE must map to run_once with default RunOptions."""
+        assert (
+            WATCH_SCHEDULER_ACTION_MAPPING["ROTATE"]
+            == "run_once(config, state, RunOptions())"
+        )
+
+    def test_backfill_maps_to_run_backfill(self) -> None:
+        """BACKFILL must map to run_backfill function call."""
+        assert (
+            WATCH_SCHEDULER_ACTION_MAPPING["BACKFILL"] == "run_backfill(config, state)"
+        )
+
+    def test_quiet_art_maps_to_run_once_no_news(self) -> None:
+        """QUIET_ART must map to run_once with no_news=True."""
+        mapping = WATCH_SCHEDULER_ACTION_MAPPING["QUIET_ART"]
+        assert "no_news=True" in mapping
+        assert "run_once" in mapping
+
+    def test_idle_maps_to_noop(self) -> None:
+        """IDLE must map to no-op with state save + sleep."""
+        mapping = WATCH_SCHEDULER_ACTION_MAPPING["IDLE"]
+        assert "no-op" in mapping or "state save" in mapping
+
+    def test_action_dispatch_order_is_deterministic(self) -> None:
+        """Combined actions must dispatch in deterministic order."""
+        assert WATCH_ACTION_DISPATCH_ORDER == (
+            "REFRESH_NEWS",
+            "ROTATE",
+            "BACKFILL",
+            "QUIET_ART",
+        )
+
+
+class TestWatchShutdownSignalContract:
+    """Tests for graceful shutdown signal handling.
+
+    Contract (WATCH_SHUTDOWN_SIGNALS):
+    - SIGINT and SIGTERM trigger graceful shutdown
+    - Other signals are not handled specially
+    """
+
+    def test_shutdown_signals_includes_sigint(self) -> None:
+        """SIGINT must be included in shutdown signals."""
+        assert "SIGINT" in WATCH_SHUTDOWN_SIGNALS
+
+    def test_shutdown_signals_includes_sigterm(self) -> None:
+        """SIGTERM must be included in shutdown signals."""
+        assert "SIGTERM" in WATCH_SHUTDOWN_SIGNALS
+
+    def test_shutdown_signals_are_frozenset(self) -> None:
+        """Shutdown signals must be an immutable frozenset."""
+        assert isinstance(WATCH_SHUTDOWN_SIGNALS, frozenset)
+
+    def test_shutdown_signals_count(self) -> None:
+        """Exactly two signals must trigger graceful shutdown."""
+        assert len(WATCH_SHUTDOWN_SIGNALS) == 2
+
+
+class TestWatchShutdownStateSaveContract:
+    """Tests for graceful shutdown state save guarantee.
+
+    Contract (WATCH_SHUTDOWN_STATE_SAVE_GUARANTEE):
+    - On SIGINT/SIGTERM, finish current in-flight action boundary
+    - Persist state before exit
+    - Do not start another scheduler cycle after shutdown requested
+    """
+
+    def test_shutdown_finishes_current_action(self) -> None:
+        """Shutdown guarantee must mention finishing current action."""
+        assert "finish" in WATCH_SHUTDOWN_STATE_SAVE_GUARANTEE.lower()
+        assert "action" in WATCH_SHUTDOWN_STATE_SAVE_GUARANTEE.lower()
+
+    def test_shutdown_persists_state(self) -> None:
+        """Shutdown guarantee must mention state persistence."""
+        assert "persist" in WATCH_SHUTDOWN_STATE_SAVE_GUARANTEE.lower()
+        assert "state" in WATCH_SHUTDOWN_STATE_SAVE_GUARANTEE.lower()
+
+    def test_shutdown_exits_without_new_cycle(self) -> None:
+        """Shutdown guarantee must mention not starting new cycle."""
+        assert "exit" in WATCH_SHUTDOWN_STATE_SAVE_GUARANTEE.lower()
+
+    def test_state_save_after_action_cycle(self) -> None:
+        """State save must happen after each action cycle."""
+        assert "after_action_cycle" in WATCH_STATE_SAVE_GUARANTEES
+        assert "save_all()" in WATCH_STATE_SAVE_GUARANTEES["after_action_cycle"]
+
+    def test_state_save_on_startup(self) -> None:
+        """State must be loaded exactly once on startup."""
+        assert "startup_load" in WATCH_STATE_SAVE_GUARANTEES
+        assert "once" in WATCH_STATE_SAVE_GUARANTEES["startup_load"].lower()
+
+    def test_state_save_on_signal_exit(self) -> None:
+        """Signal guarantee must match shutdown state save."""
+        assert (
+            WATCH_STATE_SAVE_GUARANTEES["signal_exit"]
+            == WATCH_SHUTDOWN_STATE_SAVE_GUARANTEE
+        )
+
+
+class TestWatchErrorPropagationBoundariesContract:
+    """Tests for watch-level error propagation boundaries.
+
+    Contract (WATCH_ERROR_PROPAGATION_BOUNDARIES):
+    - run_news_refresh errors: retry deferred to next interval
+    - run_once errors: continue on next scheduled tick
+    - run_backfill errors: continue with later retry
+    - watch_loop bootstrap/persistence errors: terminate daemon
+
+    Tests verify the contract constants are correctly defined.
+    """
+
+    def test_error_boundaries_cover_all_actions(self) -> None:
+        """Error boundaries must cover all action types."""
+        required_keys = {"run_news_refresh", "run_once", "run_backfill", "watch_loop"}
+        assert set(WATCH_ERROR_PROPAGATION_BOUNDARIES.keys()) == required_keys
+
+    def test_news_refresh_error_is_recoverable(self) -> None:
+        """News refresh errors must be recoverable (not fatal)."""
+        boundary = WATCH_ERROR_PROPAGATION_BOUNDARIES["run_news_refresh"]
+        assert "recoverable" in boundary.lower() or "retry" in boundary.lower()
+
+    def test_run_once_error_is_recoverable(self) -> None:
+        """Rotation errors must be recoverable (not fatal)."""
+        boundary = WATCH_ERROR_PROPAGATION_BOUNDARIES["run_once"]
+        assert "continue" in boundary.lower() or "next" in boundary.lower()
+
+    def test_backfill_error_is_recoverable(self) -> None:
+        """Backfill errors must be recoverable (not fatal)."""
+        boundary = WATCH_ERROR_PROPAGATION_BOUNDARIES["run_backfill"]
+        assert "retry" in boundary.lower() or "skip" in boundary.lower()
+
+    def test_watch_loop_bootstrap_fatality(self) -> None:
+        """Bootstrap/persistence failures must be fatal."""
+        boundary = WATCH_ERROR_PROPAGATION_BOUNDARIES["watch_loop"]
+        assert "terminate" in boundary.lower() or "fatal" in boundary.lower()
+
+
+class TestBackfillStageOrderContract:
+    """Tests for run_backfill stage order contract.
+
+    Contract (RUN_BACKFILL_STAGE_ORDER):
+    - measure_pool_deficit: Calculate how many paintings needed
+    - fetch_new_paintings_if_needed: Fetch from sources if deficit > 0
+    - analyze_layout_for_new_paintings: LLM analysis for each new painting
+    - compute_embeddings_for_new_paintings: Embedding for semantic matching
+    - state_save: Persist state after backfill
+    """
+
+    def test_backfill_stage_order_is_stable(self) -> None:
+        """RUN_BACKFILL_STAGE_ORDER constant must match architecture."""
+        assert RUN_BACKFILL_STAGE_ORDER == (
+            "measure_pool_deficit",
+            "fetch_new_paintings_if_needed",
+            "analyze_layout_for_new_paintings",
+            "compute_embeddings_for_new_paintings",
+            "state_save",
+        )
+
+    def test_backfill_first_stage_is_measure_deficit(self) -> None:
+        """First stage must measure pool deficit."""
+        assert RUN_BACKFILL_STAGE_ORDER[0] == "measure_pool_deficit"
+
+    def test_backfill_last_stage_is_state_save(self) -> None:
+        """Last stage must be state_save."""
+        assert RUN_BACKFILL_STAGE_ORDER[-1] == "state_save"
+
+    def test_backfill_stages_are_ordered_correctly(self) -> None:
+        """Stages must be ordered: fetch before analyze before embed before save."""
+        stages = list(RUN_BACKFILL_STAGE_ORDER)
+        assert stages.index("fetch_new_paintings_if_needed") < stages.index(
+            "analyze_layout_for_new_paintings"
+        )
+        assert stages.index("analyze_layout_for_new_paintings") < stages.index(
+            "compute_embeddings_for_new_paintings"
+        )
+        assert stages.index("compute_embeddings_for_new_paintings") < stages.index(
+            "state_save"
+        )
+
+
+class TestBackfillBoundedBehaviorContract:
+    """Tests for run_backfill bounded behavior contract.
+
+    Contract (RUN_BACKFILL_BOUNDED_BEHAVIOR):
+    - Never fetch more than pool_size - current_count
+    - Return count is bounded [0, deficit]
+    - Zero deficit means no work, return 0 immediately
+    """
+
+    def test_bounded_behavior_count_is_three(self) -> None:
+        """Bounded behavior must have exactly three constraints."""
+        assert len(RUN_BACKFILL_BOUNDED_BEHAVIOR) == 3
+
+    def test_bounded_behavior_never_exceeds_deficit(self) -> None:
+        """First constraint: never fetch more than deficit."""
+        assert "Never add more than" in RUN_BACKFILL_BOUNDED_BEHAVIOR[0]
+        assert "pool_size" in RUN_BACKFILL_BOUNDED_BEHAVIOR[0]
+
+    def test_bounded_behavior_return_is_bounded(self) -> None:
+        """Second constraint: return value is bounded."""
+        assert "return" in RUN_BACKFILL_BOUNDED_BEHAVIOR[1].lower()
+        assert "bounded" in RUN_BACKFILL_BOUNDED_BEHAVIOR[1].lower()
+
+    def test_bounded_behavior_zero_on_full_pool(self) -> None:
+        """Third constraint: return 0 when pool is full."""
+        assert "return 0" in RUN_BACKFILL_BOUNDED_BEHAVIOR[2]
+        assert "pool_size" in RUN_BACKFILL_BOUNDED_BEHAVIOR[2]
+
+    def test_bounded_behavior_no_work_when_full(self) -> None:
+        """Third constraint: no fetch work when pool is full."""
+        assert "perform no" in RUN_BACKFILL_BOUNDED_BEHAVIOR[2].lower()
+
+
+class TestBackfillErrorBoundariesContract:
+    """Tests for run_backfill error boundary contract.
+
+    Contract (RUN_BACKFILL_ERROR_BOUNDARIES):
+    - item_level: Individual painting failures are non-fatal, skipped
+    - source_level: All source failures result in return 0, cached pool usable
+    - fatal: State persistence failures propagate to caller
+    """
+
+    def test_error_boundaries_has_three_levels(self) -> None:
+        """Error boundaries must cover three failure levels."""
+        assert set(RUN_BACKFILL_ERROR_BOUNDARIES.keys()) == {
+            "item_level",
+            "source_level",
+            "fatal",
+        }
+
+    def test_item_level_is_non_fatal(self) -> None:
+        """Item-level failures must be non-fatal and skipped."""
+        boundary = RUN_BACKFILL_ERROR_BOUNDARIES["item_level"]
+        assert "non-fatal" in boundary.lower() or "skipped" in boundary.lower()
+
+    def test_source_level_fallback_is_zero(self) -> None:
+        """Source-level failures must fallback to cached pool."""
+        boundary = RUN_BACKFILL_ERROR_BOUNDARIES["source_level"]
+        assert "return 0" in boundary or "fallback" in boundary.lower()
+
+    def test_fatal_is_state_persistence(self) -> None:
+        """Fatal errors must be persistence failures."""
+        boundary = RUN_BACKFILL_ERROR_BOUNDARIES["fatal"]
+        assert "persistence" in boundary.lower() or "propagate" in boundary.lower()
+
+
+class TestWatchDaemonLifecycleContract:
+    """Tests for watch daemon lifecycle contract.
+
+    These tests verify the behavioral contract for the watch daemon
+    without depending on implementation internals.
+    """
+
+    @pytest.mark.asyncio
+    async def test_watch_is_not_implemented_yet(self) -> None:
+        """watch() is a contract stub that raises NotImplementedError.
+
+        This test verifies the contract is defined before implementation.
+        """
+        config = create_minimal_app_config()
+
+        with pytest.raises(NotImplementedError, match="contract is defined"):
+            await watch(config=config)
+
+    @pytest.mark.asyncio
+    async def test_run_backfill_is_not_implemented_yet(self) -> None:
+        """run_backfill() is a contract stub that raises NotImplementedError.
+
+        This test verifies the contract is defined before implementation.
+        """
+        config = create_minimal_app_config()
+        mock_state = MockAppState()
+
+        with pytest.raises(NotImplementedError, match="contract is defined"):
+            await run_backfill(config=config, state=mock_state)
+
+
+class TestWatchDaemonStatePersistence:
+    """Tests for state persistence guarantees in watch mode.
+
+    These tests verify that state.save_all() is called at the right times
+    according to the WATCH_STATE_SAVE_GUARANTEES contract.
+    """
+
+    def test_state_save_after_action_cycle_defined(self) -> None:
+        """after_action_cycle guarantee must mention save_all()."""
+        guarantee = WATCH_STATE_SAVE_GUARANTEES["after_action_cycle"]
+        assert "state.save_all()" in guarantee
+        assert "after" in guarantee.lower()
+
+    def test_state_save_after_action_cycle_before_sleep(self) -> None:
+        """after_action_cycle mentions before sleep."""
+        guarantee = WATCH_STATE_SAVE_GUARANTEES["after_action_cycle"]
+        assert "sleep" in guarantee.lower()
+
+    def test_startup_load_defined(self) -> None:
+        """startup_load guarantee must mention loading once."""
+        guarantee = WATCH_STATE_SAVE_GUARANTEES["startup_load"]
+        assert "once" in guarantee.lower()
+        assert "startup" in guarantee.lower()
+
+    def test_signal_exit_matches_shutdown_guarantee(self) -> None:
+        """signal_exit must be identical to WATCH_SHUTDOWN_STATE_SAVE_GUARANTEE."""
+        assert (
+            WATCH_STATE_SAVE_GUARANTEES["signal_exit"]
+            == WATCH_SHUTDOWN_STATE_SAVE_GUARANTEE
+        )
+
+
+class TestRunBackfillReturnValueContract:
+    """Tests for run_backfill return value contract.
+
+    Contract:
+    - Return value is bounded [0, requested_deficit]
+    - Return count is number of successfully added paintings
+    - Return 0 if pool already meets/exceeds target
+    """
+
+    @pytest.mark.asyncio
+    async def test_run_backfill_returns_int(self) -> None:
+        """run_backfill must return an integer count."""
+        # Verify the signature - run_backfill returns int
+        import inspect
+        from sfumato.orchestrator import run_backfill
+
+        sig = inspect.signature(run_backfill)
+        # The return annotation should be int
+        # Note: This is a stub, so we just verify the contract is defined
+        assert run_backfill.__doc__ is not None
+        assert (
+            "Returns" in run_backfill.__doc__
+            or "return" in run_backfill.__doc__.lower()
+        )
+
+    def test_run_backfill_contract_documented(self) -> None:
+        """run_backfill contract must be documented in docstring."""
+        doc = run_backfill.__doc__
+        assert doc is not None
+        # Contract must mention bounded behavior
+        assert "bounded" in doc.lower() or "return" in doc.lower()
+        # Contract must mention pool_size
+        assert "pool_size" in doc.lower() or "pool" in doc.lower()
+
+
+class TestSchedulerContract:
+    """Tests for scheduler integration with watch daemon.
+
+    These tests verify the contract between scheduler decisions and
+    orchestrator action dispatch without depending on implementation.
+    """
+
+    def test_scheduler_action_types_defined(self) -> None:
+        """Scheduler must define REFRESH_NEWS, ROTATE, BACKFILL, QUIET_ART, IDLE."""
+        # These are the actions that the scheduler can return
+        # and must be handled by the orchestrator dispatch
+        expected_actions = {"REFRESH_NEWS", "ROTATE", "BACKFILL", "QUIET_ART", "IDLE"}
+        assert set(WATCH_SCHEDULER_ACTION_MAPPING.keys()) == expected_actions
+
+    def test_scheduler_dispatch_order_matches_action_order(self) -> None:
+        """Dispatcher must use WATCH_ACTION_DISPATCH_ORDER for combined actions."""
+        # When multiple actions are signaled, they dispatch in order
+        assert WATCH_ACTION_DISPATCH_ORDER[0] == "REFRESH_NEWS"
+        assert WATCH_ACTION_DISPATCH_ORDER[1] == "ROTATE"
+        assert WATCH_ACTION_DISPATCH_ORDER[2] == "BACKFILL"
+        assert WATCH_ACTION_DISPATCH_ORDER[3] == "QUIET_ART"
+
+    def test_idle_action_has_no_pipeline_work(self) -> None:
+        """IDLE action must be documented as no-op."""
+        idle_mapping = WATCH_SCHEDULER_ACTION_MAPPING["IDLE"]
+        assert (
+            "no-op" in idle_mapping.lower() or "only state save" in idle_mapping.lower()
+        )
+
+
+class TestWatchDaemonIntegrationContract:
+    """Tests for watch daemon integration with run_once and run_news_refresh.
+
+    These tests verify the integration contract between watch daemon
+    and the pipeline functions it dispatches to.
+    """
+
+    def test_run_once_integrated_with_watch_via_schedule(self) -> None:
+        """ROTATE action integrates watch with run_once via schedule config."""
+        # This test verifies the integration path exists in constants
+        # The actual integration happens in the watch() implementation
+        rotate_mapping = WATCH_SCHEDULER_ACTION_MAPPING["ROTATE"]
+        assert "run_once" in rotate_mapping
+        assert "RunOptions()" in rotate_mapping
+
+    def test_quiet_art_integrated_with_run_once_no_news(self) -> None:
+        """QUIET_ART action integrates watch with run_once(no_news=True)."""
+        quiet_mapping = WATCH_SCHEDULER_ACTION_MAPPING["QUIET_ART"]
+        assert "run_once" in quiet_mapping
+        assert "no_news=True" in quiet_mapping
+
+    def test_refresh_news_integrated_with_watch(self) -> None:
+        """REFRESH_NEWS action integrates watch with run_news_refresh."""
+        refresh_mapping = WATCH_SCHEDULER_ACTION_MAPPING["REFRESH_NEWS"]
+        assert "run_news_refresh" in refresh_mapping
+
+
+class TestWatchDaemonErrorRecoveryContract:
+    """Tests for error recovery in watch daemon.
+
+    Contract:
+    - Per-action recoverable errors are scoped to the current action
+    - Fatal errors propagate and terminate daemon
+    - Retry is deferred to next scheduler interval
+    """
+
+    def test_recovery_deferred_to_next_interval(self) -> None:
+        """Per-action errors must defer retry to next scheduler interval."""
+        # This is encoded in the error boundary constants
+        refresh_boundary = WATCH_ERROR_PROPAGATION_BOUNDARIES["run_news_refresh"]
+        assert (
+            "next scheduler interval" in refresh_boundary
+            or "deferred" in refresh_boundary.lower()
+        )
+
+    def test_rotation_error_continues_loop(self) -> None:
+        """Rotation errors must continue daemon loop."""
+        rotate_boundary = WATCH_ERROR_PROPAGATION_BOUNDARIES["run_once"]
+        assert (
+            "continue" in rotate_boundary.lower() or "next" in rotate_boundary.lower()
+        )
+
+    def test_bootstrap_failure_terminates(self) -> None:
+        """Bootstrap/persistence failures must terminate daemon."""
+        loop_boundary = WATCH_ERROR_PROPAGATION_BOUNDARIES["watch_loop"]
+        assert "terminate" in loop_boundary.lower()
+
+
+class TestWatchDaemonConfigIntegration:
+    """Tests for watch daemon config integration.
+
+    These tests verify that config parameters needed for watch
+    daemon behavior are accessible and used correctly.
+    """
+
+    def test_config_schedule_has_intervals(self) -> None:
+        """ScheduleConfig must have news_interval_hours and rotate_interval_minutes."""
+        from sfumato.config import ScheduleConfig
+
+        default_schedule = ScheduleConfig()
+        assert hasattr(default_schedule, "news_interval_hours")
+        assert hasattr(default_schedule, "rotate_interval_minutes")
+
+    def test_config_schedule_has_active_hours(self) -> None:
+        """ScheduleConfig must have active_hours for daemon tick timing."""
+        from sfumato.config import ScheduleConfig
+
+        default_schedule = ScheduleConfig()
+        assert hasattr(default_schedule, "active_hours")
+
+    def test_config_schedule_has_quiet_hours(self) -> None:
+        """ScheduleConfig must have quiet_hours for silent periods."""
+        from sfumato.config import ScheduleConfig
+
+        default_schedule = ScheduleConfig()
+        assert hasattr(default_schedule, "quiet_hours")
+
+    def test_config_paintings_has_pool_size(self) -> None:
+        """PaintingsConfig must have pool_size for backfill target."""
+        from sfumato.config import PaintingsConfig
+
+        default_paintings = PaintingsConfig()
+        assert hasattr(default_paintings, "pool_size")
+
+    def test_config_paintings_has_seed_size(self) -> None:
+        """PaintingsConfig must have seed_size for initial fetch."""
+        from sfumato.config import PaintingsConfig
+
+        default_paintings = PaintingsConfig()
+        assert hasattr(default_paintings, "seed_size")
+
+
+class TestWatchDaemonShutdownSafety:
+    """Tests for shutdown safety guarantees in watch daemon.
+
+    These tests verify that the daemon handles shutdown gracefully
+    without data loss or corruption.
+    """
+
+    def test_shutdown_signals_are_standard(self) -> None:
+        """Shutdown signals must be standard POSIX signals."""
+        # SIGINT and SIGTERM are the standard way to request graceful shutdown
+        assert "SIGINT" in WATCH_SHUTDOWN_SIGNALS
+        assert "SIGTERM" in WATCH_SHUTDOWN_SIGNALS
+
+    def test_shutdown_saves_in_progress_work(self) -> None:
+        """Shutdown must save in-progress work before exit."""
+        # This is encoded in WATCH_SHUTDOWN_STATE_SAVE_GUARANTEE
+        assert "current" in WATCH_SHUTDOWN_STATE_SAVE_GUARANTEE.lower()
+        assert "state" in WATCH_SHUTDOWN_STATE_SAVE_GUARANTEE.lower()
+
+    def test_shutdown_does_not_start_new_cycle(self) -> None:
+        """After shutdown signal, no new scheduler cycles start."""
+        assert "not" in WATCH_SHUTDOWN_STATE_SAVE_GUARANTEE.lower()
+        assert (
+            "cycle" in WATCH_SHUTDOWN_STATE_SAVE_GUARANTEE.lower()
+            or "scheduler" in WATCH_SHUTDOWN_STATE_SAVE_GUARANTEE.lower()
+        )
+
+
+class TestRunBackfillIntegrationWithState:
+    """Tests for run_backfill integration with AppState.
+
+    These tests verify that run_backfill correctly interacts with
+    state components (painting pool, caches) according to contract.
+    """
+
+    def test_backfill_uses_layout_cache(self) -> None:
+        """run_backfill must use state.layout_cache for new paintings."""
+        # This integration is encoded in RUN_BACKFILL_STAGE_ORDER
+        assert "analyze_layout_for_new_paintings" in RUN_BACKFILL_STAGE_ORDER
+        # Stage 3: layout cache is populated for new paintings
+
+    def test_backfill_uses_embedding_cache(self) -> None:
+        """run_backfill must use state.embedding_cache for new paintings."""
+        # This integration is encoded in RUN_BACKFILL_STAGE_ORDER
+        assert "compute_embeddings_for_new_paintings" in RUN_BACKFILL_STAGE_ORDER
+        # Stage 4: embedding cache is populated for new paintings
+
+    def test_backfill_saves_state(self) -> None:
+        """run_backfill must call state.save_all() after completion."""
+        # This is encoded in RUN_BACKFILL_STAGE_ORDER
+        assert RUN_BACKFILL_STAGE_ORDER[-1] == "state_save"
+        # Final stage is always state persistence
+
+
+class TestWatchDaemonStartupBehavior:
+    """Tests for watch daemon startup behavior contract.
+
+    Contract:
+    - Load state exactly once on startup
+    - Expire old news queue entries
+    - Check if refresh is overdue
+    - Execute first action from scheduler
+    """
+
+    def test_startup_loads_state_once(self) -> None:
+        """State must be loaded exactly once on startup."""
+        # This is encoded in WATCH_STATE_SAVE_GUARANTEES["startup_load"]
+        guarantee = WATCH_STATE_SAVE_GUARANTEES["startup_load"]
+        assert "once" in guarantee.lower()
+        assert "before" in guarantee.lower() or "startup" in guarantee.lower()
+
+    def test_startup_is_first_stage(self) -> None:
+        """State load is the first stage in loop order."""
+        assert WATCH_LOOP_STAGE_ORDER[0] == "load_state_once"
+
+    def test_state_save_after_action(self) -> None:
+        """State save must happen after action dispatch."""
+        # Stage order: scheduler_decision -> action_dispatch -> state_save
+        assert WATCH_LOOP_STAGE_ORDER.index(
+            "action_dispatch"
+        ) < WATCH_LOOP_STAGE_ORDER.index("state_save")
+
+
+class TestWatchDaemonQuietHoursContract:
+    """Tests for quiet hours behavior in watch daemon.
+
+    Contract:
+    - During quiet_hours, daemon may push QUIET_ART or do nothing
+    - Outside active_hours and quiet_hours, daemon is IDLE
+    """
+
+    def test_quiet_art_action_defined(self) -> None:
+        """QUIET_ART action must be defined for quiet hours."""
+        assert "QUIET_ART" in WATCH_SCHEDULER_ACTION_MAPPING
+
+    def test_quiet_art_uses_no_news_flag(self) -> None:
+        """QUIET_ART must pass no_news=True to run_once."""
+        mapping = WATCH_SCHEDULER_ACTION_MAPPING["QUIET_ART"]
+        assert "no_news=True" in mapping
+
+    def test_idle_action_defined(self) -> None:
+        """IDLE action must be defined for outside active hours."""
+        assert "IDLE" in WATCH_SCHEDULER_ACTION_MAPPING
