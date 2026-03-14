@@ -284,6 +284,39 @@ phases:
     - core.pipeline
     - core.cli-run
     agent: gate-reviewer
+  - id: core.config.contract
+    name: Define config loader contract
+    status: pending
+    description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
+      \  - signatures\n  - type_defs\n  - stubs\nspec_refs:\n  - ARCHITECTURE.md#2.1\n\
+      touch_paths:\n  - src/sfumato/config.py\nharness_refs:\n  - tests/test_config.py\n\
+      agent: python-senior\n\nDefine the acceptance contract for `src/sfumato/config.py`\
+      \ before implementation.\n\nContract scope:\n- Pin dataclass signatures for\
+      \ `TvConfig`, `ScheduleConfig`, `FeedConfig`, `NewsConfig`, `PaintingsConfig`,\
+      \ `AiConfig`, and `AppConfig` exactly as required by `ARCHITECTURE.md#2.1`.\n\
+      - Pin config source precedence explicitly: `load_config(path=...)` > `SFUMATO_CONFIG`\
+      \ > `~/.config/sfumato/config.toml` > `./sfumato.toml`.\n- Pin missing-file\
+      \ semantics explicitly: an explicit `path` or `SFUMATO_CONFIG` target that is\
+      \ set but missing is treated as authoritative and raises `ConfigError`; an entirely\
+      \ absent search path falls back to default `AppConfig`.\n- Pin path semantics\
+      \ explicitly: `~` expansion is required; path-valued fields loaded from TOML\
+      \ are resolved relative to the config file that defined them; returned paths\
+      \ are absolute.\n- Pin malformed-input behavior explicitly: TOML parse errors\
+      \ and schema/type validation failures raise `ConfigError` with file context.\n\
+      - Pin env behavior explicitly: `SFUMATO_CONFIG` is the supported env override\
+      \ in core; additional per-field env overrides are out of scope for this phase\
+      \ unless added to the contract without implementation logic.\n\nNon-goals:\n\
+      - No parsing logic beyond signatures/stubs.\n- No completed loader implementation.\n\
+      - No CLI wiring.\n"
+    verification: '- Contract artifact states precedence, authoritative-missing behavior,
+      path anchoring, and malformed-input behavior explicitly
+
+      - `src/sfumato/config.py` exposes signatures/stubs only; no completed parsing/business
+      logic ships in this step
+
+      - Any deferred env override behavior is documented as intentionally out of scope
+      rather than left implicit'
+    agent: python-senior
 - id: intelligence
   name: Intelligence
   status: locked
