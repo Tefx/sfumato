@@ -94,7 +94,7 @@ class AiConfig:
     """Typed AI backend configuration contract."""
 
     cli: str = "gemini"
-    model: str = "gemini-3.1-pro-preview"
+    model: str = "gemini-3-flash-preview"
     backend: str = "cli"
     sdk_provider: str = "openrouter"
 
@@ -247,7 +247,7 @@ match_strategy = "semantic"
 
 [ai]
 cli = "gemini"
-model = "gemini-3.1-pro-preview"
+model = "gemini-3-flash-preview"
 # backend: "cli" for CLI tools, "sdk" for LiteLLM SDK
 backend = "cli"
 # sdk_provider: "openrouter", "google", or "openai" (used when backend="sdk")
