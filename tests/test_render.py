@@ -3,10 +3,13 @@
 Contract verification for ARCHITECTURE.md#2.7.
 """
 
+import dataclasses
+import inspect
 import tempfile
+import typing
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -20,12 +23,21 @@ from sfumato.render import (
     RenderError,
     RenderResult,
     TemplateNotFoundError,
+    WhisperTemplateVariables,
     PlaywrightError,
     build_template_variables,
     render_to_png,
     render_to_png_sync,
 )
-from sfumato.layout_ai import LayoutColors, LayoutParams, ScrimParams, TextZone
+from sfumato.layout_ai import (
+    ArtFact,
+    LayoutColors,
+    LayoutParams,
+    ScrimParams,
+    SubjectZone,
+    TextZone,
+    WhisperZone,
+)
 from sfumato.news import Story
 from sfumato.palette import PaletteColors
 
@@ -81,6 +93,20 @@ def sample_layout_params() -> LayoutParams:
         painting_artist="Vincent van Gogh",
         painting_description="A swirling night sky with bright stars",
         text_zone=TextZone(position="top-right", reason="Dark sky area"),
+        subject_zone=SubjectZone(
+            position="bottom-left",
+            reason="Village and cypress dominate the lower-left mass.",
+        ),
+        whisper_zone=WhisperZone(
+            position="top-left",
+            reason="Quiet corner opposite the main news block.",
+            max_width_percent=18,
+            readability_notes="Dark, low-detail sky remains readable at TV distance.",
+        ),
+        art_facts=[
+            ArtFact(text="Painted in Saint-Remy during van Gogh's asylum stay."),
+            ArtFact(text="The village is imagined rather than directly observed."),
+        ],
         colors=LayoutColors(
             text_primary="#ffffff",
             text_secondary="#e0e0e0",
@@ -157,9 +183,6 @@ def sample_render_context(
 
 def test_painting_info_is_frozen(sample_painting_info: PaintingInfo):
     """PaintingInfo should be immutable (frozen dataclass)."""
-    # FrozenInstanceError is raised when trying to modify a frozen dataclass
-    import dataclasses
-
     with pytest.raises(dataclasses.FrozenInstanceError):
         sample_painting_info.title = "New Title"  # type: ignore[misc]
 
@@ -168,6 +191,49 @@ def test_render_context_is_mutable(sample_render_context: RenderContext):
     """RenderContext should be mutable (regular dataclass)."""
     sample_render_context.language = "zh"
     assert sample_render_context.language == "zh"
+
+
+def test_render_context_exposes_whisper_fact_index_contract():
+    """RenderContext should expose caller-owned whisper_fact_index metadata."""
+    field = next(
+        candidate
+        for candidate in dataclasses.fields(RenderContext)
+        if candidate.name == "whisper_fact_index"
+    )
+
+    assert field.default is None
+
+
+def test_whisper_template_variables_type_defines_required_keys():
+    """WhisperTemplateVariables should define the four additive whisper placeholders."""
+    assert typing.get_type_hints(WhisperTemplateVariables) == {
+        "WHISPER_POSITION": str,
+        "WHISPER_COLOR": str,
+        "WHISPER_SHADOW": str,
+        "WHISPER_TEXT": str,
+    }
+
+
+def test_build_template_variables_docstring_defines_whisper_contract():
+    """build_template_variables docstring should define whisper mapping and index semantics."""
+    doc = inspect.getdoc(build_template_variables)
+    assert doc is not None
+
+    for token in (
+        "WHISPER_POSITION",
+        "WHISPER_COLOR",
+        "WHISPER_SHADOW",
+        "WHISPER_TEXT",
+        "ctx.layout.whisper_zone.position",
+        "ctx.layout.whisper_zone.max_width_percent",
+        "ctx.layout.colors.text_dim",
+        "ctx.layout.colors.text_shadow",
+        "ctx.layout.art_facts[ctx.whisper_fact_index].text",
+        "ctx.whisper_fact_index is owned by the caller",
+        "Rotation is external to render",
+        "The return type remains dict[str, str].",
+    ):
+        assert token in doc
 
 
 def test_render_result_is_mutable():
@@ -414,6 +480,19 @@ def test_build_template_variables_portrait(
         painting_artist="Caspar David Friedrich",
         painting_description="Contemplative figure overlooking misty landscape",
         text_zone=TextZone(position="right-side", reason="Right panel for news"),
+        subject_zone=SubjectZone(
+            position="bottom-left",
+            reason="The wanderer and ridge dominate the lower-left subject area.",
+        ),
+        whisper_zone=WhisperZone(
+            position="top-right",
+            reason="Upper-right panel space stays separate from the subject and news.",
+            max_width_percent=16,
+            readability_notes="The upper-right panel area remains quiet enough for small facts.",
+        ),
+        art_facts=[
+            ArtFact(text="Painted around 1818 during German Romanticism."),
+        ],
         colors=sample_layout_colors,
         scrim=ScrimParams(
             position_css="right: 0; top: 0;",

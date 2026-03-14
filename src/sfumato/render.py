@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict, TypeAlias
 
 from playwright.async_api import async_playwright
 
@@ -98,6 +98,37 @@ class PaintingInfo:
     source_url: str
 
 
+WhisperFactIndex: TypeAlias = int | None
+"""Selected art-fact index for whisper rendering.
+
+Contract:
+    - ``None`` means the caller intentionally disables whisper copy for this frame.
+    - Integer values are zero-based indexes into ``RenderContext.layout.art_facts``.
+    - The caller owns rotation; render consumes the selected index without mutating it.
+"""
+
+
+class WhisperTemplateVariables(TypedDict):
+    """Flat whisper placeholder contract returned inside template variables.
+
+    Contract:
+        - ``WHISPER_POSITION`` is a CSS declaration fragment derived from
+          ``layout.whisper_zone``. It carries absolute placement and width limits,
+          remaining additive to existing template positioning placeholders.
+        - ``WHISPER_COLOR`` is the subordinate whisper text color derived from
+          ``layout.colors.text_dim``.
+        - ``WHISPER_SHADOW`` is the whisper readability shadow derived from
+          ``layout.colors.text_shadow``.
+        - ``WHISPER_TEXT`` is the selected art-fact payload from
+          ``layout.art_facts[whisper_fact_index].text``.
+    """
+
+    WHISPER_POSITION: str
+    WHISPER_COLOR: str
+    WHISPER_SHADOW: str
+    WHISPER_TEXT: str
+
+
 @dataclass
 class RenderContext:
     """Render context containing all data needed to generate a 4K PNG.
@@ -111,6 +142,7 @@ class RenderContext:
         language: Display language code.
         date_str: Formatted date string.
         time_str: Formatted time string.
+        whisper_fact_index: Caller-selected art-fact index for whisper rendering.
 
     Contract:
         - painting.image_path must exist and be a valid image file
@@ -118,6 +150,8 @@ class RenderContext:
         - layout contains all CSS positioning computed by layout_ai
         - palette contains all color values for the template
         - template_name must be one of SUPPORTED_TEMPLATES
+        - whisper_fact_index is None or a valid zero-based index into layout.art_facts
+        - render does not choose or rotate whisper art facts; caller provides the selection
     """
 
     painting: "PaintingInfo"
@@ -128,6 +162,7 @@ class RenderContext:
     language: str
     date_str: str
     time_str: str
+    whisper_fact_index: WhisperFactIndex = None
 
 
 @dataclass
@@ -195,7 +230,30 @@ def build_template_variables(ctx: RenderContext) -> dict[str, str]:
 
         art_minimal.html:
             - BG_IMAGE, TITLE, DATE, UPDATE_TIME, STORIES, ART_CREDIT
+
+        Whisper wiring contract (additive to all existing mappings):
+            - WHISPER_POSITION: derived from ctx.layout.whisper_zone.position and
+              ctx.layout.whisper_zone.max_width_percent. The value is a CSS declaration
+              fragment that preserves existing template positioning semantics.
+            - WHISPER_COLOR: derived from ctx.layout.colors.text_dim so whisper copy
+              stays subordinate to the primary news block.
+            - WHISPER_SHADOW: derived from ctx.layout.colors.text_shadow so whisper copy
+              inherits the same readability envelope as other overlay text.
+            - WHISPER_TEXT: derived from ctx.layout.art_facts[ctx.whisper_fact_index].text.
+
+        Whisper index semantics:
+            - ctx.whisper_fact_index is owned by the caller, not by render.
+            - None disables whisper copy selection for the frame.
+            - Integers are zero-based indexes into ctx.layout.art_facts.
+            - Rotation is external to render: repeated calls with the same context must
+              resolve the same whisper fact.
+
+        Compatibility contract:
+            - The return type remains dict[str, str].
+            - Existing non-whisper keys keep their current meaning.
+            - Whisper keys are additive and must not rename or replace existing keys.
     """
+
     def _position_to_css(position: str) -> str:
         """Convert semantic position name to CSS absolute positioning."""
         mapping = {
@@ -251,7 +309,11 @@ def build_template_variables(ctx: RenderContext) -> dict[str, str]:
     # Convert semantic position ("top-right") to CSS absolute positioning
     text_position_css = _position_to_css(ctx.layout.text_zone.position)
     scrim_position_css = ctx.layout.scrim.position_css
-    scrim_size_css = ctx.layout.scrim.size_css if hasattr(ctx.layout.scrim, 'size_css') and ctx.layout.scrim.size_css else "width: 50%; height: 50%;"
+    scrim_size_css = (
+        ctx.layout.scrim.size_css
+        if hasattr(ctx.layout.scrim, "size_css") and ctx.layout.scrim.size_css
+        else "width: 50%; height: 50%;"
+    )
 
     # 3. Text width: max 38% to avoid covering painting subjects
     # LLMs often suggest too-wide text zones. 38% = 1459px, proven in prototype.
@@ -427,15 +489,24 @@ def render_to_png_sync(
 def _hex_brightness(color: str) -> int:
     """Estimate brightness (0-255) from a hex color or rgba string."""
     import re
+
     # Try hex (#RRGGBB)
-    hex_match = re.search(r'#([0-9a-fA-F]{6})', color)
+    hex_match = re.search(r"#([0-9a-fA-F]{6})", color)
     if hex_match:
-        r, g, b = int(hex_match.group(1)[:2], 16), int(hex_match.group(1)[2:4], 16), int(hex_match.group(1)[4:6], 16)
+        r, g, b = (
+            int(hex_match.group(1)[:2], 16),
+            int(hex_match.group(1)[2:4], 16),
+            int(hex_match.group(1)[4:6], 16),
+        )
         return int(0.299 * r + 0.587 * g + 0.114 * b)
     # Try rgba(r,g,b,a)
-    rgba_match = re.search(r'rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)', color)
+    rgba_match = re.search(r"rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)", color)
     if rgba_match:
-        r, g, b = int(rgba_match.group(1)), int(rgba_match.group(2)), int(rgba_match.group(3))
+        r, g, b = (
+            int(rgba_match.group(1)),
+            int(rgba_match.group(2)),
+            int(rgba_match.group(3)),
+        )
         return int(0.299 * r + 0.587 * g + 0.114 * b)
     return 128  # unknown, assume mid
 
@@ -445,22 +516,23 @@ def _estimate_zone_brightness(ctx: "RenderContext") -> int:
     try:
         from PIL import Image
         import numpy as np
-        img = Image.open(ctx.painting.image_path).convert('L')
+
+        img = Image.open(ctx.painting.image_path).convert("L")
         arr = np.array(img)
         h, w = arr.shape
         pos = ctx.layout.text_zone.position
 
         # Sample the quadrant where text will be placed
         if "top" in pos and "right" in pos:
-            zone = arr[:h//2, w//2:]
+            zone = arr[: h // 2, w // 2 :]
         elif "top" in pos and "left" in pos:
-            zone = arr[:h//2, :w//2]
+            zone = arr[: h // 2, : w // 2]
         elif "bottom" in pos and "right" in pos:
-            zone = arr[h//2:, w//2:]
+            zone = arr[h // 2 :, w // 2 :]
         elif "bottom" in pos and "left" in pos:
-            zone = arr[h//2:, :w//2]
+            zone = arr[h // 2 :, : w // 2]
         else:
-            zone = arr[:h//2, w//2:]  # default top-right
+            zone = arr[: h // 2, w // 2 :]  # default top-right
 
         return int(np.mean(zone))
     except Exception:
@@ -621,9 +693,7 @@ async def _playwright_screenshot(html_content: str, output_path: Path) -> None:
             # Use goto with file:// URL instead of set_content,
             # because set_content uses about:blank as base URL which
             # blocks file:// image references due to security policy.
-            await page.goto(
-                html_path.resolve().as_uri(), wait_until="networkidle"
-            )
+            await page.goto(html_path.resolve().as_uri(), wait_until="networkidle")
             # Wait for fonts and images to load
             await page.wait_for_timeout(1500)
             await page.screenshot(path=str(output_path), type="png")
