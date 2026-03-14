@@ -29,7 +29,10 @@ Every 15 minutes, sfumato selects a painting that matches the current news mood,
 - **Full-screen paintings** — The Frame's bezel is the frame. No borders, no panels, no picture-in-picture. The painting fills the screen.
 - **LLM-driven layout** — Each painting is analyzed by an LLM (via Gemini CLI, Codex CLI, or Claude Code) to find optimal text placement. Bright areas get dark text, dark areas get light text. The LLM recommends how many stories fit.
 - **Semantic art–news matching** — No fixed mood categories. Each painting gets a free-form LLM description of its emotional tone, themes, and atmosphere. Each news batch gets the same. Embeddings are computed and cosine similarity finds the best painting for the current news. "Stormy skies with golden fields" naturally matches "industry upheaval amid golden-age AI breakthroughs."
-- **Smart news curation** — Multiple RSS sources are fetched, then an LLM selects, ranks, summarizes, and translates to your configured language. Complete stories, not just headlines.
+- **Whisper text** — Art facts blend into the painting's quiet zones: small, unobtrusive text carrying historical trivia, artist context, or compositional insights. Each painting displays one fact per rotation, cycling through 1-3 facts for repeated viewings.
+- **News replay** — Previously seen news batches cycle through on subsequent rotations when the primary queue empties. News facts are replayed with a configurable expiration window, keeping your backlog fresh without redundant alerts.
+- **Subject avoidance** — The LLM identifies the primary subject zone in each painting, ensuring news overlays never obscure the focal point. The subject region is preserved as visually clean space.
+- **Smart news curation** — Multiple RSS sources are fetched and deduplicated by URL, then an LLM selects, ranks, summarizes, and translates to your configured language. Complete stories, not just headlines. Seen article URLs are tracked to prevent repetition across refresh cycles.
 - **Time-window awareness** — Fetches news from the past N days (default 3), not just the latest. If you've been away, you'll catch up on what matters. Articles older than 7 days are expired.
 - **Configurable display language** — Output in any language: Chinese, English, Japanese, etc. The LLM translates and adapts summaries accordingly.
 - **Dual refresh cycle** — News is fetched every 6 hours (configurable), paintings rotate every 15 minutes. News is split into batches so each rotation shows fresh stories.
@@ -89,6 +92,7 @@ language = "zh"                     # Display language (zh, en, ja, ...)
 stories_per_refresh = 12            # LLM curates this many per fetch
 max_age_days = 3                    # Fetch articles up to N days old
 expire_days = 7                     # Discard articles older than this
+replay_expire_days = 2              # Expire replay batches older than this
 
 [[news.feeds]]
 name = "TLDR Tech"
@@ -174,7 +178,7 @@ match_strategy = "semantic"         # semantic | random
 
 [ai]
 cli = "gemini"                      # gemini | codex | claude-code
-model = "gemini-3.1-pro-preview"    # Model for layout analysis and news curation
+model = "gemini-3-flash-preview"    # Model for layout analysis and news curation
 ```
 
 ## How Layout Analysis Works

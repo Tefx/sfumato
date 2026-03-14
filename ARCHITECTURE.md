@@ -138,6 +138,7 @@ class NewsConfig:
     stories_per_refresh: int = 12
     max_age_days: int = 3
     expire_days: int = 7
+    replay_expire_days: int = 2    # Days to keep replay batches before expiry
     feeds: list[FeedConfig] = field(default_factory=list)
 
 @dataclass(frozen=True)
@@ -151,7 +152,7 @@ class PaintingsConfig:
 @dataclass(frozen=True)
 class AiConfig:
     cli: str = "gemini"              # "gemini" | "codex" | "claude-code"
-    model: str = "gemini-3.1-pro-preview"
+    model: str = "gemini-3-flash-preview"
 
 @dataclass(frozen=True)
 class AppConfig:
@@ -412,8 +413,9 @@ def extract_palette(image_path: Path, n_colors: int = 8) -> PaletteColors:
 **File**: `src/sfumato/layout_ai.py`
 
 **Responsibility**: Invoke LLM with a painting image to analyze its composition and produce
-structured layout parameters: text zone position, text colors, scrim design, recommended
-number of stories, and a free-form description of the painting (used for embedding/matching).
+structured layout parameters: text zone, subject zone, whisper zone, art facts, text colors,
+scrim design, recommended number of stories, and a free-form description of the painting
+(used for embedding/matching).
 
 **Non-Responsibility**: Does not render HTML (that is `render`). Does not compute embeddings
 (that is `matcher`). Does not manage its own cache (caller checks cache by `content_hash`).
@@ -422,11 +424,76 @@ number of stories, and a free-form description of the painting (used for embeddi
 
 ```python
 from dataclasses import dataclass
+from enum import Enum
 
-@dataclass
+class ZonePosition(str, Enum):
+    """Valid zone positions for text, subject, and whisper overlays."""
+    TOP_LEFT = "top-left"
+    TOP_RIGHT = "top-right"
+    BOTTOM_LEFT = "bottom-left"
+    BOTTOM_RIGHT = "bottom-right"
+    LEFT_SIDE = "left-side"
+    RIGHT_SIDE = "right-side"
+
+@dataclass(frozen=True)
 class TextZone:
-    position: str              # "top-left"|"top-right"|"bottom-left"|"bottom-right"|"left-side"|"right-side"
-    reason: str                # LLM's explanation for choosing this zone
+    """Identifies where news text should be placed on a painting.
+
+    The position is chosen based on finding the quietest visual area
+    (lowest visual density) where text can be overlaid without obscuring
+    important elements of the artwork.
+
+    Contract:
+        - position must be one of the six valid ZonePosition values
+        - reason is free-form text for debugging/display
+        - Must be mutually exclusive with subject_zone and whisper_zone
+    """
+    position: ZonePosition      # Where to place primary news text
+    reason: str                 # LLM's explanation for choosing this zone
+
+@dataclass(frozen=True)
+class SubjectZone:
+    """Identifies the dominant subject area that overlays must avoid.
+
+    The LLM identifies the primary visual subject mass of the painting
+    (e.g., the face in a portrait, the horizon in a landscape) to ensure
+    overlays never obscure the focal point.
+
+    Contract:
+        - position must be one of the six valid ZonePosition values
+        - Must remain mutually exclusive with text_zone and whisper_zone
+    """
+    position: ZonePosition      # Coarse zone containing the primary subject mass
+    reason: str                 # LLM explanation describing the protected subject
+
+@dataclass(frozen=True)
+class WhisperZone:
+    """Placement contract for secondary whisper text carrying art facts.
+
+    Whisper text is small, unobtrusive text that blends into the painting's
+    quiet zones, carrying historical trivia, artist context, or compositional
+    insights. Each painting displays one fact per rotation, cycling through
+    1-3 facts for repeated viewings.
+
+    Contract:
+        - position must be one of the six valid ZonePosition values
+        - max_width_percent is between 12 and 24 inclusive
+        - readability_notes explains why the zone remains legible at TV distance
+        - Must be mutually exclusive with text_zone and subject_zone
+    """
+    position: ZonePosition
+    reason: str
+    max_width_percent: int     # Maximum whisper block width (12-24% of screen)
+    readability_notes: str     # Why this zone remains readable at distance
+
+@dataclass(frozen=True)
+class ArtFact:
+    """A short whisper-copy fact about the artwork.
+
+    Each painting has 1-3 facts suitable for whisper presentation.
+    The daemon cycles through facts on repeated viewings of the same painting.
+    """
+    text: str                  # Short fact text (~50-80 characters)
 
 @dataclass
 class LayoutColors:
@@ -454,12 +521,20 @@ class PortraitLayout:
 
 @dataclass
 class LayoutParams:
+    """Complete layout analysis result from LLM painting analysis.
+
+    All zone positions (text_zone, subject_zone, whisper_zone) are mutually
+    exclusive and chosen to avoid overlapping important visual elements.
+    """
     orientation: str              # "landscape" | "portrait" (as determined by LLM+dimensions)
     painting_title: str           # LLM-identified title (or "Unknown")
     painting_artist: str          # LLM-identified artist (or "Unknown")
     painting_description: str     # Free-form rich description for embedding/matching
                                   # e.g. "暴风雨前的宁静，灰蓝色天空压迫着金色麦田..."
-    text_zone: TextZone
+    text_zone: TextZone           # Where to place primary news text
+    subject_zone: SubjectZone     # Protected subject area to avoid
+    whisper_zone: WhisperZone    # Zone for art-fact whisper text
+    art_facts: list[ArtFact]      # 1-3 short facts, cycled on repeated viewings
     colors: LayoutColors
     scrim: ScrimParams
     recommended_stories: int      # LLM's recommendation: how many stories fit (2-5)
@@ -474,7 +549,10 @@ async def analyze_painting(
     """Send painting image to LLM for composition analysis.
 
     The LLM receives the image and a structured prompt requesting:
-    - Quiet zone identification
+    - Quiet zone identification (for text placement)
+    - Subject zone identification (to preserve/avoid)
+    - Whisper zone for art facts
+    - 1-3 art facts about the painting
     - Text placement recommendation
     - Color recommendations
     - Scrim design
@@ -898,6 +976,92 @@ class NewsQueue:
         """Load queue from disk. No-op if file doesn't exist."""
         ...
 
+class ReplayBatch:
+    """A replayable news batch with metadata for cyclic replay."""
+
+    stories: list[Story]
+    tone_description: str
+    source_enqueued_at: datetime    # When original QueuedBatch was enqueued
+    transferred_at: datetime        # When batch entered ReplayQueue
+    last_replayed_at: datetime | None  # None until first next() call
+    replay_count: int               # Count of completed next() yields
+
+class ReplayQueue:
+    """Cyclic replay queue persisted to replay_queue.json.
+
+    When the primary NewsQueue is empty, previously-seen batches cycle
+    through on subsequent rotations. Old batches expire based on
+    config.news.replay_expire_days.
+
+    Cycling semantics:
+    - next() returns the batch at next_index and advances cyclically
+    - next() does not remove entries; replay storage is cyclic, not FIFO
+    - Empty queue => next() returns None
+
+    Deduplication:
+    - _seen_urls tracks all story URLs that have ever been replayed
+    - Transfer policy rejects batches with too-high overlap with existing entries
+    """
+
+    def __init__(self, state_dir: Path) -> None: ...
+
+    def next(self) -> ReplayBatch | None:
+        """Return next replay batch and advance cyclic cursor."""
+        ...
+
+    def transfer_from_news_queue(self, batch: QueuedBatch) -> bool:
+        """Evaluate overlap and append batch if accepted.
+
+        Uses config.news.replay_expire_days for staleness threshold.
+        Returns True if batch was transferred, False if rejected.
+        """
+        ...
+
+    def expire(self, expire_days: int) -> int:
+        """Drop batches older than expire_days. Returns count removed."""
+        ...
+
+    @property
+    def size(self) -> int:
+        """Number of replay batches available."""
+        ...
+
+    @property
+    def seen_urls(self) -> set[str]:
+        """Set of all story URLs that have been replayed (for dedup)."""
+        ...
+
+    def persist(self) -> None:
+        """Persist queue and seen_urls to disk."""
+        ...
+
+    def load(self) -> None:
+        """Load queue from disk. No-op if file doesn't exist."""
+        ...
+
+class ArtFactRotation:
+    """Tracks which art fact to display next for each painting.
+
+    Keys are painting.content_hash values.
+    Values are zero-based whisper_fact_index to emit.
+
+    When a painting with art_facts is displayed, the index advances
+    modulo len(art_facts) on each successful rotation.
+    """
+
+    def __init__(self, state_dir: Path) -> None: ...
+
+    def get_next_index(self, content_hash: str, art_fact_count: int) -> int | None:
+        """Return the next fact index for this painting, or None if no facts."""
+        ...
+
+    def advance(self, content_hash: str, art_fact_count: int) -> None:
+        """Advance the fact index modulo art_fact_count."""
+        ...
+
+    def save(self) -> None: ...
+    def load(self) -> None: ...
+
 class UsedPaintings:
     """Set of content_hashes that have been displayed. Persisted to disk."""
 
@@ -943,9 +1107,11 @@ class EmbeddingCache:
 class AppState:
     """Aggregate root for all daemon state."""
     news_queue: NewsQueue
+    replay_queue: ReplayQueue
     used_paintings: UsedPaintings
     layout_cache: LayoutCache
     embedding_cache: EmbeddingCache
+    art_fact_rotation: ArtFactRotation
 
     @classmethod
     def load(cls, state_dir: Path) -> "AppState":
@@ -962,8 +1128,10 @@ class AppState:
 ```
 ~/.sfumato/state/
   news_queue.json        # Serialized QueuedBatch list
+  replay_queue.json      # Cyclic replay batches with seen_urls
   used_paintings.json    # Set of content_hash strings
   layout_cache.json      # Dict[content_hash, LayoutParams as dict]
+  art_fact_rotation.json # Dict[content_hash, next_fact_index]
   embedding_cache.npz    # Numpy archive of embedding vectors with string keys
 ```
 
