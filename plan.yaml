@@ -5411,6 +5411,30 @@ phases:
 
       - Downstream test step can be written without inventing behavior'
     agent: software-architect
+  - id: replay.scheduler-wire.test
+    name: Define replay scheduler wiring tests
+    status: pending
+    description: "step_type: test\nagent: python-executor\nspec_refs:\n  - ARCHITECTURE.md#2.12\n\
+      touch_paths:\n  - tests/\n  - src/sfumato/orchestrator.py\n  - src/sfumato/state.py\n\
+      harness_refs:\n  - tests/\n\nDefine contract tests for orchestrator-side replay\
+      \ scheduling.\n\nTest scope:\n1. Add or update targeted tests for rotate/dequeue\
+      \ precedence between primary news_queue and replay_queue.\n2. Assert consumed\
+      \ primary batches transfer into replay storage after rotation.\n3. Assert replay\
+      \ expiry is triggered during refresh_news using replay_expire_days.\n4. Assert\
+      \ >80% seen_urls overlap skips the LLM path and reuses existing batches.\n\n\
+      Required acceptance checks:\n- primary queue precedence over replay queue\n\
+      - replay transfer after primary consumption\n- expiry trigger during refresh_news\n\
+      - >80% overlap dedup skip behavior preserves existing batches\n- Tests fail\
+      \ before implementation and define the intended behavior clearly"
+    verification: '- Targeted orchestrator wiring tests exist for queue precedence,
+      replay transfer, expiry trigger, and >80% overlap dedup skip behavior
+
+      - Test names or commands are specific enough for downstream implementation verification
+
+      - No product implementation logic added beyond minimal fixtures/helpers'
+    depends_on:
+    - replay.scheduler-wire.contract
+    agent: python-executor
 - id: polish
   name: 'Polish: Default Model + Documentation'
   status: locked
