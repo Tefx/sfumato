@@ -2883,7 +2883,7 @@ phases:
     claimed_at: '2026-03-14T18:11:01.854110+00:00'
   - id: production.docker
     name: Create Dockerfile and deployment config
-    status: pending
+    status: claimed
     description: "step_type: implementation\ntags:\n  - integration\nspec_refs:\n\
       \  - ARCHITECTURE.md#9\n  - ARCHITECTURE.md#2.12\n  - ARCHITECTURE.md#2.13\n\
       touch_paths:\n  - Dockerfile\n  - docker-compose.yml\nharness_refs:\n  - docker\
@@ -2927,6 +2927,8 @@ phases:
     - production.docker.contract
     - production.docker.tests
     agent: software-architect
+    claimed_by: software-architect
+    claimed_at: '2026-03-14T18:11:05.829565+00:00'
   - id: production.cleanup
     name: Remove proto.py and clean up
     status: pending
