@@ -2865,3 +2865,32 @@ phases:
       - Highest-risk failure semantics are explicit for SIGTERM during active work,
       repeated shutdown signals, and fatal startup failure before the loop begins'
     agent: python-senior
+  - id: production.watch.tests
+    name: Author daemon watch tests
+    status: pending
+    description: "step_type: test\nspec_refs:\n  - ARCHITECTURE.md#2.12\n  - ARCHITECTURE.md#2.13\n\
+      touch_paths:\n  - tests/test_orchestrator.py\n  - tests/test_cli.py\n  - src/sfumato/orchestrator.py\n\
+      \  - src/sfumato/cli.py\nharness_refs:\n  - pytest\n  - signal-handling harness\n\
+      agent: python-executor\n\nAuthor tests for the runnable `watch` surface before\
+      \ implementation.\n\nRequired coverage:\n- startup path loads state, asks scheduler\
+      \ for actions, dispatches the mapped orchestrator operations, saves state, and\
+      \ sleeps\n- scheduler outputs map correctly to `run_once`, `run_news_refresh`,\
+      \ `run_backfill`, and quiet-art behavior\n- `sfumato watch` CLI entrypoint forwards\
+      \ to the real daemon runtime surface\n- graceful shutdown on SIGINT/SIGTERM\
+      \ saves state and exits cleanly\n- fatal startup failures surface deterministically\
+      \ without entering the main loop\n\nConstraints:\n- tests may use fakes/fixtures\
+      \ for time, signals, and async sleeps, but no production loop implementation\
+      \ beyond helpers\n- at least one named regression covers the highest-risk shutdown\
+      \ path"
+    verification: '- Main path: targeted tests define startup, one full loop iteration,
+      CLI entrypoint wiring, and orderly sleep/save behavior
+
+      - Failure path: focused regressions define SIGTERM during active work, repeated
+      signal handling, and startup failure before loop entry
+
+      - Proof: explicit tests cover both runtime entrypoint wiring and graceful-shutdown
+      behavior'
+    depends_on:
+    - production.scheduler
+    - production.watch.contract
+    agent: python-executor
