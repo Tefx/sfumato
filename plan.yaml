@@ -2813,23 +2813,49 @@ phases:
   - id: production.docker
     name: Create Dockerfile and deployment config
     status: pending
-    description: 'Create Dockerfile for containerized deployment. Multi-stage build:
-      Python 3.12 + Playwright Chromium + sfumato package. Create docker-compose.yml
-      with volume mounts for config (~/.config/sfumato) and state (~/.sfumato). Expose
-      no ports (TV communication is outbound WebSocket). Include healthcheck. Files:
-      Dockerfile (new), docker-compose.yml (new). Completion: docker build succeeds;
-      docker-compose up starts sfumato watch; config and state persist across container
-      restarts.'
-    verification: docker build completes without errors; container starts sfumato
-      watch; volumes mount correctly for config and state persistence
+    description: "step_type: implementation\ntags:\n  - integration\nspec_refs:\n\
+      \  - ARCHITECTURE.md#9\n  - ARCHITECTURE.md#2.12\n  - ARCHITECTURE.md#2.13\n\
+      touch_paths:\n  - Dockerfile\n  - docker-compose.yml\nharness_refs:\n  - docker\
+      \ build/runtime smoke harness\nagent: software-architect\n\nImplement the runnable\
+      \ container surface per the upstream contract/test steps.\n\nScope:\n- create\
+      \ `Dockerfile` for the production image\n- create `docker-compose.yml` for persistent\
+      \ config/state mounts and long-running watch execution\n- wire the real `sfumato\
+      \ watch` entrypoint, runtime dependencies, healthcheck, and stop behavior\n\n\
+      Failure-mode checklist:\n- image includes the runtime/system dependencies needed\
+      \ to start the real watch entrypoint\n- broken config/state mounts fail in a\
+      \ diagnosable way instead of silently discarding state\n- healthcheck and stop\
+      \ behavior match the daemon lifecycle and do not leave the container hanging\
+      \ on shutdown\n- restart persistence preserves config/state data across container\
+      \ restarts\n\nState semantics:\n- config and state volumes must preserve on-disk\
+      \ data exactly across restarts\n- container entrypoint must start the same watch\
+      \ surface exposed by the CLI contract\n- backward-compatible behavior is no\
+      \ inbound port exposure while outbound TV communication still works\n\nOut-of-scope\
+      \ guardrail:\n- no app-level business logic changes beyond container/runtime\
+      \ wiring\n- no proto-file cleanup in this step\n\n## Integration Evidence\n\n\
+      **Command or test exercising the full path**:\n```\n<exact docker build/run\
+      \ command or smoke test name>\n```\n\n**Actual output**:\n```\n<paste stdout/stderr\
+      \ or test runner output>\n```\n\n**Path exercised**: `Dockerfile` / `docker-compose.yml`\
+      \ -> `sfumato watch` runtime entrypoint"
+    verification: '- Main path: smoke checks prove the image builds, the container
+      starts the real `sfumato watch` entrypoint, and config/state mounts persist
+      across restart
+
+      - Failure path: focused regressions prove missing runtime dependencies, broken
+      mounts, and shutdown/healthcheck mismatches are detected explicitly
+
+      - Proof: deployment evidence must include both startup output and a restart-persistence
+      check; generic build success alone is insufficient'
     refs:
     - ARCHITECTURE.md#9
+    - ARCHITECTURE.md#2.12
+    - ARCHITECTURE.md#2.13
     - Dockerfile
     - docker-compose.yml
-    - ARCHITECTURE.md
     depends_on:
     - production.watch
-    agent: python-executor
+    - production.docker.contract
+    - production.docker.tests
+    agent: software-architect
   - id: production.cleanup
     name: Remove proto.py and clean up
     status: pending
