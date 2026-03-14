@@ -2045,7 +2045,7 @@ phases:
       - Time-window filtering remains driven by news refresh path and config settings.'
   - id: intelligence.semantic-match
     name: Wire semantic matching and caching into orchestrator
-    status: claimed
+    status: done
     description: 'Wire matcher.select_painting() into orchestrator.run_once(). Replace
       random painting selection with semantic matching when match_strategy=semantic.
       Use LayoutCache to skip re-analysis of known paintings. Use EmbeddingCache for
@@ -2068,6 +2068,47 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T16:59:19.565741+00:00'
+    done_at: '2026-03-14T17:14:01.078832+00:00'
+    evidence: 'Artifact:
+
+      - PR: commit ac8be33 ([vectl] step-intelligence.semantic-match completed), source
+      worktree commit adb51e7
+
+
+      Verification:
+
+      - Run: `uv run pytest tests/test_orchestrator.py -v` -> 55 passed (post-conflict
+      resolution verification)
+
+      - Run: `python3 -m py_compile src/sfumato/orchestrator.py` -> passed
+
+      - Run: `python3 -m py_compile tests/test_orchestrator.py` -> passed
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#2.6
+
+      - ARCHITECTURE.md#2.12
+
+
+      Files changed:
+
+      - src/sfumato/orchestrator.py
+
+      - src/sfumato/cli.py
+
+      - tests/test_orchestrator.py
+
+
+      Gaps/Notes:
+
+      - Merge conflict with previously merged `intelligence.news-queue` was resolved
+      by conflict-resolver; final code preserves both on-demand queue refresh and
+      semantic-matching/caching flow.
+
+      - `match_score` wiring and cache-path integration are included in final merged
+      orchestrator changes.'
   - id: intelligence.init-cmd
     name: Implement sfumato init command
     status: pending
