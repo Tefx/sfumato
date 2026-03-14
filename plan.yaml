@@ -3882,3 +3882,45 @@ phases:
     - tests/test_orchestrator.py
     - tests/test_cli.py
     agent: python-senior
+  - id: hardening.config-init-fixes
+    name: Config path expansion + init command fixes
+    status: pending
+    description: "step_type: implementation\ntouch_paths:\n  - src/sfumato/config.py\n\
+      \  - src/sfumato/cli.py (init command)\n  - tests/test_config.py\n  - tests/test_cli.py\n\
+      agent: python-executor\n\n## Objective\n\nFix bugs #1, #2, #3 from the hardening\
+      \ bug list.\n\n## Tasks\n\n### Bug #1: ~ path not expanded\nFile: src/sfumato/config.py\n\
+      The default PaintingsConfig has `cache_dir = Path(\"~/.sfumato/paintings\")`.\n\
+      While AppConfig.__post_init__ does expanduser(), verify ALL code paths that\n\
+      construct or use Path fields go through expansion. Specifically check:\n- `generate_default_config()`\
+      \ output: the TOML template uses literal `~` strings\n  which is correct for\
+      \ TOML, but verify that `load_config()` expands them.\n- Any code path that\
+      \ reads cache_dir before __post_init__ runs.\nGrep hint: `grep -rn 'Path(\"\
+      ~' src/sfumato/`\n\n### Bug #2: Empty [[news.feeds]] in default config\nFile:\
+      \ src/sfumato/config.py\nThe `generate_default_config()` produces `[[news.feeds]]`\
+      \ entries that are\ncommented out, but TOML parsing may treat them as empty\
+      \ dicts. Fix:\n- Ensure the default config template either has no `[[news.feeds]]`\
+      \ section\n  or has it fully commented with `#` on every line\n- Add a test:\
+      \ parse the default config output and verify `news.feeds` is\n  either empty\
+      \ list or contains only valid FeedConfig entries (no empty dicts)\nGrep hint:\
+      \ `grep -n 'news.feeds' src/sfumato/config.py`\n\n### Bug #3: init command fails\
+      \ when config missing\nFile: src/sfumato/cli.py, `init()` function\nWhen config\
+      \ file doesn't exist, the init command should CREATE it with\n`generate_default_config()`,\
+      \ not error out. Fix the init command to:\n- Check if config path exists\n-\
+      \ If not, write `generate_default_config()` to it\n- If yes, report it already\
+      \ exists (don't overwrite)\nGrep hint: `grep -n 'def init' src/sfumato/cli.py`\n\
+      \n## Tests to add/update\n- test_config.py: test_default_config_parses_without_empty_feeds\n\
+      - test_config.py: test_all_path_fields_expanded_after_load\n- test_cli.py: test_init_creates_config_when_missing\n\
+      - test_cli.py: test_init_does_not_overwrite_existing"
+    verification: '- uv run pytest tests/test_config.py tests/test_cli.py -v: all
+      pass
+
+      - New tests explicitly cover: empty feeds parsing, path expansion, init creation
+
+      - generate_default_config() output round-trips through load_config() without
+      error'
+    refs:
+    - src/sfumato/config.py
+    - src/sfumato/cli.py
+    - tests/test_config.py
+    - tests/test_cli.py
+    agent: python-executor
