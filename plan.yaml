@@ -1,0 +1,557 @@
+# =============================================================
+# MANAGED FILE — DO NOT EDIT DIRECTLY
+# This file is owned by vectl. Direct edits bypass CAS write
+# protection, lock recalculation, and schema validation.
+#
+# Use: uvx vectl <command>  OR  vectl_* MCP tools
+# Docs: uvx vectl guide
+# =============================================================
+version: 1
+project: sfumato
+context: Implementation plan for sfumato.
+phases:
+- id: core
+  name: Core Pipeline
+  status: pending
+  gate: sfumato run --no-upload produces a valid 4K PNG end-to-end
+  context: 'Minimal end-to-end: sfumato run produces 4K PNG from painting + news.
+    Modules: config, llm, palette, news(refactor), layout_ai(refactor), render(refactor),
+    tv(extend), orchestrator, cli.'
+  steps:
+  - id: core.config
+    name: Implement config module
+    status: pending
+    description: 'Implement src/sfumato/config.py per ARCHITECTURE.md section 2.1.
+
+
+      Create all config dataclasses (TvConfig, ScheduleConfig, FeedConfig, NewsConfig,
+      PaintingsConfig, AiConfig, AppConfig). Implement load_config() with TOML parsing,
+      path resolution (~/ expansion), env var lookup, and sensible defaults. Implement
+      generate_default_config() for sfumato init.
+
+
+      File: src/sfumato/config.py
+
+      Pattern: frozen dataclasses + tomllib (Python 3.12 stdlib)
+
+      Spec: ARCHITECTURE.md section 2.1
+
+
+      Completion criteria:
+
+      - All dataclasses match the arch spec signatures
+
+      - load_config() searches config locations in priority order
+
+      - Paths are resolved to absolute
+
+      - ConfigError raised on invalid TOML
+
+      - Default AppConfig returned when no config file exists'
+    verification: load_config() returns valid AppConfig with defaults; load_config(path)
+      parses a sample TOML correctly; ConfigError raised on malformed input
+    refs:
+    - ARCHITECTURE.md#2.1
+    - src/sfumato/config.py
+    - PROTOTYPING.md
+    - ARCHITECTURE.md
+    agent: python-executor
+  - id: core.llm
+    name: Implement LLM invocation layer
+    status: pending
+    description: 'Implement src/sfumato/llm.py per ARCHITECTURE.md section 2.9.
+
+
+      Unified interface for invoking LLM backends (gemini/codex/claude-code CLI) via
+      subprocess. Implement invoke_text(), invoke_vision(), compute_embedding(), and
+      parse_json_response(). Handle retries (2x on transient errors), timeouts, and
+      markdown code fence stripping.
+
+
+      File: src/sfumato/llm.py
+
+      Spec: ARCHITECTURE.md section 2.9
+
+
+      Completion criteria:
+
+      - invoke_text() dispatches to correct CLI subprocess based on ai_config.cli
+
+      - invoke_vision() passes image file to CLI
+
+      - compute_embedding() returns list[float]
+
+      - parse_json_response() handles code fences and trailing commas
+
+      - LlmError, LlmParseError, EmbeddingError exception hierarchy
+
+      - Retry logic with 2 attempts on timeout/connection errors'
+    verification: invoke_text() constructs correct subprocess command for each backend;
+      parse_json_response() strips code fences and parses valid JSON; error classes
+      are properly defined
+    refs:
+    - ARCHITECTURE.md#2.9
+    - src/sfumato/llm.py
+    - PROTOTYPING.md
+    - ARCHITECTURE.md
+    - src/sfumato/layout_ai.py
+    agent: python-executor
+  - id: core.palette
+    name: Implement palette extraction
+    status: pending
+    description: 'Implement src/sfumato/palette.py per ARCHITECTURE.md section 2.4.
+
+
+      Extract dominant colors from a painting using PIL + numpy k-means clustering.
+      Return PaletteColors dataclass with dominant, secondary, accent, background
+      colors, is_dark flag, and top colors list.
+
+
+      File: src/sfumato/palette.py
+
+      Spec: ARCHITECTURE.md section 2.4
+
+      Dependencies: PIL (Pillow), numpy
+
+
+      Completion criteria:
+
+      - PaletteColors dataclass matches arch spec
+
+      - extract_palette() uses k-means on downsampled pixels
+
+      - is_dark computed from perceived luminance
+
+      - Returns valid hex color strings'
+    verification: extract_palette() returns PaletteColors with valid hex colors for
+      a test image; is_dark correctly classifies light vs dark images
+    refs:
+    - ARCHITECTURE.md#2.4
+    - src/sfumato/palette.py
+    - PROTOTYPING.md
+    - ARCHITECTURE.md
+    agent: python-executor
+  - id: core.news
+    name: Refactor news module
+    status: pending
+    description: 'Refactor src/sfumato/news.py per ARCHITECTURE.md section 2.2. Implement
+      Story and CurationResult dataclasses. Implement fetch_feeds() with httpx+feedparser,
+      URL deduplication, age filtering. Implement curate() using llm.invoke_text()
+      for LLM curation/ranking/translation/tone. Implement refresh_news() convenience
+      wrapper. File: src/sfumato/news.py (refactor existing ~123 LOC). Completion:
+      Story/CurationResult match spec; fetch_feeds() handles failures gracefully;
+      curate() produces structured output with tone_description.'
+    verification: fetch_feeds() handles feed failures gracefully; curate() produces
+      Story objects; CurationResult includes tone_description
+    refs:
+    - ARCHITECTURE.md#2.2
+    - src/sfumato/news.py
+    - PROTOTYPING.md
+    - ARCHITECTURE.md
+    depends_on:
+    - core.config
+    - core.llm
+    agent: python-executor
+  - id: core.layout-ai
+    name: Refactor layout_ai module
+    status: pending
+    description: 'Refactor src/sfumato/layout_ai.py per ARCHITECTURE.md section 2.5.
+      Implement full dataclass hierarchy: TextZone, LayoutColors, ScrimParams, PortraitLayout,
+      LayoutParams. Refactor analyze_painting() to use llm.invoke_vision() and return
+      LayoutParams. LLM prompt requests: quiet zones, text placement, colors, scrim,
+      story count, painting description, template hint. File: src/sfumato/layout_ai.py
+      (refactor existing ~123 LOC). Completion: LayoutParams contains all fields per
+      spec; analyze_painting() uses llm module; structured prompt covers all 7 analysis
+      aspects.'
+    verification: analyze_painting() returns LayoutParams with all required fields;
+      dataclasses match arch spec signatures
+    refs:
+    - ARCHITECTURE.md#2.5
+    - src/sfumato/layout_ai.py
+    - PROTOTYPING.md
+    - ARCHITECTURE.md
+    depends_on:
+    - core.config
+    - core.llm
+    agent: python-executor
+  - id: core.render
+    name: Refactor render module
+    status: pending
+    description: 'Refactor src/sfumato/render.py per ARCHITECTURE.md section 2.7.
+      Implement RenderContext and RenderResult dataclasses. Implement build_template_variables()
+      to convert RenderContext into template placeholder dict. Refactor render_to_png()
+      to accept RenderContext, select template by name, substitute variables, and
+      screenshot via Playwright at 3840x2160. Add render_to_png_sync() wrapper. Support
+      multi-template: painting_text, magazine, portrait, art_overlay, art_minimal.
+      File: src/sfumato/render.py (refactor existing ~88 LOC). Completion: RenderContext/RenderResult
+      match spec; template selection works; 4K PNG output produced.'
+    verification: render_to_png() produces a 4K PNG from a RenderContext; template
+      variables are correctly substituted; multiple templates supported
+    refs:
+    - ARCHITECTURE.md#2.7
+    - src/sfumato/render.py
+    - templates/
+    - PROTOTYPING.md
+    - ARCHITECTURE.md
+    depends_on:
+    - core.palette
+    - core.layout-ai
+    agent: python-executor
+  - id: core.tv
+    name: Extend TV module
+    status: pending
+    description: 'Extend src/sfumato/tv.py per ARCHITECTURE.md section 2.8. Implement
+      full interface: TvStatus, UploadedImage dataclasses. Implement check_status()
+      (non-throwing, 10s timeout), upload_image(), set_displayed(), list_uploaded(),
+      delete_uploaded(), clean_old_uploads(), is_available_for_push(). Add TvError/TvConnectionError/TvUploadError
+      exception hierarchy. Use samsungtvws library. File: src/sfumato/tv.py (extend
+      existing ~95 LOC). Completion: all public functions match arch spec; error handling
+      is non-throwing where specified.'
+    verification: check_status() returns TvStatus without throwing; upload_image()
+      returns content_id; clean_old_uploads() respects keep parameter; error classes
+      defined
+    refs:
+    - ARCHITECTURE.md#2.8
+    - src/sfumato/tv.py
+    - PROTOTYPING.md
+    - ARCHITECTURE.md
+    depends_on:
+    - core.config
+    agent: python-executor
+  - id: core.pipeline
+    name: Implement orchestrator.run_once
+    status: pending
+    description: 'Implement src/sfumato/orchestrator.py per ARCHITECTURE.md section
+      2.12 (run_once only). Wire all modules together: RunOptions, RunResult dataclasses.
+      Implement run_once() pipeline: dequeue/refresh news -> select painting (random
+      for now, semantic in Phase 2) -> analyze layout (via layout_ai) -> extract palette
+      -> choose template -> render 4K PNG -> upload to TV (if available) -> preview
+      (if requested). Handle --no-upload and --no-news flags. File: src/sfumato/orchestrator.py
+      (new). Completion: run_once() executes full pipeline; handles all RunOptions
+      flags; returns RunResult.'
+    verification: run_once() with no_upload=True produces a RenderResult with valid
+      png_path; pipeline stages execute in correct order
+    refs:
+    - ARCHITECTURE.md#2.12
+    - src/sfumato/orchestrator.py
+    - PROTOTYPING.md
+    - ARCHITECTURE.md
+    - src/sfumato/proto.py
+    depends_on:
+    - core.news
+    - core.render
+    - core.tv
+    agent: python-executor
+  - id: core.cli-run
+    name: Implement CLI run and preview commands
+    status: pending
+    description: 'Implement src/sfumato/cli.py per ARCHITECTURE.md section 2.13 (run
+      + preview commands only). Create Typer app with run command (--config, --no-upload,
+      --no-news, --painting, --cli, --model, --verbose) and preview command. Load
+      config, construct RunOptions, call orchestrator.run_once(). Handle top-level
+      errors with user-friendly messages and exit codes. Update __main__.py entry
+      point. File: src/sfumato/cli.py (new), src/sfumato/__main__.py. Completion:
+      sfumato run and sfumato preview work as documented in README.'
+    verification: sfumato run --no-upload executes without error; sfumato preview
+      renders and attempts to open; --help shows correct options
+    refs:
+    - ARCHITECTURE.md#2.13
+    - src/sfumato/cli.py
+    - src/sfumato/__main__.py
+    - ARCHITECTURE.md
+    depends_on:
+    - core.pipeline
+    agent: python-executor
+  - id: core.gate
+    name: 'Gate: Core Pipeline'
+    status: pending
+    description: 'Gate review: Verify core pipeline works end-to-end. sfumato run
+      --no-upload should produce a valid 4K PNG from a local painting + live news.
+      All module interfaces conform to ARCHITECTURE.md. No proto.py dependencies remain
+      in the pipeline path.'
+    verification: sfumato run --no-upload --painting <test.jpg> produces a 4K PNG;
+      all modules importable; public interfaces match arch spec
+    refs:
+    - ARCHITECTURE.md
+    depends_on:
+    - core.config
+    - core.llm
+    - core.palette
+    - core.news
+    - core.layout-ai
+    - core.render
+    - core.tv
+    - core.pipeline
+    - core.cli-run
+    agent: gate-reviewer
+- id: intelligence
+  name: Intelligence
+  status: locked
+  gate: Semantic matching selects relevant paintings for news batches; sfumato init
+    pre-fetches and analyzes seed paintings
+  context: 'Semantic art-news matching, seed painting library, news batching queue.
+    Modules: paintings, matcher, state, news(queue+time-window), orchestrator(matching+caching),
+    cli(init).'
+  depends_on:
+  - core
+  steps:
+  - id: intelligence.paintings
+    name: Implement paintings module
+    status: pending
+    description: 'Implement src/sfumato/paintings.py per ARCHITECTURE.md section 2.3.
+      Implement Orientation, ArtSource enums and PaintingInfo dataclass. Implement
+      fetch_paintings() dispatcher, fetch_from_rijksmuseum() (requires API key), fetch_from_met()
+      (public API), fetch_from_wikimedia() (Commons category search). Implement detect_orientation(),
+      list_cached_paintings(), content_hash(). Cache layout: ~/.sfumato/paintings/{source}/{source_id}.jpg
+      + .json sidecar. File: src/sfumato/paintings.py (new). Completion: all 3 cloud
+      sources implemented; images cached with sidecar metadata; deduplication via
+      exclude_ids.'
+    verification: fetch_from_met() downloads paintings to cache dir; list_cached_paintings()
+      reads sidecar JSON; content_hash() returns SHA-256
+    refs:
+    - ARCHITECTURE.md#2.3
+    - src/sfumato/paintings.py
+    - PROTOTYPING.md
+    - ARCHITECTURE.md
+    agent: python-executor
+  - id: intelligence.matcher
+    name: Implement matcher module
+    status: pending
+    description: 'Implement src/sfumato/matcher.py per ARCHITECTURE.md section 2.6.
+      Implement EmbeddingResult dataclass. Implement compute_embedding() using llm.compute_embedding().
+      Implement cosine_similarity(). Implement select_painting() with semantic and
+      random strategies. File: src/sfumato/matcher.py (new). Completion: cosine_similarity()
+      correct; select_painting() returns best-matching painting by embedding similarity;
+      random fallback works.'
+    verification: cosine_similarity() returns correct values; select_painting() with
+      semantic strategy picks highest-similarity painting
+    refs:
+    - ARCHITECTURE.md#2.6
+    - src/sfumato/matcher.py
+    - PROTOTYPING.md
+    - ARCHITECTURE.md
+    agent: python-executor
+  - id: intelligence.state
+    name: Implement state module
+    status: pending
+    description: 'Implement src/sfumato/state.py per ARCHITECTURE.md section 2.10.
+      Implement NewsQueue (FIFO, enqueue/dequeue/peek/expire/save/load), UsedPaintings
+      (set with mark/reset/save/load), LayoutCache (dict with get/put/has/save/load),
+      EmbeddingCache (numpy npz with get/put/has/save/load), and AppState aggregate
+      root. State persisted to ~/.sfumato/state/ as JSON (+ .npz for embeddings).
+      File: src/sfumato/state.py (new). Completion: all 4 state classes persist and
+      reload correctly; AppState.load() creates defaults for missing files.'
+    verification: NewsQueue enqueue/dequeue round-trips correctly; state files persist
+      to disk and reload; EmbeddingCache stores/retrieves numpy arrays
+    refs:
+    - ARCHITECTURE.md#2.10
+    - src/sfumato/state.py
+    - ARCHITECTURE.md
+    agent: python-executor
+  - id: intelligence.news-queue
+    name: Wire news queue and time-window into orchestrator
+    status: pending
+    description: 'Integrate NewsQueue into orchestrator pipeline. Add time-window
+      filtering (max_age_days) and batch splitting to news flow. orchestrator.run_once()
+      now dequeues from NewsQueue; if empty, triggers on-demand refresh_news(). orchestrator.run_news_refresh()
+      fetches, curates, and enqueues batches. Files: src/sfumato/news.py (add expire
+      logic), src/sfumato/orchestrator.py (wire NewsQueue). Completion: orchestrator
+      uses state.news_queue for batch management; expired stories cleaned up; on-demand
+      refresh works when queue empty.'
+    verification: orchestrator dequeues from NewsQueue; empty queue triggers refresh;
+      batch splitting produces correct batch sizes
+    refs:
+    - ARCHITECTURE.md#2.10
+    - ARCHITECTURE.md#2.12
+    - src/sfumato/orchestrator.py
+    - src/sfumato/news.py
+    - PROTOTYPING.md
+    - ARCHITECTURE.md
+    depends_on:
+    - intelligence.state
+    - intelligence.paintings
+    agent: python-executor
+  - id: intelligence.semantic-match
+    name: Wire semantic matching and caching into orchestrator
+    status: pending
+    description: 'Wire matcher.select_painting() into orchestrator.run_once(). Replace
+      random painting selection with semantic matching when match_strategy=semantic.
+      Use LayoutCache to skip re-analysis of known paintings. Use EmbeddingCache for
+      painting description and news tone embeddings. orchestrator.run_once() now:
+      compute news tone embedding -> select best-matching painting -> check layout
+      cache -> render. Files: src/sfumato/orchestrator.py (wire matcher + caches).
+      Completion: semantic matching active; layout and embedding caches hit on repeated
+      paintings; match_score included in RunResult.'
+    verification: orchestrator uses matcher for painting selection; layout cache prevents
+      duplicate LLM calls; embedding cache persists across runs
+    refs:
+    - ARCHITECTURE.md#2.6
+    - ARCHITECTURE.md#2.12
+    - src/sfumato/orchestrator.py
+    - PROTOTYPING.md
+    - ARCHITECTURE.md
+    depends_on:
+    - intelligence.matcher
+    - intelligence.state
+    agent: python-executor
+  - id: intelligence.init-cmd
+    name: Implement sfumato init command
+    status: pending
+    description: 'Implement orchestrator.init_project() and wire it to CLI init command
+      per ARCHITECTURE.md. init_project(): create config file if absent, create state
+      dirs, fetch seed_size paintings from cloud sources, analyze each (layout_ai),
+      compute embeddings, persist to caches. Add progress output to stdout. Wire to
+      cli.py init command with --config and --verbose options. Files: src/sfumato/orchestrator.py
+      (add init_project), src/sfumato/cli.py (add init command). Completion: sfumato
+      init fetches paintings, analyzes them, computes embeddings, and persists everything.'
+    verification: sfumato init creates config and state directories; paintings are
+      fetched and cached; layout analysis and embeddings are computed and persisted
+    refs:
+    - ARCHITECTURE.md#2.12
+    - ARCHITECTURE.md#2.13
+    - src/sfumato/orchestrator.py
+    - src/sfumato/cli.py
+    - ARCHITECTURE.md
+    depends_on:
+    - intelligence.paintings
+    - intelligence.semantic-match
+    agent: python-executor
+  - id: intelligence.gate
+    name: 'Gate: Intelligence'
+    status: pending
+    description: 'Gate review: Verify intelligence features work. sfumato init should
+      fetch seed paintings and analyze them. sfumato run should use semantic matching
+      to pick a painting that matches the news tone. Layout and embedding caches should
+      persist across runs. News queue should batch and dequeue correctly.'
+    verification: sfumato init completes successfully; sfumato run uses semantic matching;
+      caches persist across runs; news queue batching works correctly
+    refs:
+    - ARCHITECTURE.md
+    depends_on:
+    - intelligence.paintings
+    - intelligence.matcher
+    - intelligence.state
+    - intelligence.news-queue
+    - intelligence.semantic-match
+    - intelligence.init-cmd
+    agent: gate-reviewer
+- id: production
+  name: Production
+  status: locked
+  gate: sfumato watch starts daemon, handles SIGTERM gracefully, Docker image builds
+    and runs
+  context: 'Daemon mode, Docker deployment. Modules: scheduler, orchestrator(watch),
+    cli(watch+tv subcommands), Dockerfile, cleanup.'
+  depends_on:
+  - intelligence
+  steps:
+  - id: production.scheduler
+    name: Implement scheduler module
+    status: pending
+    description: 'Implement src/sfumato/scheduler.py per ARCHITECTURE.md section 2.11.
+      Implement Action flag enum (NONE, REFRESH_NEWS, ROTATE, BACKFILL, QUIET_ART,
+      IDLE), SchedulerState dataclass, Scheduler class. Implement what_to_do() with
+      dual-timer logic: active_hours check, quiet_hours check, news_interval elapsed,
+      rotate_interval elapsed, backfill needed. Implement seconds_until_next_action(),
+      is_quiet_hour(), is_active_hour(). File: src/sfumato/scheduler.py (new). Completion:
+      what_to_do() returns correct Action flags for all time scenarios; quiet/active
+      hours respected.'
+    verification: what_to_do() returns IDLE outside active hours; QUIET_ART during
+      quiet hours; REFRESH_NEWS|ROTATE when news interval elapsed; ROTATE when rotate
+      interval elapsed
+    refs:
+    - ARCHITECTURE.md#2.11
+    - src/sfumato/scheduler.py
+    - ARCHITECTURE.md
+    agent: python-executor
+  - id: production.watch
+    name: Implement orchestrator.watch daemon loop
+    status: pending
+    description: 'Implement orchestrator.watch() per ARCHITECTURE.md section 2.12.
+      Daemon loop: load state -> ask scheduler what_to_do(now) -> execute actions
+      (run_once for ROTATE, run_news_refresh for REFRESH_NEWS, run_backfill for BACKFILL,
+      pure art for QUIET_ART) -> save state -> sleep until next action. Handle SIGINT/SIGTERM
+      for graceful shutdown (save state, log, exit cleanly). Also implement run_backfill()
+      for background pool expansion. File: src/sfumato/orchestrator.py (add watch
+      + run_backfill). Completion: watch() runs indefinitely; responds to scheduler;
+      graceful shutdown works.'
+    verification: watch() enters loop and responds to scheduler actions; SIGTERM triggers
+      graceful shutdown with state save; run_backfill() fetches and analyzes new paintings
+    refs:
+    - ARCHITECTURE.md#2.12
+    - src/sfumato/orchestrator.py
+    - src/sfumato/scheduler.py
+    - ARCHITECTURE.md
+    depends_on:
+    - production.scheduler
+    agent: python-executor
+  - id: production.cli-full
+    name: 'Complete CLI: watch + tv subcommands'
+    status: pending
+    description: 'Complete src/sfumato/cli.py per ARCHITECTURE.md section 2.13. Add
+      watch command (--config, --cli, --model, --verbose) that calls orchestrator.watch().
+      Add tv subcommand group with status, list, clean subcommands. Each tv subcommand
+      loads config and calls the corresponding tv module function with formatted output.
+      File: src/sfumato/cli.py. Completion: sfumato watch starts daemon; sfumato tv
+      status/list/clean work correctly; all CLI commands have --help text.'
+    verification: sfumato watch starts and can be interrupted; sfumato tv status shows
+      TV info; sfumato tv --help lists subcommands
+    refs:
+    - ARCHITECTURE.md#2.13
+    - src/sfumato/cli.py
+    depends_on:
+    - production.watch
+    agent: python-executor
+  - id: production.docker
+    name: Create Dockerfile and deployment config
+    status: pending
+    description: 'Create Dockerfile for containerized deployment. Multi-stage build:
+      Python 3.12 + Playwright Chromium + sfumato package. Create docker-compose.yml
+      with volume mounts for config (~/.config/sfumato) and state (~/.sfumato). Expose
+      no ports (TV communication is outbound WebSocket). Include healthcheck. Files:
+      Dockerfile (new), docker-compose.yml (new). Completion: docker build succeeds;
+      docker-compose up starts sfumato watch; config and state persist across container
+      restarts.'
+    verification: docker build completes without errors; container starts sfumato
+      watch; volumes mount correctly for config and state persistence
+    refs:
+    - ARCHITECTURE.md#9
+    - Dockerfile
+    - docker-compose.yml
+    - ARCHITECTURE.md
+    depends_on:
+    - production.cli-full
+    agent: python-executor
+  - id: production.cleanup
+    name: Remove proto.py and clean up
+    status: pending
+    description: 'Remove src/sfumato/proto.py (prototype code superseded by modular
+      architecture). Remove any remaining references to proto.py in imports or __main__.py.
+      Clean up any unused output files or dead code. Verify all module imports are
+      clean. File: src/sfumato/proto.py (delete). Completion: proto.py deleted; no
+      import errors; all modules load cleanly.'
+    verification: proto.py is deleted; python -c 'import sfumato' succeeds; no references
+      to proto remain in codebase
+    refs:
+    - src/sfumato/proto.py
+    depends_on:
+    - production.docker
+    agent: python-executor
+  - id: production.gate
+    name: 'Gate: Production'
+    status: pending
+    description: 'Gate review: Verify production readiness. sfumato watch should start
+      as a daemon, respond to scheduler timers, handle SIGTERM gracefully. sfumato
+      tv subcommands should work. Docker image should build and run sfumato watch.
+      proto.py should be removed. All CLI commands documented in --help.'
+    verification: sfumato watch starts and handles SIGTERM; sfumato tv status works;
+      Docker builds and runs; proto.py removed; all imports clean
+    refs:
+    - ARCHITECTURE.md
+    depends_on:
+    - production.scheduler
+    - production.watch
+    - production.cli-full
+    - production.docker
+    - production.cleanup
+    agent: gate-reviewer
