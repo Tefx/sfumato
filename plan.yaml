@@ -5124,7 +5124,7 @@ phases:
 
       - Runtime parsing implementation for replay_expire_days remains for replay.config
       implementation step.'
-  - id: replay.define-replayqueue-contract
+  - id: replay.queue.contract
     name: Define ReplayQueue contract
     status: pending
     description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
@@ -5146,7 +5146,7 @@ phases:
       \ remains the expiry source of truth for replay batches.\n- Replay iteration\
       \ order is stable across save/load.\n\nContract purity:\n- Allowed: signatures,\
       \ schemas, dataclass/interface notes, stub methods.\n- Forbidden: queue mutation\
-      \ logic, persistence implementation, orchestrator wiring.\n"
+      \ logic, persistence implementation, orchestrator wiring."
     verification: '- Contract defines ReplayQueue interface, persistence artifacts,
       and dedup threshold semantics without runnable business logic
 
@@ -5154,6 +5154,10 @@ phases:
 
       - Replay index and expiry source-of-truth semantics are specified clearly enough
       for tests'
+    refs:
+    - ARCHITECTURE.md#2.10
+    - src/sfumato/state.py
+    - tests/test_state.py
     depends_on:
     - replay.config
     agent: software-architect
@@ -5179,7 +5183,7 @@ phases:
 
       - No product implementation logic is embedded in tests'
     depends_on:
-    - replay.define-replayqueue-contract
+    - replay.queue.contract
     agent: python-executor
 - id: polish
   name: 'Polish: Default Model + Documentation'
