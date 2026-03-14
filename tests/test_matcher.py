@@ -78,6 +78,8 @@ class MockAiConfig:
 
     cli: str = "gemini"
     model: str = "test-model"
+    backend: str = "cli"
+    sdk_provider: str = "openrouter"
 
 
 # =============================================================================

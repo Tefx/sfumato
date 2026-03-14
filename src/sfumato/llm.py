@@ -1,8 +1,7 @@
 """LLM backend invocation and response parsing.
 
 This module provides a unified interface for invoking LLM backends (gemini CLI, codex CLI,
-claude-code CLI) via subprocess. It handles prompt construction, response parsing, retries,
-and timeout behavior.
+claude-code CLI) via subprocess, or via LiteLLM SDK (openrouter, google, openai).
 
 Architecture reference: ARCHITECTURE.md#2.9
 """
@@ -10,6 +9,7 @@ Architecture reference: ARCHITECTURE.md#2.9
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import re
 import shutil
@@ -86,18 +86,19 @@ class LlmResponse:
     Attributes:
         text: Raw text response from the LLM backend.
         model: The model identifier that produced the response.
-        cli: The CLI backend name that was invoked ("gemini" | "codex" | "claude-code").
+        cli: The backend that was invoked:
+            - "gemini" | "codex" | "claude-code" for CLI backends
+            - "sdk" for SDK-based invocations (openrouter, google, openai)
         usage: Optional token usage dict with keys like 'prompt_tokens',
             'completion_tokens', 'total_tokens'. Present when the backend
-            provides it.
+            provides it (always present for SDK, may be None for CLI).
 
     Contract:
         - Instances are immutable (frozen dataclass)
-        - `text` is the raw output from the CLI, including any markdown fencing
-        - `model` reflects the model that actually responded (may differ from config
-          if the backend selected a fallback)
-        - `cli` is the canonical backend name from BACKEND_DISPATCH_MAP
-        - `usage` is None if the backend does not report token counts
+        - `text` is the raw output from the LLM (CLI or SDK), including any markdown fencing
+        - `model` reflects the model that actually responded
+        - `cli` is "sdk" for SDK invocations, or the CLI backend name for CLI invocations
+        - `usage` is available for SDK invocations, may be None for CLI invocations
     """
 
     text: str
@@ -143,6 +144,55 @@ Contract:
 # Valid backend names for type checking and error messages
 VALID_BACKENDS: tuple[str, ...] = tuple(BACKEND_DISPATCH_MAP.keys())
 """Tuple of valid AiConfig.cli values. Derived from BACKEND_DISPATCH_MAP."""
+
+
+# =============================================================================
+# SDK PROVIDER MAPPING
+# =============================================================================
+
+# Valid values for ai_config.backend field
+VALID_BACKEND_TYPES: tuple[str, ...] = ("cli", "sdk")
+"""Valid values for ai_config.backend field."""
+
+# Valid SDK providers for ai_config.sdk_provider field
+VALID_SDK_PROVIDERS: tuple[str, ...] = ("openrouter", "google", "openai")
+"""Valid SDK providers when backend='sdk'."""
+
+# Provider prefix mapping for LiteLLM model names
+SDK_PROVIDER_PREFIX_MAP: dict[str, str] = {
+    "openrouter": "openrouter/",
+    "google": "gemini/",
+    "openai": "",  # OpenAI models use the model name directly
+}
+"""Mapping from ai_config.sdk_provider to LiteLLM model name prefix."""
+
+
+def _map_sdk_model(sdk_provider: str, model: str) -> str:
+    """Map SDK provider and model to LiteLLM model name.
+
+    Contract:
+        - openrouter -> openrouter/{model}
+        - google -> gemini/{model}
+        - openai -> {model} (no prefix)
+
+    Args:
+        sdk_provider: The SDK provider ("openrouter" | "google" | "openai").
+        model: The model identifier from ai_config.model.
+
+    Returns:
+        LiteLLM-formatted model string.
+
+    Raises:
+        LlmError: If sdk_provider is not in VALID_SDK_PROVIDERS.
+    """
+    if sdk_provider not in SDK_PROVIDER_PREFIX_MAP:
+        valid_providers = ", ".join(repr(p) for p in VALID_SDK_PROVIDERS)
+        raise LlmError(
+            f"Unsupported SDK provider '{sdk_provider}'. Valid providers: {valid_providers}"
+        )
+
+    prefix = SDK_PROVIDER_PREFIX_MAP[sdk_provider]
+    return f"{prefix}{model}" if prefix else model
 
 
 # =============================================================================
@@ -498,6 +548,264 @@ async def _run_subprocess_with_retry(
 
 
 # =============================================================================
+# SDK INVOCATION HELPERS
+# =============================================================================
+
+
+async def _invoke_sdk_completion(
+    prompt: str,
+    ai_config: AiConfig,
+    system_prompt: str | None = None,
+    max_tokens: int = 4000,
+    temperature: float = 0.3,
+    timeout_seconds: int = DEFAULT_TEXT_TIMEOUT_SECONDS,
+    image_path: Path | None = None,
+) -> LlmResponse:
+    """Invoke LLM via LiteLLM SDK.
+
+    This is an internal helper for SDK-based invocations.
+
+    Args:
+        prompt: The user prompt text to send to the LLM.
+        ai_config: Configuration specifying SDK provider and model.
+        system_prompt: Optional system prompt.
+        max_tokens: Maximum tokens for the response.
+        temperature: Sampling temperature.
+        timeout_seconds: Timeout for the entire invocation.
+        image_path: Optional image path for vision calls.
+
+    Returns:
+        LlmResponse with raw text, model name, and cli="sdk".
+
+    Raises:
+        LlmError: If SDK invocation fails or provider is invalid.
+    """
+    try:
+        import litellm
+    except ImportError as e:
+        raise LlmError(
+            "LiteLLM SDK is required for backend='sdk'. "
+            "Install with: pip install litellm"
+        ) from e
+
+    # Validate provider
+    if ai_config.sdk_provider not in VALID_SDK_PROVIDERS:
+        valid_providers = ", ".join(repr(p) for p in VALID_SDK_PROVIDERS)
+        raise LlmError(
+            f"Unsupported SDK provider '{ai_config.sdk_provider}'. "
+            f"Valid providers: {valid_providers}"
+        )
+
+    # Map provider + model to LiteLLM format
+    model = _map_sdk_model(ai_config.sdk_provider, ai_config.model)
+
+    # Build messages
+    messages: list[dict] = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+
+    # Handle vision (image) payloads
+    if image_path:
+        if not image_path.exists():
+            raise LlmError(f"Image file not found: {image_path}")
+        if not image_path.is_file():
+            raise LlmError(f"Image path is not a file: {image_path}")
+
+        # Read and encode image
+        try:
+            image_bytes = image_path.read_bytes()
+            image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+            # Detect image type from extension
+            suffix = image_path.suffix.lower()
+            mime_type = {
+                ".png": "image/png",
+                ".jpg": "image/jpeg",
+                ".jpeg": "image/jpeg",
+                ".gif": "image/gif",
+                ".webp": "image/webp",
+            }.get(suffix, "image/png")
+
+            messages.append(
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:{mime_type};base64,{image_b64}"
+                            },
+                        },
+                    ],
+                }
+            )
+        except OSError as e:
+            raise LlmError(f"Failed to read image file {image_path}: {e}") from e
+    else:
+        messages.append({"role": "user", "content": prompt})
+
+    # Invoke with retry
+    last_error: str = ""
+    for attempt in range(1, MAX_RETRY_ATTEMPTS + 1):
+        try:
+            response = await asyncio.wait_for(
+                asyncio.to_thread(
+                    litellm.completion,
+                    model=model,
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                ),
+                timeout=timeout_seconds,
+            )
+
+            # Extract response text
+            text = response.choices[0].message.content or ""
+
+            # Extract usage if available
+            usage = None
+            if response.usage:
+                usage = {
+                    "prompt_tokens": response.usage.prompt_tokens,
+                    "completion_tokens": response.usage.completion_tokens,
+                    "total_tokens": response.usage.total_tokens,
+                }
+
+            return LlmResponse(
+                text=text,
+                model=ai_config.model,
+                cli="sdk",
+                usage=usage,
+            )
+
+        except asyncio.TimeoutError:
+            last_error = f"Timeout after {timeout_seconds}s"
+            if attempt < MAX_RETRY_ATTEMPTS:
+                continue
+            raise LlmError(
+                f"LLM invocation failed after {MAX_RETRY_ATTEMPTS} attempts "
+                f"(backend: sdk, provider: {ai_config.sdk_provider}): {last_error}"
+            ) from None
+
+        except Exception as e:
+            error_msg = str(e)
+            if _check_transient_error(error_msg.lower()):
+                last_error = error_msg
+                if attempt < MAX_RETRY_ATTEMPTS:
+                    continue
+                raise LlmError(
+                    f"LLM invocation failed after {MAX_RETRY_ATTEMPTS} attempts "
+                    f"(backend: sdk, provider: {ai_config.sdk_provider}): {error_msg}"
+                ) from None
+            else:
+                # Deterministic error
+                raise LlmError(
+                    f"LLM invocation failed (backend: sdk, provider: {ai_config.sdk_provider}): "
+                    f"{error_msg}"
+                ) from e
+
+    # This should never be reached
+    raise LlmError(
+        f"LLM invocation failed after {MAX_RETRY_ATTEMPTS} attempts "
+        f"(backend: sdk, provider: {ai_config.sdk_provider}): {last_error}"
+    )
+
+
+async def _invoke_sdk_embedding(
+    text: str,
+    ai_config: AiConfig,
+) -> list[float]:
+    """Invoke embedding via LiteLLM SDK.
+
+    Args:
+        text: The text string to embed.
+        ai_config: Configuration specifying SDK provider and model.
+
+    Returns:
+        Embedding vector as list of floats.
+
+    Raises:
+        EmbeddingError: If embedding computation fails.
+    """
+    try:
+        import litellm
+    except ImportError as e:
+        raise EmbeddingError(
+            "LiteLLM SDK is required for backend='sdk'. "
+            "Install with: pip install litellm"
+        ) from e
+
+    # Validate provider
+    if ai_config.sdk_provider not in VALID_SDK_PROVIDERS:
+        valid_providers = ", ".join(repr(p) for p in VALID_SDK_PROVIDERS)
+        raise EmbeddingError(
+            f"Unsupported SDK provider '{ai_config.sdk_provider}'. "
+            f"Valid providers: {valid_providers}"
+        )
+
+    # Map provider + model to LiteLLM format
+    model = _map_sdk_model(ai_config.sdk_provider, ai_config.model)
+
+    last_error: str = ""
+    for attempt in range(1, MAX_RETRY_ATTEMPTS + 1):
+        try:
+            response = await asyncio.wait_for(
+                asyncio.to_thread(
+                    litellm.embedding,
+                    model=model,
+                    input=[text],
+                ),
+                timeout=DEFAULT_TEXT_TIMEOUT_SECONDS,
+            )
+
+            # Extract embedding vector
+            embedding = response.data[0]["embedding"]
+            if isinstance(embedding, list) and all(
+                isinstance(x, (int, float)) for x in embedding
+            ):
+                return [float(x) for x in embedding]
+
+            raise EmbeddingError(
+                f"Invalid embedding response from {ai_config.sdk_provider}: "
+                f"expected list of floats, got {type(embedding).__name__}"
+            )
+
+        except asyncio.TimeoutError:
+            last_error = f"Timeout after {DEFAULT_TEXT_TIMEOUT_SECONDS}s"
+            if attempt < MAX_RETRY_ATTEMPTS:
+                continue
+            raise EmbeddingError(
+                f"Embedding failed after {MAX_RETRY_ATTEMPTS} attempts "
+                f"(backend: sdk, provider: {ai_config.sdk_provider}): {last_error}"
+            ) from None
+
+        except EmbeddingError:
+            raise  # Re-raise EmbeddingError directly
+
+        except Exception as e:
+            error_msg = str(e)
+            if _check_transient_error(error_msg.lower()):
+                last_error = error_msg
+                if attempt < MAX_RETRY_ATTEMPTS:
+                    continue
+                raise EmbeddingError(
+                    f"Embedding failed after {MAX_RETRY_ATTEMPTS} attempts "
+                    f"(backend: sdk, provider: {ai_config.sdk_provider}): {error_msg}"
+                ) from None
+            else:
+                raise EmbeddingError(
+                    f"Embedding failed (backend: sdk, provider: {ai_config.sdk_provider}): "
+                    f"{error_msg}"
+                ) from e
+
+    # This should never be reached
+    raise EmbeddingError(
+        f"Embedding failed after {MAX_RETRY_ATTEMPTS} attempts "
+        f"(backend: sdk, provider: {ai_config.sdk_provider}): {last_error}"
+    )
+
+
+# =============================================================================
 # PUBLIC API - INVOCATION FUNCTIONS
 # =============================================================================
 
@@ -512,14 +820,24 @@ async def invoke_text(
 ) -> LlmResponse:
     """Invoke LLM with a text-only prompt.
 
-    Dispatches to the configured CLI backend:
+    Dispatches based on ai_config.backend:
+        - backend="cli": Use subprocess to invoke CLI backend (gemini, codex, claude-code)
+        - backend="sdk": Use LiteLLM SDK to invoke API (openrouter, google, openai)
+
+    For CLI backends:
         - gemini: `gemini -p "{prompt}" -y --sandbox false [-m {model}]`
         - codex: `codex exec --full-auto "{prompt}"`
         - claude-code: `claude -p "{prompt}" --output-format json [-m {model}] --max-tokens {n}`
 
+    For SDK backends:
+        - openrouter: Uses litellm.completion with model "openrouter/{model}"
+        - google: Uses litellm.completion with model "gemini/{model}"
+        - openai: Uses litellm.completion with model "{model}"
+
     Args:
         prompt: The user prompt text to send to the LLM.
-        ai_config: Configuration specifying the backend (ai_config.cli) and model.
+        ai_config: Configuration specifying the backend (ai_config.backend and
+            ai_config.cli for CLI, or ai_config.sdk_provider for SDK).
         system_prompt: Optional system prompt to prepend. Backend-specific handling.
         max_tokens: Maximum tokens for the response. Passed to the backend.
         temperature: Sampling temperature. Passed to the backend.
@@ -528,29 +846,54 @@ async def invoke_text(
 
     Returns:
         LlmResponse with raw text, model name, and cli backend used.
+            For SDK invocations, cli="sdk".
 
     Raises:
         LlmError: If invocation fails after MAX_RETRY_ATTEMPTS for transient errors.
-        LlmError: If ai_config.cli is not in BACKEND_DISPATCH_MAP (unsupported backend).
+        LlmError: If unsupported backend or invalid configuration.
 
     Contract Behavior:
-        1. Backend dispatch: Look up ai_config.cli in BACKEND_DISPATCH_MAP.
-           - If not found, raise LlmError with message listing VALID_BACKENDS.
-        2. Subprocess invocation: Execute the CLI command with proper argument escaping.
-        3. Timeout: Enforce timeout_seconds. On timeout, retry if attempts < MAX_RETRY_ATTEMPTS.
-        4. Connection failures: Retry transient errors up to MAX_RETRY_ATTEMPTS.
-        5. Deterministic errors: Raise immediately without retry.
-        6. Return LlmResponse on success.
+        CLI path (backend="cli"):
+            1. Validate ai_config.cli is in BACKEND_DISPATCH_MAP.
+            2. Subprocess invocation with proper argument escaping.
+            3. Timeout enforcement with retry for transient errors.
+            4. Return LlmResponse(cli=ai_config.cli).
+
+        SDK path (backend="sdk"):
+            1. Validate ai_config.sdk_provider is in VALID_SDK_PROVIDERS.
+            2. Map provider + model to LiteLLM format.
+            3. Invoke with retry for transient errors.
+            4. Return LlmResponse(cli="sdk").
 
     Non-goals for implementation:
         - No streaming support (collect full response before returning)
         - No multi-turn conversation management (each call is independent)
     """
-    # Validate backend
+    # Route based on backend type
+    if ai_config.backend == "sdk":
+        return await _invoke_sdk_completion(
+            prompt=prompt,
+            ai_config=ai_config,
+            system_prompt=system_prompt,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            timeout_seconds=timeout_seconds,
+            image_path=None,
+        )
+
+    # CLI path
+    if ai_config.backend not in VALID_BACKEND_TYPES:
+        valid_backend_types = ", ".join(repr(b) for b in VALID_BACKEND_TYPES)
+        raise LlmError(
+            f"Unsupported backend type '{ai_config.backend}'. "
+            f"Valid types: {valid_backend_types}"
+        )
+
+    # Validate CLI backend
     if ai_config.cli not in BACKEND_DISPATCH_MAP:
         valid_options = ", ".join(repr(b) for b in VALID_BACKENDS)
         raise LlmError(
-            f"Unsupported backend '{ai_config.cli}'. Valid backends: {valid_options}"
+            f"Unsupported CLI backend '{ai_config.cli}'. Valid backends: {valid_options}"
         )
 
     # Build command
@@ -588,8 +931,17 @@ async def invoke_vision(
 ) -> LlmResponse:
     """Invoke LLM with an image + text prompt.
 
-    Passes the image as a file reference to the CLI backend. Used for
-    painting layout analysis where the LLM must "see" the artwork.
+    Dispatches based on ai_config.backend:
+        - backend="cli": Use subprocess to invoke CLI backend (gemini, codex, claude-code)
+        - backend="sdk": Use LiteLLM SDK with base64-encoded image
+
+    For CLI backends:
+        - Passes image as file reference in prompt text
+        - Each backend has different image handling approach
+
+    For SDK backends:
+        - Reads and base64-encodes the image
+        - Passes as image_url content in messages
 
     Args:
         prompt: The user prompt text to send to the LLM.
@@ -601,38 +953,64 @@ async def invoke_vision(
 
     Returns:
         LlmResponse with raw text, model name, and cli backend used.
+            For SDK invocations, cli="sdk".
 
     Raises:
         LlmError: If invocation fails after MAX_RETRY_ATTEMPTS for transient errors.
         LlmError: If image_path does not exist or is not a valid image file.
-        LlmError: If ai_config.cli is not in BACKEND_DISPATCH_MAP.
+        LlmError: If unsupported backend or invalid configuration.
 
     Contract Behavior:
-        1. Validate image_path exists and is readable. Raise LlmError if not.
-        2. Dispatch to backend. Each backend has different image argument syntax:
-           - gemini: Tool-based file reading (may need to stage file first)
-           - codex: Similar tool-based approach
-           - claude-code: Native image support in prompt
-        3. Apply DEFAULT_VISION_TIMEOUT_SECONDS by default (longer than text).
-        4. Same retry semantics as invoke_text for transient failures.
-        5. Return LlmResponse on success.
+        CLI path (backend="cli"):
+            1. Validate image_path exists and is readable.
+            2. Validate ai_config.cli is in BACKEND_DISPATCH_MAP.
+            3. Dispatch to CLI with image file reference in prompt.
+            4. Same retry semantics as invoke_text for transient failures.
+            5. Return LlmResponse(cli=ai_config.cli).
+
+        SDK path (backend="sdk"):
+            1. Validate image_path exists and is readable.
+            2. Validate ai_config.sdk_provider is in VALID_SDK_PROVIDERS.
+            3. Base64-encode image and pass as multimodal content.
+            4. Same retry semantics with LiteLLM.
+            5. Return LlmResponse(cli="sdk").
 
     Non-goals for implementation:
         - No image format conversion (caller must provide PNG or JPEG)
         - No image resizing (caller handles preprocessing)
     """
-    # Validate backend
-    if ai_config.cli not in BACKEND_DISPATCH_MAP:
-        valid_options = ", ".join(repr(b) for b in VALID_BACKENDS)
-        raise LlmError(
-            f"Unsupported backend '{ai_config.cli}'. Valid backends: {valid_options}"
-        )
-
-    # Validate image path
+    # Validate image path exists (required for both CLI and SDK)
     if not image_path.exists():
         raise LlmError(f"Image file not found: {image_path}")
     if not image_path.is_file():
         raise LlmError(f"Image path is not a file: {image_path}")
+
+    # Route based on backend type
+    if ai_config.backend == "sdk":
+        return await _invoke_sdk_completion(
+            prompt=prompt,
+            ai_config=ai_config,
+            system_prompt=None,
+            max_tokens=max_tokens,
+            temperature=0.3,  # Default temperature for vision calls
+            timeout_seconds=timeout_seconds,
+            image_path=image_path,
+        )
+
+    # CLI path
+    if ai_config.backend not in VALID_BACKEND_TYPES:
+        valid_backend_types = ", ".join(repr(b) for b in VALID_BACKEND_TYPES)
+        raise LlmError(
+            f"Unsupported backend type '{ai_config.backend}'. "
+            f"Valid types: {valid_backend_types}"
+        )
+
+    # Validate CLI backend
+    if ai_config.cli not in BACKEND_DISPATCH_MAP:
+        valid_options = ", ".join(repr(b) for b in VALID_BACKENDS)
+        raise LlmError(
+            f"Unsupported CLI backend '{ai_config.cli}'. Valid backends: {valid_options}"
+        )
 
     # Build command
     cmd = _get_backend_command(
@@ -666,8 +1044,9 @@ async def compute_embedding(
 ) -> list[float]:
     """Compute text embedding using the configured backend.
 
-    Returns an embedding vector for semantic similarity matching between
-    painting descriptions and news tone descriptions.
+    Dispatches based on ai_config.backend:
+        - backend="cli": Use subprocess CLI for CLI-based embedding
+        - backend="sdk": Use LiteLLM SDK for embedding
 
     Args:
         text: The text string to embed.
@@ -678,33 +1057,42 @@ async def compute_embedding(
 
     Raises:
         EmbeddingError: If embedding computation fails.
-        EmbeddingError: If the backend does not support embedding (unlikely
-            for the supported backends).
+        EmbeddingError: If unsupported backend or invalid configuration.
 
     Contract Behavior:
-        1. Backend dispatch: Each backend has different embedding support:
-           - gemini: Uses Gemini embedding API endpoint
-           - codex: May fall back to local sentence-transformers
-           - claude-code: May use Anthropic embedding or local fallback
-        2. Return the embedding as list[float] (not numpy array - keep deps minimal).
-        3. Embedding dimension is model-dependent. Callers should not assume.
-        4. Retry semantics: Same as invoke_text for transient failures.
-        5. Do NOT cache here - caller is responsible for caching.
+        CLI path (backend="cli"):
+            1. Validate ai_config.cli is in BACKEND_DISPATCH_MAP.
+            2. Invoke CLI embedding command.
+            3. Parse JSON response for embedding vector.
+            4. Return list[float].
 
-    Backend-specific embedding strategies:
-        - If the configured backend has a native embedding API, use it.
-        - If not, fall back to a local model (sentence-transformers).
-        - The fallback model should be documented in the error if unavailable.
+        SDK path (backend="sdk"):
+            1. Validate ai_config.sdk_provider is in VALID_SDK_PROVIDERS.
+            2. Map provider + model to LiteLLM format.
+            3. Call litellm.embedding().
+            4. Return list[float].
 
     Non-goals for implementation:
         - No batch embedding (callers invoke per-text)
         - No embedding storage (caller handles caching)
     """
-    # Validate backend
+    # Route based on backend type
+    if ai_config.backend == "sdk":
+        return await _invoke_sdk_embedding(text=text, ai_config=ai_config)
+
+    # CLI path
+    if ai_config.backend not in VALID_BACKEND_TYPES:
+        valid_backend_types = ", ".join(repr(b) for b in VALID_BACKEND_TYPES)
+        raise EmbeddingError(
+            f"Unsupported backend type '{ai_config.backend}'. "
+            f"Valid types: {valid_backend_types}"
+        )
+
+    # Validate CLI backend
     if ai_config.cli not in BACKEND_DISPATCH_MAP:
         valid_options = ", ".join(repr(b) for b in VALID_BACKENDS)
         raise EmbeddingError(
-            f"Unsupported backend '{ai_config.cli}'. Valid backends: {valid_options}"
+            f"Unsupported CLI backend '{ai_config.cli}'. Valid backends: {valid_options}"
         )
 
     # Build embedding command based on backend
