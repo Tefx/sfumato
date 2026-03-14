@@ -30,6 +30,9 @@ from sfumato.news import Story
 from sfumato.palette import PaletteColors
 
 
+WHISPER_CONTRACT_TEMPLATE = """<template id=\"whisper-contract\">\n    <div class=\"whisper-contract\" data-whisper-position=\"{{WHISPER_POSITION}}\" data-whisper-color=\"{{WHISPER_COLOR}}\" data-whisper-shadow=\"{{WHISPER_SHADOW}}\">{{WHISPER_TEXT}}</div>\n  </template>"""
+
+
 # =============================================================================
 # FIXTURES
 # =============================================================================
@@ -184,6 +187,44 @@ def test_supported_templates():
     """SUPPORTED_TEMPLATES should contain all required templates."""
     expected = {"painting_text", "magazine", "portrait", "art_overlay", "art_minimal"}
     assert SUPPORTED_TEMPLATES == expected
+
+
+@pytest.mark.parametrize(
+    ("template_name", "required_anchor"),
+    [
+        ("painting_text.html", '<div class="text-zone">'),
+        ("magazine.html", '<div class="text-zone">'),
+        ("portrait.html", '<div class="right-panel">'),
+    ],
+)
+def test_templates_include_inert_whisper_contract_placeholder(
+    template_name: str,
+    required_anchor: str,
+):
+    """Production templates should expose the shared whisper placeholder shape."""
+    template_path = Path("templates") / template_name
+    template_content = template_path.read_text()
+
+    assert WHISPER_CONTRACT_TEMPLATE in template_content
+    assert required_anchor in template_content
+
+
+def test_whisper_contract_specifies_variables_and_constraints():
+    """Whisper contract doc should define variables and shared constraints."""
+    contract = Path("WHISPER_TEMPLATE_CONTRACT.md").read_text()
+
+    for variable in (
+        "WHISPER_POSITION",
+        "WHISPER_COLOR",
+        "WHISPER_SHADOW",
+        "WHISPER_TEXT",
+    ):
+        assert variable in contract
+
+    assert "Shared Placeholder Shape" in contract
+    assert "Shared Typography Constraints" in contract
+    assert "Shared Positioning Constraints" in contract
+    assert "Compatibility Expectations" in contract
 
 
 # =============================================================================
