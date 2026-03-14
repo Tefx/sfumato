@@ -4770,7 +4770,7 @@ phases:
   steps:
   - id: replay.config
     name: Add replay_expire_days to config
-    status: pending
+    status: claimed
     description: "step_type: implementation\nagent: python-executor\nagent_source:\
       \ default\nspec_refs:\n  - README.md\ntouch_paths:\n  - src/sfumato/config.py\n\
       \  - tests/test_config.py\nharness_refs:\n  - tests/test_config.py\n\nImplement\
@@ -4791,6 +4791,8 @@ phases:
     - tests/test_config.py
     depends_on:
     - replay.config.test
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T22:01:10.247039+00:00'
   - id: replay.queue
     name: Implement ReplayQueue in state module
     status: pending
