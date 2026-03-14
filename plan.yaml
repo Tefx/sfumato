@@ -4453,31 +4453,35 @@ phases:
   - id: art-facts.template-whisper
     name: Add whisper block to all production templates
     status: pending
-    description: "step_type: implementation\nagent: python-executor\nspec_refs:\n\
-      \  - PROTOTYPING.md#11\ntouch_paths:\n  - templates/painting_text.html\n  -\
-      \ templates/magazine.html\n  - templates/portrait.html\n\nAdd a {{WHISPER_BLOCK}}\
-      \ area to all 3 production templates:\n\nFile: templates/painting_text.html\n\
-      - Add a .whisper-zone div with absolute positioning via {{WHISPER_POSITION}}\n\
-      - Font: 'Noto Sans SC', 26-28px, font-weight 300\n- Color: {{WHISPER_COLOR}}\
+    description: "step_type: implementation\nagent: python-executor\nagent_source:\
+      \ default\nspec_refs:\n  - PROTOTYPING.md#11\ntouch_paths:\n  - templates/painting_text.html\n\
+      \  - templates/magazine.html\n  - templates/portrait.html\nharness_refs:\n \
+      \ - tests/test_render.py\n\nImplement the previously defined whisper-template\
+      \ contract across all 3 production templates.\n\nAdd a {{WHISPER_BLOCK}} area\
+      \ to all 3 production templates:\n\nFile: templates/painting_text.html\n- Add\
+      \ a .whisper-zone div with absolute positioning via {{WHISPER_POSITION}}\n-\
+      \ Font: 'Noto Sans SC', 26-28px, font-weight 300\n- Color: {{WHISPER_COLOR}}\
       \ (LLM-decided based on zone brightness)\n- text-shadow: {{WHISPER_SHADOW}}\
       \ for readability\n- Content: {{WHISPER_TEXT}}\n\nFile: templates/magazine.html\n\
       - Same whisper zone pattern, positioned within magazine layout\n\nFile: templates/portrait.html\n\
       - Same whisper zone pattern, positioned within portrait layout\n\nPattern: Follow\
       \ existing {{TEXT_POSITION}} / {{TEXT_COLOR}} variable style.\nEach template\
-      \ already uses CSS absolute positioning with template variables.\n"
+      \ already uses CSS absolute positioning with template variables.\n\nThis step\
+      \ executes only after the upstream contract and test-definition steps are in\
+      \ place."
     verification: '- All 3 templates contain .whisper-zone div
 
       - Template variables {{WHISPER_POSITION}}, {{WHISPER_COLOR}}, {{WHISPER_SHADOW}},
       {{WHISPER_TEXT}} present
 
-      - Templates render without syntax errors
-
-      '
+      - Templates render without syntax errors'
     refs:
     - PROTOTYPING.md#11
     - templates/painting_text.html
     - templates/magazine.html
     - templates/portrait.html
+    depends_on:
+    - art-facts.template-whisper.test
   - id: art-facts.render-whisper
     name: Wire whisper into render module
     status: pending
