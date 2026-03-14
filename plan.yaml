@@ -369,7 +369,6 @@ phases:
     - ARCHITECTURE.md
     depends_on:
     - intelligence.state
-    - intelligence.paintings
     agent: python-executor
   - id: intelligence.semantic-match
     name: Wire semantic matching and caching into orchestrator
