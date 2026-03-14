@@ -4810,7 +4810,7 @@ phases:
       by subagent as out-of-scope for this test-only step.'
   - id: art-facts.render-whisper.contract
     name: Define render whisper contract
-    status: pending
+    status: claimed
     description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
       \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nagent_source: default\n\
       spec_refs:\n  - ARCHITECTURE.md#2.7\ntouch_paths:\n  - src/sfumato/render.py\n\
@@ -4840,6 +4840,8 @@ phases:
     - art-facts.layout-prompt
     - art-facts.template-whisper
     agent: software-architect
+    claimed_by: software-architect
+    claimed_at: '2026-03-14T22:11:55.404138+00:00'
   - id: art-facts.render-whisper.test
     name: Define render whisper contract tests
     status: pending
