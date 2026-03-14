@@ -851,10 +851,22 @@ def _image_dimensions(image_path: Path) -> tuple[int, int]:
         return image.size
 
 
+# Browser-like headers to avoid 403 from Wikimedia/Met (see PROTOTYPING.md#5)
+_BROWSER_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    ),
+    "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
+}
+
+
 async def _download_image_bytes(image_url: str) -> bytes:
     """Download raw image bytes from URL."""
-    timeout = httpx.Timeout(20.0)
-    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+    timeout = httpx.Timeout(30.0)
+    async with httpx.AsyncClient(
+        timeout=timeout, follow_redirects=True, headers=_BROWSER_HEADERS
+    ) as client:
         try:
             response = await client.get(image_url)
             response.raise_for_status()
@@ -911,11 +923,19 @@ async def _discover_rijksmuseum_candidates(
 
 async def _discover_met_candidates(count: int) -> list[_SourceCandidate]:
     """Discover candidate paintings from the Met Museum API."""
+    import asyncio
+
     timeout = httpx.Timeout(20.0)
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    async with httpx.AsyncClient(
+        timeout=timeout, headers=_BROWSER_HEADERS
+    ) as client:
         search_response = await client.get(
             "https://collectionapi.metmuseum.org/public/collection/v1/search",
-            params={"hasImages": "true", "q": "painting"},
+            params={
+                "hasImages": "true",
+                "q": "painting landscape",
+                "isPublicDomain": "true",
+            },
         )
         search_response.raise_for_status()
         search_payload = search_response.json()
@@ -923,6 +943,7 @@ async def _discover_met_candidates(count: int) -> list[_SourceCandidate]:
         object_ids = search_payload.get("objectIDs") or []
         candidates: list[_SourceCandidate] = []
         for object_id in object_ids[: max(count * 5, 20)]:
+            await asyncio.sleep(0.5)  # Rate limit: ~2 req/s
             object_response = await client.get(
                 f"https://collectionapi.metmuseum.org/public/collection/v1/objects/{object_id}"
             )
@@ -951,27 +972,55 @@ async def _discover_met_candidates(count: int) -> list[_SourceCandidate]:
 
 async def _discover_wikimedia_candidates(count: int) -> list[_SourceCandidate]:
     """Discover candidate paintings from Wikimedia Commons."""
+    import asyncio
+
     timeout = httpx.Timeout(20.0)
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        members_response = await client.get(
-            "https://commons.wikimedia.org/w/api.php",
-            params={
-                "action": "query",
-                "format": "json",
-                "list": "categorymembers",
-                "cmtitle": "Category:Featured_pictures_of_paintings",
-                "cmlimit": str(max(count * 5, 20)),
-            },
-        )
-        members_response.raise_for_status()
-        members_payload = members_response.json()
+    # Wikimedia "Featured pictures of paintings" has only subcategories,
+    # not files directly. We query several country subcategories for actual files.
+    subcategories = [
+        "Category:Featured_pictures_of_paintings_from_France",
+        "Category:Featured_pictures_of_paintings_from_the_Netherlands",
+        "Category:Featured_pictures_of_paintings_from_Italy",
+        "Category:Featured_pictures_of_paintings_from_Spain",
+        "Category:Featured_pictures_of_paintings_from_Germany",
+        "Category:Featured_pictures_of_paintings_from_the_United_Kingdom",
+        "Category:Featured_pictures_of_paintings_from_the_United_States",
+        "Category:Featured_pictures_of_paintings_from_Russia",
+        "Category:Featured_pictures_of_paintings_from_Austria",
+    ]
+
+    async with httpx.AsyncClient(
+        timeout=timeout, headers=_BROWSER_HEADERS
+    ) as client:
+        all_members: list[dict] = []
+        for subcat in subcategories:
+            if len(all_members) >= max(count * 5, 20):
+                break
+            await asyncio.sleep(1)
+            members_response = await client.get(
+                "https://commons.wikimedia.org/w/api.php",
+                params={
+                    "action": "query",
+                    "format": "json",
+                    "list": "categorymembers",
+                    "cmtitle": subcat,
+                    "cmtype": "file",
+                    "cmlimit": str(max(count * 2, 10)),
+                },
+            )
+            members_response.raise_for_status()
+            members_payload = members_response.json()
+            all_members.extend(
+                members_payload.get("query", {}).get("categorymembers", [])
+            )
 
         candidates: list[_SourceCandidate] = []
-        for member in members_payload.get("query", {}).get("categorymembers", []):
+        for member in all_members:
             title = str(member.get("title", "")).strip()
             if not title.startswith("File:"):
                 continue
 
+            await asyncio.sleep(2)  # Wikimedia rate limit: ~1 req/2s
             image_response = await client.get(
                 "https://commons.wikimedia.org/w/api.php",
                 params={
