@@ -412,7 +412,7 @@ phases:
       step branch content.'
   - id: core.tv
     name: Extend TV module
-    status: pending
+    status: claimed
     description: "step_type: implementation\nspec_refs:\n  - ARCHITECTURE.md#2.8\n\
       \  - PROTOTYPING.md#1\ntouch_paths:\n  - src/sfumato/tv.py\n  - tests/test_tv.py\n\
       harness_refs:\n  - pytest\n  - samsungtvws art-mode seam doubles\nagent: python-executor\n\
@@ -469,6 +469,8 @@ phases:
     depends_on:
     - core.tv.tests
     agent: python-executor
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T13:55:26.843134+00:00'
   - id: core.pipeline
     name: Implement orchestrator.run_once
     status: pending
