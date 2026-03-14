@@ -500,13 +500,127 @@ async def run_backfill(
 
     Returns:
         Number of paintings successfully added to the pool.
-
-    Raises:
-        NotImplementedError: This step defines contracts only; implementation is out of scope.
     """
-    raise NotImplementedError(
-        "run_backfill contract is defined, but implementation is intentionally deferred"
+    # Stage 1: measure_pool_deficit
+    current_paintings = list_cached_paintings(config.paintings.cache_dir)
+    current_count = len(current_paintings)
+    target_size = config.paintings.pool_size
+
+    # Bounded behavior: if pool already meets target, return 0 immediately
+    if current_count >= target_size:
+        logger.info(
+            "Pool already at target size (%d >= %d), skipping backfill",
+            current_count,
+            target_size,
+        )
+        return 0
+
+    # Calculate how many paintings we need
+    deficit = target_size - current_count
+    logger.info(
+        "Pool deficit: %d paintings needed (current: %d, target: %d)",
+        deficit,
+        current_count,
+        target_size,
     )
+
+    # Stage 2: fetch_new_paintings_if_needed
+    # Get existing content hashes to exclude
+    existing_hashes = {p.content_hash for p in current_paintings}
+
+    try:
+        new_paintings = await fetch_paintings(
+            sources=config.paintings.sources,
+            count=deficit,
+            cache_dir=config.paintings.cache_dir,
+            exclude_ids=existing_hashes,
+        )
+    except Exception as e:
+        logger.warning("All painting sources failed during backfill: %s", e)
+        # Source-level failure: return 0, cached pool remains usable
+        return 0
+
+    if not new_paintings:
+        logger.info("No new paintings fetched during backfill")
+        return 0
+
+    logger.info("Fetched %d new paintings for analysis", len(new_paintings))
+
+    # Stages 3-4: analyze_layout and compute_embeddings for each painting
+    # Track successfully processed paintings (bounded by deficit)
+    added_count = 0
+
+    for painting in new_paintings:
+        # Don't exceed the deficit
+        if added_count >= deficit:
+            break
+
+        try:
+            # Stage 3: analyze_layout_for_new_paintings
+            if state.layout_cache.has(painting.content_hash):
+                logger.debug(
+                    "Layout already cached for %s, skipping analysis",
+                    painting.content_hash[:8],
+                )
+            else:
+                layout = await analyze_painting(painting.image_path, config.ai)
+                state.layout_cache.put(painting.content_hash, layout)
+                logger.debug(
+                    "Analyzed layout for %s: %s",
+                    painting.content_hash[:8],
+                    layout.template_hint,
+                )
+
+            # Stage 4: compute_embeddings_for_new_paintings
+            if state.embedding_cache.has(painting.content_hash):
+                logger.debug(
+                    "Embedding already cached for %s, skipping computation",
+                    painting.content_hash[:8],
+                )
+            else:
+                # Get description from layout cache
+                layout = state.layout_cache.get(painting.content_hash)
+                if layout is None or not layout.painting_description:
+                    logger.warning(
+                        "No layout/description for %s, skipping embedding",
+                        painting.content_hash[:8],
+                    )
+                    continue
+
+                embedding_result = await compute_embedding(
+                    layout.painting_description, config.ai
+                )
+                state.embedding_cache.put(
+                    painting.content_hash, embedding_result.vector
+                )
+                logger.debug(
+                    "Computed embedding for %s (%d dimensions)",
+                    painting.content_hash[:8],
+                    len(embedding_result.vector),
+                )
+
+            added_count += 1
+
+        except Exception as e:
+            # Item-level failure: non-fatal, log and continue
+            logger.warning(
+                "Failed to process painting %s during backfill: %s",
+                painting.content_hash[:8],
+                e,
+            )
+            continue
+
+    # Stage 5: state_save
+    # Persistence failures propagate (fatal error boundary)
+    state.save_all()
+
+    logger.info(
+        "Backfill complete: added %d paintings (target deficit was %d)",
+        added_count,
+        deficit,
+    )
+
+    return added_count
 
 
 async def watch(config: AppConfig) -> None:
@@ -545,13 +659,126 @@ async def watch(config: AppConfig) -> None:
 
     Args:
         config: Application configuration.
-
-    Raises:
-        NotImplementedError: This step defines contracts only; implementation is out of scope.
     """
-    raise NotImplementedError(
-        "watch contract is defined, but implementation is intentionally deferred"
+    import asyncio
+    import signal
+    from datetime import datetime
+
+    from sfumato.scheduler import Action, Scheduler, SchedulerState
+
+    # Stage 1: load_state_once
+    state_dir = config.data_dir / "state"
+    state = AppState.load(state_dir)
+
+    # Initialize scheduler and scheduler state
+    scheduler = Scheduler(config.schedule)
+    scheduler_state = SchedulerState(
+        last_news_refresh=None,
+        last_rotation=None,
+        last_backfill=None,
     )
+
+    # Shutdown coordination
+    shutdown_requested = False
+
+    def handle_shutdown(signum: int, frame: object) -> None:
+        nonlocal shutdown_requested
+        logger.info("Received shutdown signal %s, finishing current action...", signum)
+        shutdown_requested = True
+
+    # Register signal handlers
+    signal.signal(signal.SIGINT, handle_shutdown)
+    signal.signal(signal.SIGTERM, handle_shutdown)
+
+    logger.info("Watch daemon started, entering main loop")
+
+    # Main daemon loop
+    while not shutdown_requested:
+        # Stage 2: scheduler_decision
+        now = datetime.now()
+        action = scheduler.what_to_do(now, scheduler_state)
+
+        # Stage 3: action_dispatch
+        # Handle combined actions in DISPATCH_ORDER
+        actions_to_dispatch = []
+
+        # Check for combined actions (news refresh + rotate)
+        if Action.REFRESH_NEWS in action and Action.ROTATE in action:
+            actions_to_dispatch = [Action.REFRESH_NEWS, Action.ROTATE]
+        elif Action.REFRESH_NEWS in action:
+            actions_to_dispatch = [Action.REFRESH_NEWS]
+        elif Action.ROTATE in action:
+            actions_to_dispatch = [Action.ROTATE]
+        elif Action.BACKFILL in action:
+            actions_to_dispatch = [Action.BACKFILL]
+        elif Action.QUIET_ART in action:
+            actions_to_dispatch = [Action.QUIET_ART]
+        elif Action.IDLE in action:
+            # IDLE: no pipeline action, just state save + sleep
+            logger.debug("Scheduler returned IDLE, skipping to sleep")
+        else:
+            # NONE: no action needed
+            pass
+
+        # Dispatch actions in WATCH_ACTION_DISPATCH_ORDER
+        for act in actions_to_dispatch:
+            # Check for shutdown between actions
+            if shutdown_requested:
+                break
+
+            try:
+                if act == Action.REFRESH_NEWS:
+                    logger.info("Dispatching REFRESH_NEWS")
+                    await run_news_refresh(config, state)
+                    scheduler_state.last_news_refresh = now
+
+                elif act == Action.ROTATE:
+                    logger.info("Dispatching ROTATE")
+                    await run_once(config, state, RunOptions())
+                    scheduler_state.last_rotation = now
+
+                elif act == Action.BACKFILL:
+                    logger.info("Dispatching BACKFILL")
+                    added = await run_backfill(config, state)
+                    scheduler_state.last_backfill = now
+                    logger.info("Backfill added %d paintings", added)
+
+                elif act == Action.QUIET_ART:
+                    logger.info("Dispatching QUIET_ART")
+                    await run_once(config, state, RunOptions(no_news=True))
+                    scheduler_state.last_rotation = now
+
+            except Exception as e:
+                # Per-action recoverable errors: scope to current action
+                # Daemon loop continues on next scheduled tick
+                logger.error(
+                    "Action %s failed (recoverable): %s. "
+                    "Daemon will continue on next cycle.",
+                    act.name,
+                    e,
+                )
+                # Don't update timestamps for failed actions
+                # Next cycle will retry
+
+        # Stage 4: state_save
+        try:
+            state.save_all()
+        except Exception as e:
+            # Persistence failure: fatal, propagate
+            logger.critical("State persistence failed, terminating daemon: %s", e)
+            raise
+
+        # Stage 5: sleep_until_next_action
+        if shutdown_requested:
+            # Don't sleep if shutdown requested, exit immediately after state save
+            break
+
+        sleep_seconds = scheduler.seconds_until_next_action(now, scheduler_state)
+        if sleep_seconds > 0:
+            logger.debug("Sleeping for %.1f seconds until next action", sleep_seconds)
+            await asyncio.sleep(sleep_seconds)
+
+    logger.info("Watch daemon shut down gracefully")
 
 
 async def init_project(config: AppConfig) -> None:
