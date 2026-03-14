@@ -128,6 +128,20 @@ def _layout_json(*, recommended_stories: int) -> str:
                 "position": "top-right",
                 "reason": "Quiet sky area suitable for text.",
             },
+            "subject_zone": {
+                "position": "bottom-left",
+                "reason": "Main subject mass in lower-left foreground.",
+            },
+            "whisper_zone": {
+                "position": "bottom-right",
+                "reason": "Low-emphasis corner for art facts.",
+                "max_width_percent": 18,
+                "readability_notes": "Dark corner with minimal visual competition, readable at TV distance.",
+            },
+            "art_facts": [
+                "Painted in the style of American Impressionism.",
+                "Features a characteristic warm color palette.",
+            ],
             "colors": {
                 "text_primary": "#f0f0f0",
                 "text_secondary": "#d0d0d0",
