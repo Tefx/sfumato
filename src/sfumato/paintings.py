@@ -600,7 +600,7 @@ async def _download_candidates(
             break
 
         if idx > 0:
-            await asyncio.sleep(2)  # Rate-limit downloads (avoid 429 from Wikimedia/Met)
+            await asyncio.sleep(0.5)  # Brief pause between downloads
 
         try:
             painting = await _download_one(
@@ -795,7 +795,7 @@ async def _discover_met_candidates(count: int) -> list[_SourceCandidate]:
         object_ids = search_payload.get("objectIDs") or []
         candidates: list[_SourceCandidate] = []
         for object_id in object_ids[: max(count * 5, 20)]:
-            await asyncio.sleep(0.5)  # Rate limit: ~2 req/s
+            await asyncio.sleep(0.2)  # Met API is lenient, brief pause only
             try:
                 object_response = await client.get(
                     f"https://collectionapi.metmuseum.org/public/collection/v1/objects/{object_id}"
@@ -854,7 +854,7 @@ async def _discover_wikimedia_candidates(count: int) -> list[_SourceCandidate]:
         for subcat in subcategories:
             if len(all_members) >= max(count * 5, 20):
                 break
-            await asyncio.sleep(2)
+            await asyncio.sleep(1)  # Wikimedia subcategory pause
             members_response = await client.get(
                 "https://commons.wikimedia.org/w/api.php",
                 params={
@@ -878,7 +878,7 @@ async def _discover_wikimedia_candidates(count: int) -> list[_SourceCandidate]:
             if not title.startswith("File:"):
                 continue
 
-            await asyncio.sleep(3)  # Wikimedia rate limit: ~1 req/3s
+            await asyncio.sleep(1)  # Wikimedia image info pause
             image_response = await client.get(
                 "https://commons.wikimedia.org/w/api.php",
                 params={
