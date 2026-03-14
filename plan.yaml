@@ -518,7 +518,7 @@ phases:
     agent: python-executor
   - id: core.palette.contract
     name: Define palette extraction contract
-    status: claimed
+    status: done
     description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
       \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nspec_refs:\n  - ARCHITECTURE.md#2.4\n\
       touch_paths:\n  - src/sfumato/palette.py\nharness_refs:\n  - tests/test_palette.py\n\
@@ -542,6 +542,35 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T12:37:16.229958+00:00'
+    done_at: '2026-03-14T12:50:53.774425+00:00'
+    evidence: 'Artifact:
+
+      - Worker commit: 3b1e640 (isolated worktree)
+
+      - Main commit: e38eefaacd77f84552fc5ee7c51057152102a6da
+
+
+      Verification:
+
+      - Contract evidence reports syntax/import checks OK and explicit invariant definitions
+
+      - Contract artifact pins #RRGGBB normalization, error hierarchy, edge-case behavior,
+      and output ordering semantics
+
+      - Contract functions remain stubs for deferred implementation
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#2.4
+
+      - src/sfumato/palette.py
+
+
+      Gaps/Notes:
+
+      - Worker added harness tests as contract verification artifacts; clustering
+      algorithm implementation remains deferred.'
   - id: core.palette.tests
     name: Author palette extraction tests
     status: pending
