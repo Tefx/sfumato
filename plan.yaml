@@ -2299,7 +2299,7 @@ phases:
       - Test-only step: no matcher implementation logic added in this step.'
   - id: intelligence.state.contract
     name: Define state module contract
-    status: claimed
+    status: done
     description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
       \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nDefine the acceptance\
       \ contract for `src/sfumato/state.py` without shipping persistence logic.\n\n\
@@ -2325,6 +2325,41 @@ phases:
     agent: python-senior
     claimed_by: python-senior
     claimed_at: '2026-03-14T16:30:13.425729+00:00'
+    done_at: '2026-03-14T16:37:01.072751+00:00'
+    evidence: 'Artifact:
+
+      - PR: commit 84ee6f4 ([vectl] step-intelligence.state.contract completed), source
+      worktree commit 9f73ef8
+
+
+      Verification:
+
+      - Run: `uv run python -m compileall src/sfumato/state.py` -> compiled successfully
+
+      - Run: `uv run python -c "import ast, pathlib; ..."` -> required public surfaces
+      present for NewsQueue/UsedPaintings/LayoutCache/EmbeddingCache/AppState
+
+      - Run: `uv run python -c "from pathlib import Path; t=Path(''src/sfumato/state.py'').read_text();
+      ..."` -> explicit high-risk semantics present (path resolution, missing-file/legacy
+      fallback, clear/null overwrite, stale-vs-new precedence, partial-write/CAS behavior)
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#2.10
+
+      - PROTOTYPING.md#semantic-art-news-matching
+
+
+      Files changed:
+
+      - src/sfumato/state.py
+
+
+      Gaps/Notes:
+
+      - Contract-only scope maintained: no disk I/O mutation implementation and no
+      full CAS implementation in this step.'
   - id: intelligence.state.tests
     name: Author state module tests
     status: pending
