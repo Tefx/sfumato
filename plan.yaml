@@ -355,7 +355,7 @@ phases:
       content.'
   - id: core.render
     name: Refactor render module
-    status: pending
+    status: claimed
     description: 'Refactor src/sfumato/render.py per ARCHITECTURE.md section 2.7.
       Implement RenderContext and RenderResult dataclasses. Implement build_template_variables()
       to convert RenderContext into template placeholder dict. Refactor render_to_png()
@@ -376,6 +376,8 @@ phases:
     - core.palette
     - core.layout-ai
     agent: python-executor
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T13:30:46.408552+00:00'
   - id: core.tv
     name: Extend TV module
     status: pending
