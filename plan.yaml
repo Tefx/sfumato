@@ -1151,6 +1151,39 @@ phases:
     - core.render
     - core.tv
     agent: python-senior
+  - id: core.pipeline.tests
+    name: Author orchestrator.run_once tests
+    status: pending
+    description: "step_type: test\nspec_refs:\n  - ARCHITECTURE.md#2.12\n  - ARCHITECTURE.md#2.13\n\
+      \  - README.md\ntouch_paths:\n  - tests/test_orchestrator.py\n  - src/sfumato/orchestrator.py\n\
+      harness_refs:\n  - pytest\n  - orchestrator seam doubles for news/layout/render/tv/state\n\
+      agent: python-executor\n\nAdd contract-driven tests for `src/sfumato/orchestrator.py::run_once`\
+      \ before product implementation is dispatched.\n\nRequired coverage:\n- Success\
+      \ path: full pipeline runs in contracted order, returns `RunResult` with local\
+      \ 4K `png_path`, and marks `uploaded=True` only after successful TV push.\n\
+      - Flag path `--no-upload`: local render still completes, `uploaded=False`, and\
+      \ no TV availability/upload/display calls occur.\n- Flag path `--no-news`: news\
+      \ dequeue/refresh path is skipped, pure-art painting selection is used, and\
+      \ rendering still produces a valid local PNG result.\n- TV-unavailable branch:\
+      \ TV availability false or contracted upload refusal yields a non-fatal local-render\
+      \ result with `uploaded=False` and preserved `png_path`.\n- Error propagation\
+      \ boundaries: refresh/dequeue, layout, palette, or render failures surface to\
+      \ the caller and do not fabricate a partial success result.\n- Output-path guarantee:\
+      \ every successful render branch preserves the local output path regardless\
+      \ of upload/preview outcome.\n\nKeep tests focused on contract behavior and\
+      \ failure boundaries; do not implement production orchestration logic in this\
+      \ step."
+    verification: '- `tests/test_orchestrator.py` names the success path, `--no-upload`,
+      `--no-news`, TV-unavailable, stage-ordering, and error-propagation regressions
+      explicitly
+
+      - Verification includes both the main success path and the highest-risk failure
+      path (TV unavailable / upload skipped while preserving the local PNG)
+
+      - Test step adds tests/helpers only'
+    depends_on:
+    - core.pipeline.contract
+    agent: python-executor
 - id: intelligence
   name: Intelligence
   status: locked
