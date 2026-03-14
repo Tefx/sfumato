@@ -207,10 +207,40 @@ stories_per_refresh = 12
 max_age_days = 3
 expire_days = 7
 
-[[news.feeds]]
+# [[news.feeds]]
 # name = "Example Feed"
 # url = "https://example.com/rss.xml"
 # category = "Tech"
+
+[[news.feeds]]
+name = "TLDR Tech"
+url = "https://tldr.tech/api/rss/tech"
+category = "Tech"
+
+[[news.feeds]]
+name = "TLDR AI"
+url = "https://tldr.tech/api/rss/ai"
+category = "AI"
+
+[[news.feeds]]
+name = "Hacker News 100+"
+url = "https://hnrss.org/frontpage?points=100"
+category = "Tech"
+
+[[news.feeds]]
+name = "Ars Technica"
+url = "https://feeds.arstechnica.com/arstechnica/index"
+category = "Tech"
+
+[[news.feeds]]
+name = "BBC News"
+url = "https://feeds.bbci.co.uk/news/rss.xml"
+category = "World"
+
+[[news.feeds]]
+name = "Nature"
+url = "https://www.nature.com/nature.rss"
+category = "Science"
 
 [paintings]
 cache_dir = "~/.sfumato/paintings"
