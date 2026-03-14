@@ -412,7 +412,7 @@ phases:
       step branch content.'
   - id: core.tv
     name: Extend TV module
-    status: claimed
+    status: done
     description: "step_type: implementation\nspec_refs:\n  - ARCHITECTURE.md#2.8\n\
       \  - PROTOTYPING.md#1\ntouch_paths:\n  - src/sfumato/tv.py\n  - tests/test_tv.py\n\
       harness_refs:\n  - pytest\n  - samsungtvws art-mode seam doubles\nagent: python-executor\n\
@@ -471,6 +471,40 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T13:55:26.843134+00:00'
+    done_at: '2026-03-14T14:14:06.510963+00:00'
+    evidence: 'Artifact:
+
+      - Worker commit: 5217e1bdc25803590812683821e2c14fad4ea024
+
+      - Main commit: 8af71d75434e77a4df1c43f5479e8dc8d338afb9
+
+
+      Verification:
+
+      - Run: `uv run pytest tests/test_tv.py -v` -> 78 passed
+
+      - Run: `uv run python -m py_compile src/sfumato/tv.py tests/test_tv.py` -> success
+
+      - Main-path and failure-path tests cover non-throwing `check_status()` timeout
+      behavior, error mapping (`TvConnectionError` vs `TvUploadError`), and keep-policy
+      cleanup semantics
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#2.8
+
+      - PROTOTYPING.md#1
+
+      - src/sfumato/tv.py
+
+      - tests/test_tv.py
+
+
+      Gaps/Notes:
+
+      - Merge resolution preserved divergent local tv artifacts in stash before applying
+      step branch content; final main worktree status reported clean.'
   - id: core.pipeline
     name: Implement orchestrator.run_once
     status: pending
