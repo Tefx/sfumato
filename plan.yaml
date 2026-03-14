@@ -4324,3 +4324,12 @@ phases:
       Spec link: ARCHITECTURE.md\nGaps/Notes:\n- Reviewed evidence required strict\
       \ formatting; prior malformed envelopes were normalized without altering factual\
       \ content."
+- id: art-facts
+  name: Art Facts + Whisper Text + Subject Avoidance
+  status: pending
+  gate: Whisper text renders in all templates without overlap with news text or painting
+    subject. Art facts cached in layout cache. Visual verification on 4K output.
+  context: Validated in PROTOTYPING.md#11. LLM layout prompt outputs 3 mutually exclusive
+    zones + art facts. Templates render whisper text at 26-28px with text-shadow.
+  depends_on:
+  - hardening
