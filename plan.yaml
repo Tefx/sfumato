@@ -3848,7 +3848,7 @@ phases:
   steps:
   - id: hardening.protocol-alignment
     name: Protocol conformance + CLI state alignment
-    status: claimed
+    status: done
     description: "step_type: implementation\nspec_refs:\n  - ARCHITECTURE.md\ntouch_paths:\n\
       \  - src/sfumato/orchestrator.py (Protocol declarations)\n  - src/sfumato/cli.py\
       \ (_NewsQueue, _UsedPaintings, _LayoutCache, _EmbeddingCache, AppState)\n  -\
@@ -3885,6 +3885,29 @@ phases:
     agent: python-senior
     claimed_by: python-senior
     claimed_at: '2026-03-14T20:34:16.060445+00:00'
+    done_at: '2026-03-14T20:54:43.555939+00:00'
+    evidence: 'Step: hardening.protocol-alignment
+
+      Commit hash(es): 1f8213e, 9781f17; merged as [main fbbd825]
+
+      Files changed: src/sfumato/orchestrator.py, src/sfumato/cli.py, tests/test_cli.py
+
+      Verification:
+
+      - pyright src/sfumato/orchestrator.py src/sfumato/cli.py -> 4 missing-import
+      errors (numpy/typer/PIL), zero Protocol-related errors
+
+      - uv run pyright src/sfumato/orchestrator.py src/sfumato/cli.py -> 0 errors,
+      0 warnings
+
+      - uv run pytest tests/test_cli.py -k protocol -v -> 5 passed, 111 deselected
+
+      Spec link: ARCHITECTURE.md
+
+      Gaps/Notes:
+
+      - Protocol surfaces expanded and CLI inline classes aligned; AppState protocol
+      compatibility adjusted via properties.'
   - id: hardening.config-init-fixes
     name: Config path expansion + init command fixes
     status: claimed
