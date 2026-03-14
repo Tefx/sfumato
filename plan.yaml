@@ -5187,7 +5187,7 @@ phases:
       LayoutParams fields so state suite passes.'
   - id: replay.scheduler-wire
     name: Wire replay queue into orchestrator
-    status: pending
+    status: claimed
     description: "step_type: implementation\nagent: python-executor\ntags: [\"integration\"\
       ]\nspec_refs:\n  - ARCHITECTURE.md#2.12\ntouch_paths:\n  - src/sfumato/orchestrator.py\n\
       \  - src/sfumato/state.py\nharness_refs:\n  - tests/\n\nWire replay queue into\
@@ -5219,6 +5219,8 @@ phases:
     - replay.queue
     - replay.scheduler-wire.test
     agent: python-executor
+    claimed_by: python-senior
+    claimed_at: '2026-03-14T22:58:40.513217+00:00'
   - id: replay.gate
     name: Replay phase gate review
     status: pending
