@@ -3796,3 +3796,41 @@ phases:
     depends_on:
     - sdk.config-and-deps
     agent: python-executor
+  - id: sdk.gate
+    name: SDK phase gate review
+    status: pending
+    description: 'Gate review: Verify SDK backend phase completion.
+
+
+      Review criteria:
+
+      1. AiConfig has backend and sdk_provider fields with correct defaults
+
+      2. litellm added to pyproject.toml dependencies
+
+      3. llm.py routes to SDK path when backend="sdk", CLI path when backend="cli"
+
+      4. SDK path handles text, vision, and embedding via litellm
+
+      5. CLI path is completely unchanged (no regressions)
+
+      6. Dockerfile updated with SDK env vars
+
+      7. All existing tests pass
+
+
+      review_depth: STANDARD'
+    verification: '- All phase steps completed successfully
+
+      - Evidence reviewed for each step
+
+      - No regressions in CLI backend path
+
+      - SDK backend callable with valid API key
+
+      - Docker image builds successfully'
+    depends_on:
+    - sdk.config-and-deps
+    - sdk.llm-sdk-backend
+    - sdk.dockerfile
+    agent: gate-reviewer
