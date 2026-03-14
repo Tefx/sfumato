@@ -2917,3 +2917,30 @@ phases:
       - Highest-risk failure semantics are explicit for help exposure, bad-config
       exits, and command-to-runtime miswiring'
     agent: python-executor
+  - id: production.cli-full.tests
+    name: Author production CLI tests
+    status: pending
+    description: "step_type: test\nspec_refs:\n  - ARCHITECTURE.md#2.13\n  - ARCHITECTURE.md#2.12\n\
+      touch_paths:\n  - tests/test_cli.py\n  - src/sfumato/cli.py\n  - src/sfumato/__main__.py\n\
+      harness_refs:\n  - typer CLI harness\nagent: python-executor\n\nAuthor tests\
+      \ for the production CLI surfaces before implementation.\n\nRequired coverage:\n\
+      - `sfumato watch` forwards options and invokes the real watch runtime surface\n\
+      - `sfumato tv status`, `sfumato tv list`, and `sfumato tv clean` are registered\
+      \ and dispatch correctly\n- help output exposes the production commands and\
+      \ subcommands\n- command failures from config/load/runtime surfaces propagate\
+      \ as deterministic exit behavior\n\nConstraints:\n- tests may use CLI runners\
+      \ and mocks at command boundaries, but no product command implementation beyond\
+      \ helpers\n- at least one named regression covers a highest-risk miswiring or\
+      \ bad-config failure path"
+    verification: '- Main path: targeted tests define watch and TV command registration,
+      dispatch, and help exposure
+
+      - Failure path: focused regressions define bad-config exit behavior and watch-command
+      miswiring prevention
+
+      - Proof: explicit command-level tests exist for both real entrypoint registration
+      and failure propagation'
+    depends_on:
+    - production.watch
+    - production.cli-full.contract
+    agent: python-executor
