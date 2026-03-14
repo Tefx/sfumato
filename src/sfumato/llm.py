@@ -346,40 +346,47 @@ def _get_backend_command(
         raise LlmError(f"Unsupported backend '{cli}'. Valid backends: {valid_options}")
 
     if cli == "gemini":
-        # gemini -m {model} -p "{prompt}"
-        cmd = ["gemini", "-m", model, "-p", prompt]
-        # Note: gemini CLI may have different syntax for max_tokens/temperature
-        # Using common flags that are likely to work
-        cmd.extend(["--max-tokens", str(max_tokens)])
-        cmd.extend(["--temperature", str(temperature)])
+        # Validated flags from PROTOTYPING.md#4:
+        #   gemini -p "prompt" -y --sandbox false
+        # gemini CLI does NOT support: --max-tokens, --temperature, --system, --image
+        # System prompt and image references must be embedded in the prompt text.
+        full_prompt = prompt
         if system_prompt:
-            cmd.extend(["--system", system_prompt])
+            full_prompt = f"{system_prompt}\n\n{prompt}"
         if image_path:
-            # gemini may require specific image handling
-            cmd.extend(["--image", str(image_path)])
+            # gemini reads files via its tool system when referenced in prompt
+            full_prompt = f"Look at the image file {image_path} .\n\n{full_prompt}"
+        cmd = ["gemini", "-p", full_prompt, "-y", "--sandbox", "false"]
+        if model:
+            cmd.extend(["-m", model])
         return cmd
 
     if cli == "codex":
-        # codex -m {model} -p "{prompt}"
-        cmd = ["codex", "-m", model, "-p", prompt]
-        cmd.extend(["--max-tokens", str(max_tokens)])
-        cmd.extend(["--temperature", str(temperature)])
+        # Validated flags from PROTOTYPING.md#4:
+        #   codex exec --full-auto "prompt"
+        # codex exec does NOT support: --max-tokens, --temperature, --system
+        full_prompt = prompt
         if system_prompt:
-            cmd.extend(["--system", system_prompt])
+            full_prompt = f"{system_prompt}\n\n{prompt}"
         if image_path:
-            cmd.extend(["--image", str(image_path)])
+            full_prompt = f"Look at the image file {image_path} .\n\n{full_prompt}"
+        cmd = ["codex", "exec", "--full-auto", full_prompt]
+        if model:
+            cmd.extend(["-m", model])
         return cmd
 
     if cli == "claude-code":
-        # claude -m {model} -p "{prompt}" --output-format json
-        cmd = ["claude", "-m", model, "-p", prompt, "--output-format", "json"]
-        cmd.extend(["--max-tokens", str(max_tokens)])
-        cmd.extend(["--temperature", str(temperature)])
+        # claude -p "prompt" --output-format text
+        # claude supports: -p, -m, --max-tokens, --output-format
+        full_prompt = prompt
         if system_prompt:
-            cmd.extend(["--system", system_prompt])
+            full_prompt = f"{system_prompt}\n\n{prompt}"
         if image_path:
-            # claude-code has native image support
-            cmd.extend(["--image", str(image_path)])
+            full_prompt = f"Look at the image file {image_path} .\n\n{full_prompt}"
+        cmd = ["claude", "-p", full_prompt, "--output-format", "text"]
+        if model:
+            cmd.extend(["-m", model])
+        cmd.extend(["--max-tokens", str(max_tokens)])
         return cmd
 
     # This should never be reached due to the check above
