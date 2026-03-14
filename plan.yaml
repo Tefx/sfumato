@@ -1110,6 +1110,47 @@ phases:
 
       - Divergent local pre-merge `tests/test_tv.py` was preserved in stash before
       applying step branch content.'
+  - id: core.pipeline.contract
+    name: Define orchestrator.run_once contract
+    status: pending
+    description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
+      \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nspec_refs:\n  - ARCHITECTURE.md#2.12\n\
+      \  - ARCHITECTURE.md#2.13\n  - README.md\ntouch_paths:\n  - src/sfumato/orchestrator.py\n\
+      \  - tests/test_orchestrator.py\nharness_refs:\n  - pytest\n  - orchestrator\
+      \ seam doubles for news/layout/render/tv/state\nagent: python-senior\n\nDefine\
+      \ the contract for `src/sfumato/orchestrator.py::run_once` before implementation\
+      \ dispatch.\n\nContract scope:\n- Pin `RunOptions` and `RunResult` public fields\
+      \ consumed by CLI so downstream steps do not improvise shape or semantics.\n\
+      - Pin stage ordering for `run_once()`: news dequeue/refresh branch -> painting\
+      \ selection -> layout analysis -> palette extraction -> template selection ->\
+      \ 4K render -> optional TV upload/display -> mark used -> optional preview ->\
+      \ state save.\n- Pin flag semantics: `--no-news` skips dequeue/refresh and runs\
+      \ pure-art selection/rendering; `--no-upload` still renders locally but skips\
+      \ TV availability checks, upload, display switching, and cleanup side effects.\n\
+      - Pin the TV-unavailable branch as non-fatal: a successful local render still\
+      \ returns `uploaded=False` and preserves the local PNG path when the TV cannot\
+      \ accept a push.\n- Pin error propagation boundaries: news/layout/palette/render\
+      \ stage failures surface to the caller instead of being silently downgraded;\
+      \ only the contracted TV availability/upload branch may degrade to a local-render\
+      \ success result.\n- Pin output-path guarantees: whenever rendering succeeds,\
+      \ `RunResult.render_result.png_path` points to the generated local 4K PNG regardless\
+      \ of upload outcome.\n\nKnown risks to encode in the contract:\n- `run_once()`\
+      \ is the composition root for multiple modules; do not let flag branches reorder\
+      \ stages or skip required state updates.\n- CLI `run` and `preview` will consume\
+      \ this contract directly, so result-shape drift becomes downstream breakage\
+      \ immediately.\n\nNon-goals:\n- No watch/backfill/init implementation in this\
+      \ step.\n- No completed pipeline logic beyond signatures, behavior notes, and\
+      \ stubs."
+    verification: '- Contract artifact explicitly defines `RunOptions`, `RunResult`,
+      ordered stage boundaries, flag semantics, TV-unavailable downgrade semantics,
+      and output-path guarantees
+
+      - Public stubs/notes exist without completed orchestration logic'
+    depends_on:
+    - core.news
+    - core.render
+    - core.tv
+    agent: python-senior
 - id: intelligence
   name: Intelligence
   status: locked
