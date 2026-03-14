@@ -3677,6 +3677,7 @@ phases:
   depends_on:
   - production
   - hardening
+  - polish
   steps:
   - id: sdk.config-and-deps
     name: Config extension + litellm dependency
