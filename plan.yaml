@@ -3818,7 +3818,7 @@ phases:
       - LiteLLM import handled as optional runtime dependency path.'
   - id: sdk.dockerfile
     name: Dockerfile SDK mode
-    status: claimed
+    status: done
     description: 'Simplify Dockerfile for SDK backend mode. When using backend=sdk,
       the container does not need Node.js or CLI tools (gemini, codex, claude).
 
@@ -3857,6 +3857,36 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T21:37:23.439655+00:00'
+    done_at: '2026-03-14T21:37:57.738630+00:00'
+    evidence: 'Step: sdk.dockerfile
+
+      Commit hash(es): 6c777c1; merged as [main 7a4b028]
+
+      Files changed: Dockerfile, src/sfumato/config.py
+
+      Verification:
+
+      - docker build --no-cache -t sfumato-sdk-test:latest . -> SUCCESS
+
+      - docker run --rm --entrypoint="" sfumato-sdk-test:latest sh -c ''env | grep
+      -E "SFUMATO|OPENROUTER|RIJKSMUSEUM"'' -> contains SFUMATO_AI_BACKEND=sdk, OPENROUTER_API_KEY=,
+      RIJKSMUSEUM_API_KEY=
+
+      - uv run pytest tests/test_config.py -v -> 21 passed
+
+      - uv run python -c "import os; os.environ[''SFUMATO_AI_BACKEND'']=''sdk''; from
+      sfumato.config import load_config; c=load_config(None); assert c.ai.backend==''sdk''"
+      -> pass
+
+      - uv run python -c "from sfumato.config import load_config; c=load_config(None);
+      assert c.ai.backend==''cli''" -> pass
+
+      Spec link: ARCHITECTURE.md
+
+      Gaps/Notes:
+
+      - Container run_once with mounted config not executed in this step; entrypoint
+      mount behavior unchanged and documented by Dockerfile comments.'
   - id: sdk.gate
     name: SDK phase gate review
     status: pending
