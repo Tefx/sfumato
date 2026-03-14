@@ -4031,7 +4031,7 @@ phases:
       verification follow-up; not changed in this step scope.'
   - id: hardening.orchestrator-batch
     name: Orchestrator batch_size and recommended_stories fix
-    status: claimed
+    status: done
     description: "step_type: implementation\ntouch_paths:\n  - src/sfumato/orchestrator.py\n\
       \  - tests/test_orchestrator.py\nagent: python-executor\n\n## Objective\n\n\
       Fix bugs #7 and #8 from the hardening bug list.\n\n## Tasks\n\n### Bug #7: batch_size\
@@ -4066,6 +4066,33 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T20:55:23.703033+00:00'
+    done_at: '2026-03-14T21:09:38.105699+00:00'
+    evidence: 'Step: hardening.orchestrator-batch
+
+      Commit hash(es): 443e55b3cc5d0d236025e71f5597197941bc2b32; merged as [main 3810766]
+
+      Files changed: src/sfumato/orchestrator.py, tests/test_orchestrator_batching.py,
+      src/sfumato.egg-info/SOURCES.txt (subagent evidence)
+
+      Verification:
+
+      - uv run pytest tests/test_orchestrator.py tests/test_orchestrator_batching.py
+      -v -> 145 passed
+
+      - Added tests validate stories_per_refresh=12 creates multiple batches and recommended_stories
+      limits render count
+
+      - recommended_stories applied in render path via slicing before render call
+
+      Spec link: ARCHITECTURE.md
+
+      Gaps/Notes:
+
+      - Subagent reported bug #7 batching cap already effective via enqueue behavior;
+      change focused on bug #8 and explicit regression coverage.
+
+      - A follow-up evidence-restatement call returned contradictory failure due lost
+      session context; ignored in favor of branch/commit and primary evidence.'
   - id: hardening.paintings-edge-cases
     name: Paintings module edge case fixes
     status: done
