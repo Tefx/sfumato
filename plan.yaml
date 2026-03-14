@@ -4592,24 +4592,32 @@ phases:
     status: pending
     description: "step_type: implementation\nagent: python-executor\ntags: [\"integration\"\
       ]\nspec_refs:\n  - ARCHITECTURE.md#2.12\ntouch_paths:\n  - src/sfumato/orchestrator.py\n\
-      \nWire art_facts and whisper rotation into the orchestrator pipeline:\n\n1.\
-      \ In run_once / rotate action: pass whisper_fact_index to RenderContext\n2.\
-      \ Track whisper_fact_index in AppState or rotation counter\n3. Increment index\
-      \ mod len(art_facts) on each rotation\n4. Ensure art_facts from layout cache\
-      \ flow into RenderContext\n\nPattern: Follow existing layout -> RenderContext\
-      \ wiring in orchestrator.py.\n"
-    verification: '- Orchestrator passes whisper_fact_index to RenderContext
+      \  - src/sfumato/render.py\nharness_refs:\n  - tests/\n\nWire art_facts and\
+      \ whisper rotation into the orchestrator pipeline after the contract and test\
+      \ chain is defined.\n\nImplementation scope:\n1. In run_once / rotate action:\
+      \ pass whisper_fact_index to RenderContext.\n2. Track whisper_fact_index in\
+      \ AppState or rotation counter.\n3. Increment index mod len(art_facts) on each\
+      \ rotation.\n4. Ensure art_facts from layout cache flow into RenderContext.\n\
+      \nAcceptance checks:\n- whisper_fact_index state is maintained at the orchestrator-owned\
+      \ state layer and rotates predictably across successive rotations\n- whisper_fact_index\
+      \ rotation wraps modulo len(art_facts)\n- RenderContext receives both art_facts-derived\
+      \ whisper inputs and whisper_fact_index on the real orchestrator path\n\nPattern:\
+      \ Follow existing layout -> RenderContext wiring in orchestrator.py."
+    verification: '- Main path: targeted orchestrator tests for RenderContext propagation
+      and whisper_fact_index rotation pass
 
-      - Fact index rotates across successive rotations
+      - Integration: orchestrator path shows art_facts and whisper_fact_index reaching
+      RenderContext
 
-      - Integration: sfumato run --no-upload shows whisper text in output
-
-      '
+      - Proof: no parallel path bypasses whisper_fact_index rotation or RenderContext
+      propagation'
     refs:
     - ARCHITECTURE.md#2.12
     - src/sfumato/orchestrator.py
     depends_on:
     - art-facts.render-whisper
+    - art-facts.orchestrator-wire.test
+    agent: python-executor
   - id: art-facts.gate
     name: Art Facts phase gate review
     status: pending
