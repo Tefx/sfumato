@@ -4343,3 +4343,13 @@ phases:
     expired. Default 2 days replay window.'
   depends_on:
   - hardening
+- id: polish
+  name: 'Polish: Default Model + Documentation'
+  status: locked
+  gate: Default model is gemini-3-flash-preview. README and ARCHITECTURE.md reflect
+    all new features (whisper text, replay queue, subject avoidance).
+  context: 'Final cleanup phase: update default model and documentation to match implemented
+    features.'
+  depends_on:
+  - art-facts
+  - replay
