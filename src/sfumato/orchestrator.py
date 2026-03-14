@@ -1,8 +1,9 @@
 """Pipeline composition contracts for orchestrator entry points.
 
-This module pins the public contract for ``run_once`` before implementation
-dispatch. It defines the data shape consumed by CLI callers, ordered stage
-boundaries, flag semantics, and downgrade/error guarantees.
+This module pins the public contract for ``run_once`` and daemon ``watch``
+before implementation dispatch. It defines the data shape consumed by CLI
+callers, ordered stage boundaries, scheduler-action mapping, shutdown semantics,
+state-save guarantees, and downgrade/error boundaries.
 
 Spec references:
 - ARCHITECTURE.md#2.12
@@ -121,6 +122,139 @@ RUN_ONCE_OUTPUT_PATH_GUARANTEE: Final[str] = (
 """Output-path guarantee for successful renders.
 
 Source: step contract "Pin output-path guarantees" and ARCHITECTURE.md#2.12.
+"""
+
+
+WATCH_LOOP_STAGE_ORDER: Final[tuple[str, ...]] = (
+    "load_state_once",
+    "scheduler_decision",
+    "action_dispatch",
+    "state_save",
+    "sleep_until_next_action",
+)
+"""Contracted daemon watch loop stage order.
+
+Source:
+- ARCHITECTURE.md#2.12 ``watch`` loop contract (load -> loop -> save -> sleep)
+- ARCHITECTURE.md lines 1494-1520 pseudocode ordering.
+"""
+
+
+WATCH_SCHEDULER_ACTION_MAPPING: Final[dict[str, str]] = {
+    "REFRESH_NEWS": "run_news_refresh(config, state)",
+    "ROTATE": "run_once(config, state, RunOptions())",
+    "BACKFILL": "run_backfill(config, state)",
+    "QUIET_ART": "run_once(config, state, RunOptions(no_news=True))",
+    "IDLE": "no-op (only state save + sleep)",
+}
+"""Scheduler action to orchestrator operation mapping.
+
+Source:
+- ARCHITECTURE.md#2.11 ``Action`` definitions.
+- ARCHITECTURE.md lines 1502-1516 watch-loop pseudocode dispatch.
+"""
+
+
+WATCH_ACTION_DISPATCH_ORDER: Final[tuple[str, ...]] = (
+    "REFRESH_NEWS",
+    "ROTATE",
+    "BACKFILL",
+    "QUIET_ART",
+)
+"""Deterministic dispatch order for combined scheduler actions.
+
+Source: ARCHITECTURE.md lines 1502-1516 pseudocode branch ordering.
+"""
+
+
+WATCH_SHUTDOWN_SIGNALS: Final[frozenset[str]] = frozenset({"SIGINT", "SIGTERM"})
+"""Signals that trigger graceful daemon shutdown.
+
+Source:
+- ARCHITECTURE.md#2.12 (watch handles SIGINT/SIGTERM)
+- ARCHITECTURE.md lines 1946-1949 container process management.
+"""
+
+
+WATCH_SHUTDOWN_STATE_SAVE_GUARANTEE: Final[str] = (
+    "On SIGINT/SIGTERM, finish the current in-flight action boundary, persist "
+    "state, and then exit without starting another scheduler cycle."
+)
+"""Graceful shutdown guarantee for daemon mode.
+
+Source:
+- ARCHITECTURE.md lines 1947-1948 (finish action, save state, exit)
+- ARCHITECTURE.md line 1472 (state saved after every action).
+"""
+
+
+WATCH_STATE_SAVE_GUARANTEES: Final[dict[str, str]] = {
+    "after_action_cycle": "Call state.save_all() after each action cycle and before sleep.",
+    "startup_load": "Load state exactly once on daemon startup before entering the loop.",
+    "signal_exit": WATCH_SHUTDOWN_STATE_SAVE_GUARANTEE,
+}
+"""State persistence guarantees for daemon watch mode.
+
+Source:
+- ARCHITECTURE.md#2.12 watch contract (load state then loop)
+- ARCHITECTURE.md lines 1472-1474 and 1518-1520.
+"""
+
+
+WATCH_ERROR_PROPAGATION_BOUNDARIES: Final[dict[str, str]] = {
+    "run_news_refresh": "Recoverable failures end the current refresh action; retry is deferred to the next scheduler interval.",
+    "run_once": "Core rotation failures end the current rotation action; daemon loop continues on next scheduled tick.",
+    "run_backfill": "Backfill failures end only the current backfill action; later cycles may retry.",
+    "watch_loop": "Fatal bootstrap/persistence failures propagate and terminate the daemon.",
+}
+"""Watch-loop error propagation and retry boundary contract.
+
+Source:
+- ARCHITECTURE.md lines 1962-1964 (refresh/LLM retry then skip to next interval)
+- ARCHITECTURE.md lines 1969-1971 (rotation/upload failures skip current action)
+- ARCHITECTURE.md lines 1965-1966 (painting source failures degrade to cached/backfill retry)
+- ARCHITECTURE.md line 1974 (disk full is fatal).
+"""
+
+
+RUN_BACKFILL_STAGE_ORDER: Final[tuple[str, ...]] = (
+    "measure_pool_deficit",
+    "fetch_new_paintings_if_needed",
+    "analyze_layout_for_new_paintings",
+    "compute_embeddings_for_new_paintings",
+    "state_save",
+)
+"""Contracted stage order for ``run_backfill``.
+
+Source:
+- ARCHITECTURE.md#2.12 ``run_backfill`` contract.
+- README.md lines 38 and 171 (daemon backfill toward pool_size target).
+"""
+
+
+RUN_BACKFILL_BOUNDED_BEHAVIOR: Final[tuple[str, ...]] = (
+    "Never add more than max(0, config.paintings.pool_size - current_pool_count) paintings in one call.",
+    "Return value is bounded to [0, requested_deficit] and counts only successfully added paintings.",
+    "If current_pool_count >= config.paintings.pool_size, perform no fetch/analyze work and return 0.",
+)
+"""Bounded-behavior contract for ``run_backfill``.
+
+Source:
+- ARCHITECTURE.md#2.12 (expand pool toward pool_size)
+- README.md line 171 (pool_size is the background backfill target).
+"""
+
+
+RUN_BACKFILL_ERROR_BOUNDARIES: Final[dict[str, str]] = {
+    "item_level": "Individual painting download/analyze failures are non-fatal and skipped.",
+    "source_level": "If all external painting sources fail, fallback is cached pool only and return 0 additions.",
+    "fatal": "State persistence failures propagate to caller.",
+}
+"""Error propagation and retry boundaries for ``run_backfill``.
+
+Source:
+- ARCHITECTURE.md lines 1965-1966 (painting failures are warning/degradation)
+- ARCHITECTURE.md line 1974 (disk full is fatal).
 """
 
 
@@ -330,6 +464,94 @@ async def run_news_refresh(
     )
 
     return enqueued_count
+
+
+async def run_backfill(
+    config: AppConfig,
+    state: AppStateProtocol,
+) -> int:
+    """Expand the local painting pool toward ``config.paintings.pool_size``.
+
+    Contracted stage order:
+    1. Measure current pool deficit relative to ``pool_size``
+    2. Fetch new paintings only when deficit > 0
+    3. Analyze layout for each newly fetched painting
+    4. Compute and cache embeddings for each newly fetched painting
+    5. Persist state
+
+    Bounded behavior contract:
+    - Never fetch/process more than the current deficit in one call.
+    - Return count is bounded by ``[0, deficit]``.
+    - If pool already meets/exceeds target size, return ``0``.
+
+    Error boundary contract:
+    - Individual painting failures are skipped and do not abort the full backfill.
+    - If all sources fail, the call returns ``0`` (cached pool remains usable).
+    - Persistence failures propagate to the caller.
+
+    Source:
+    - ARCHITECTURE.md#2.12 ``run_backfill``
+    - ARCHITECTURE.md#10.1 error strategy table
+    - README.md backfill target notes.
+
+    Args:
+        config: Application configuration.
+        state: Application state for cache and persistence updates.
+
+    Returns:
+        Number of paintings successfully added to the pool.
+
+    Raises:
+        NotImplementedError: This step defines contracts only; implementation is out of scope.
+    """
+    raise NotImplementedError(
+        "run_backfill contract is defined, but implementation is intentionally deferred"
+    )
+
+
+async def watch(config: AppConfig) -> None:
+    """Run daemon watch mode with scheduler-driven action dispatch.
+
+    Contracted loop stage order:
+    1. Load state once at startup
+    2. Ask scheduler ``what_to_do(now, scheduler_state)`` each cycle
+    3. Dispatch actions using ``WATCH_ACTION_DISPATCH_ORDER``
+    4. Persist state after the action cycle
+    5. Sleep until ``scheduler.seconds_until_next_action(...)``
+
+    Scheduler action mapping:
+    - ``REFRESH_NEWS`` -> ``run_news_refresh``
+    - ``ROTATE`` -> ``run_once(..., RunOptions())``
+    - ``BACKFILL`` -> ``run_backfill``
+    - ``QUIET_ART`` -> ``run_once(..., RunOptions(no_news=True))``
+    - ``IDLE`` -> no pipeline action
+
+    Graceful shutdown semantics:
+    - Handle ``SIGINT`` and ``SIGTERM``.
+    - Finish the current in-flight action boundary.
+    - Persist state before exit.
+    - Do not start another scheduler cycle after shutdown is requested.
+
+    Error/retry boundary contract:
+    - Per-action recoverable errors are scoped to the current action and retried by future scheduler cycles.
+    - Fatal bootstrap/persistence failures propagate and terminate daemon startup/runtime.
+
+    Source:
+    - ARCHITECTURE.md#2.11 scheduler contract
+    - ARCHITECTURE.md#2.12 watch contract
+    - ARCHITECTURE.md#6.1 loop pseudocode
+    - ARCHITECTURE.md#9.5 shutdown semantics
+    - ARCHITECTURE.md#10.1 error handling table.
+
+    Args:
+        config: Application configuration.
+
+    Raises:
+        NotImplementedError: This step defines contracts only; implementation is out of scope.
+    """
+    raise NotImplementedError(
+        "watch contract is defined, but implementation is intentionally deferred"
+    )
 
 
 async def init_project(config: AppConfig) -> None:

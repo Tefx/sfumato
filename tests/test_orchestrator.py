@@ -40,15 +40,27 @@ from sfumato.config import (
     TvConfig,
 )
 from sfumato.orchestrator import (
+    RUN_BACKFILL_BOUNDED_BEHAVIOR,
+    RUN_BACKFILL_ERROR_BOUNDARIES,
+    RUN_BACKFILL_STAGE_ORDER,
     RUN_ONCE_ERROR_SURFACE_STAGES,
     RUN_ONCE_FLAG_SEMANTICS,
     RUN_ONCE_OUTPUT_PATH_GUARANTEE,
     RUN_ONCE_STAGE_ORDER,
     RUN_ONCE_TV_DOWNGRADE_SEMANTICS,
+    WATCH_ACTION_DISPATCH_ORDER,
+    WATCH_ERROR_PROPAGATION_BOUNDARIES,
+    WATCH_LOOP_STAGE_ORDER,
+    WATCH_SCHEDULER_ACTION_MAPPING,
+    WATCH_SHUTDOWN_SIGNALS,
+    WATCH_SHUTDOWN_STATE_SAVE_GUARANTEE,
+    WATCH_STATE_SAVE_GUARANTEES,
     RunOptions,
     RunResult,
+    run_backfill,
     run_news_refresh,
     run_once,
+    watch,
 )
 
 if TYPE_CHECKING:
@@ -138,6 +150,106 @@ def test_error_propagation_boundary_is_explicit() -> None:
         "palette_extraction",
         "render_4k_png",
     }
+
+
+def test_watch_loop_stage_order_is_contracted_and_stable() -> None:
+    """watch loop stage order matches architecture contract."""
+    assert WATCH_LOOP_STAGE_ORDER == (
+        "load_state_once",
+        "scheduler_decision",
+        "action_dispatch",
+        "state_save",
+        "sleep_until_next_action",
+    )
+
+
+def test_watch_scheduler_action_mapping_and_order_are_explicit() -> None:
+    """Scheduler action mapping and dispatch order are pinned."""
+    assert WATCH_ACTION_DISPATCH_ORDER == (
+        "REFRESH_NEWS",
+        "ROTATE",
+        "BACKFILL",
+        "QUIET_ART",
+    )
+
+    assert WATCH_SCHEDULER_ACTION_MAPPING == {
+        "REFRESH_NEWS": "run_news_refresh(config, state)",
+        "ROTATE": "run_once(config, state, RunOptions())",
+        "BACKFILL": "run_backfill(config, state)",
+        "QUIET_ART": "run_once(config, state, RunOptions(no_news=True))",
+        "IDLE": "no-op (only state save + sleep)",
+    }
+
+
+def test_watch_shutdown_and_state_save_guarantees_are_pinned() -> None:
+    """SIGINT/SIGTERM graceful shutdown and save semantics are explicit."""
+    assert WATCH_SHUTDOWN_SIGNALS == {"SIGINT", "SIGTERM"}
+    assert "finish the current in-flight action boundary" in (
+        WATCH_SHUTDOWN_STATE_SAVE_GUARANTEE
+    )
+    assert "persist state" in WATCH_SHUTDOWN_STATE_SAVE_GUARANTEE
+
+    assert sorted(WATCH_STATE_SAVE_GUARANTEES.keys()) == [
+        "after_action_cycle",
+        "signal_exit",
+        "startup_load",
+    ]
+    assert "state.save_all()" in WATCH_STATE_SAVE_GUARANTEES["after_action_cycle"]
+
+
+def test_backfill_contract_constants_are_pinned() -> None:
+    """Backfill stage order, bounds, and error boundaries are explicit."""
+    assert RUN_BACKFILL_STAGE_ORDER == (
+        "measure_pool_deficit",
+        "fetch_new_paintings_if_needed",
+        "analyze_layout_for_new_paintings",
+        "compute_embeddings_for_new_paintings",
+        "state_save",
+    )
+
+    assert len(RUN_BACKFILL_BOUNDED_BEHAVIOR) == 3
+    assert "Never add more than" in RUN_BACKFILL_BOUNDED_BEHAVIOR[0]
+    assert "return 0" in RUN_BACKFILL_BOUNDED_BEHAVIOR[2]
+
+    assert sorted(RUN_BACKFILL_ERROR_BOUNDARIES.keys()) == [
+        "fatal",
+        "item_level",
+        "source_level",
+    ]
+
+
+def test_watch_error_propagation_boundaries_are_explicit() -> None:
+    """Watch-level retry/propagation boundaries are pinned by contract."""
+    assert sorted(WATCH_ERROR_PROPAGATION_BOUNDARIES.keys()) == [
+        "run_backfill",
+        "run_news_refresh",
+        "run_once",
+        "watch_loop",
+    ]
+    assert (
+        "next scheduler interval"
+        in WATCH_ERROR_PROPAGATION_BOUNDARIES["run_news_refresh"]
+    )
+    assert "terminate" in WATCH_ERROR_PROPAGATION_BOUNDARIES["watch_loop"]
+
+
+@pytest.mark.asyncio
+async def test_run_backfill_is_contract_stub_only() -> None:
+    """run_backfill is a contract stub in this step."""
+    config = create_minimal_app_config()
+    mock_state = MockAppState()
+
+    with pytest.raises(NotImplementedError, match="contract is defined"):
+        await run_backfill(config=config, state=mock_state)
+
+
+@pytest.mark.asyncio
+async def test_watch_is_contract_stub_only() -> None:
+    """watch is a contract stub in this step."""
+    config = create_minimal_app_config()
+
+    with pytest.raises(NotImplementedError, match="contract is defined"):
+        await watch(config=config)
 
 
 @pytest.mark.asyncio
