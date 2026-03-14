@@ -397,3 +397,28 @@ These files were generated during prototyping and can be used as visual referenc
 - `mood_tense.png` — Hokusai + tense news batch
 - `mood_contemplative.png` — Friedrich + contemplative news batch
 - `pil_hokusai.png` — PIL rendering (rejected, poor quality)
+
+---
+
+## 11. Whisper Text (Art Facts) — 验证结论
+
+### 视觉效果测试
+
+| 参数 | 结果 |
+|------|------|
+| rgba 0.25 透明度 | 太淡，电视上不可见 |
+| rgba 0.45 透明度 | 仍然太淡 |
+| rgba 0.75 + 24px | 可见但颜色不对 |
+| 亮度自适应 + 28px + shadow | 效果可接受 |
+
+### 关键发现
+- **whisper text 和新闻文字可能重叠** — 两者都不知道对方的位置
+- **必须在 LLM layout analysis 时同时规划 text_zone 和 whisper_zone，保证不重叠**
+- 颜色和位置都需要 LLM 根据画面决定（和新闻文字同理）
+- 字号 28px、带 text-shadow 在正常观看距离可读
+- 不需要追求"走近才看见"——电视是偶尔瞄一眼的场景
+
+### 设计原则
+- whisper 位置在新闻的对角（新闻右上 → whisper 左下）
+- LLM 一次调用输出两个互斥区域
+- 视觉层级：新闻 > whisper（字号更小、颜色更淡、但仍可读）
