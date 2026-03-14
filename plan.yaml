@@ -2717,23 +2717,52 @@ phases:
   - id: production.watch
     name: Implement orchestrator.watch daemon loop
     status: pending
-    description: 'Implement orchestrator.watch() per ARCHITECTURE.md section 2.12.
-      Daemon loop: load state -> ask scheduler what_to_do(now) -> execute actions
-      (run_once for ROTATE, run_news_refresh for REFRESH_NEWS, run_backfill for BACKFILL,
-      pure art for QUIET_ART) -> save state -> sleep until next action. Handle SIGINT/SIGTERM
-      for graceful shutdown (save state, log, exit cleanly). Also implement run_backfill()
-      for background pool expansion. File: src/sfumato/orchestrator.py (add watch
-      + run_backfill). Completion: watch() runs indefinitely; responds to scheduler;
-      graceful shutdown works.'
-    verification: watch() enters loop and responds to scheduler actions; SIGTERM triggers
-      graceful shutdown with state save; run_backfill() fetches and analyzes new paintings
+    description: "step_type: implementation\ntags:\n  - integration\nspec_refs:\n\
+      \  - ARCHITECTURE.md#2.12\n  - ARCHITECTURE.md#2.13\ntouch_paths:\n  - src/sfumato/orchestrator.py\n\
+      \  - src/sfumato/scheduler.py\n  - tests/test_orchestrator.py\n  - tests/test_cli.py\n\
+      harness_refs:\n  - pytest\n  - signal-handling harness\nagent: python-executor\n\
+      \nImplement the runnable daemon surface in `src/sfumato/orchestrator.py` per\
+      \ `ARCHITECTURE.md#2.12` and the upstream contract/test steps.\n\nScope:\n-\
+      \ implement `watch(config)` startup, loop, action dispatch, save, sleep, and\
+      \ graceful shutdown\n- implement `run_backfill()` for background pool expansion\n\
+      - honor the contracted runtime mapping between scheduler outputs and orchestrator\
+      \ actions\n\nFailure-mode checklist:\n- startup failure before loop entry exits\
+      \ deterministically without partial daemon state\n- SIGINT/SIGTERM during active\
+      \ work saves state and shuts down cleanly without double-execution on repeated\
+      \ signals\n- quiet-art iterations avoid news-refresh side effects while still\
+      \ preserving save/sleep behavior\n- scheduler-to-action routing never drops\
+      \ `REFRESH_NEWS | ROTATE` combinations\n\nState semantics:\n- loop decisions\
+      \ derive from scheduler output plus current state snapshot\n- save-before-sleep\
+      \ and save-before-exit behavior must preserve the latest successful work exactly\
+      \ once\n- backward-compatible behavior is a clean no-op loop iteration when\
+      \ scheduler returns `NONE` or `IDLE`\n\nOut-of-scope guardrail:\n- no CLI argument\
+      \ parsing changes beyond watch runtime wiring\n- no containerization or deployment\
+      \ config work in this step\n\n## Integration Evidence\n\n**Command or test exercising\
+      \ the full path**:\n```\n<exact watch runtime command or integration test name>\n\
+      ```\n\n**Actual output**:\n```\n<paste stdout/stderr or test runner output>\n\
+      ```\n\n**Path exercised**: `src/sfumato/cli.py` -> `src/sfumato/orchestrator.py`\
+      \ -> scheduler/action handlers"
+    verification: '- Main path: targeted tests prove startup, one full loop iteration,
+      scheduler-to-action dispatch, state save, and sleep progression through the
+      real watch runtime surface
+
+      - Failure path: focused regressions prove SIGTERM during active work, repeated
+      signal handling, quiet-art isolation, and startup failure before loop entry
+      behave exactly as contracted
+
+      - Proof: runtime evidence must include one end-to-end watch invocation path,
+      not only isolated unit tests'
     refs:
     - ARCHITECTURE.md#2.12
+    - ARCHITECTURE.md#2.13
     - src/sfumato/orchestrator.py
     - src/sfumato/scheduler.py
-    - ARCHITECTURE.md
+    - tests/test_orchestrator.py
+    - tests/test_cli.py
     depends_on:
     - production.scheduler
+    - production.watch.contract
+    - production.watch.tests
     agent: python-executor
   - id: production.cli-full
     name: 'Complete CLI: watch + tv subcommands'
