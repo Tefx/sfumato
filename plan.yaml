@@ -3412,7 +3412,7 @@ phases:
       implementation verification remains for downstream steps.'
   - id: production.docker.tests
     name: Author container deployment tests
-    status: pending
+    status: claimed
     description: "step_type: test\nspec_refs:\n  - ARCHITECTURE.md#9\n  - ARCHITECTURE.md#2.12\n\
       \  - ARCHITECTURE.md#2.13\ntouch_paths:\n  - Dockerfile\n  - docker-compose.yml\n\
       \  - tests/test_docker_runtime.py\nharness_refs:\n  - docker build/runtime smoke\
@@ -3437,3 +3437,5 @@ phases:
     - production.watch
     - production.docker.contract
     agent: software-architect
+    claimed_by: software-architect
+    claimed_at: '2026-03-14T18:06:40.434504+00:00'
