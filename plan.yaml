@@ -5520,7 +5520,7 @@ phases:
       contract sets.'
   - id: replay.scheduler-wire.test
     name: Define replay scheduler wiring tests
-    status: claimed
+    status: done
     description: "step_type: test\nagent: python-executor\nspec_refs:\n  - ARCHITECTURE.md#2.12\n\
       touch_paths:\n  - tests/\n  - src/sfumato/orchestrator.py\n  - src/sfumato/state.py\n\
       harness_refs:\n  - tests/\n\nDefine contract tests for orchestrator-side replay\
@@ -5544,6 +5544,30 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T22:48:03.361068+00:00'
+    done_at: '2026-03-14T22:58:02.658068+00:00'
+    evidence: 'Step: replay.scheduler-wire.test
+
+      Commit hash(es): 50d0a4c; merged with conflict resolution as [main d00aa0f]
+
+      Files changed: tests/test_orchestrator.py
+
+      Verification:
+
+      - uv run pytest tests/test_orchestrator.py -k ''replay_queue_wiring_contract_is_explicit
+      or refresh_replay_expiry_and_high_overlap_skip_contracts_are_pinned or replay_protocol_surfaces_are_declared_for_orchestrator_wiring''
+      -> pass
+
+      - Post-conflict combined targeted verification with art-facts tests: 6 passed,
+      186 deselected
+
+      - Test suite covers queue precedence, replay fallback/transfer semantics, expiry
+      trigger, and >80% overlap skip contract
+
+      Spec link: ARCHITECTURE.md#2.12
+
+      Gaps/Notes:
+
+      - Merge conflict with art-facts test suite resolved by preserving both families.'
 - id: polish
   name: 'Polish: Default Model + Documentation'
   status: locked
