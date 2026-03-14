@@ -1872,7 +1872,7 @@ phases:
       random-vs-semantic precedence; no orchestrator wiring included in this step.'
   - id: intelligence.state
     name: Implement state module
-    status: pending
+    status: claimed
     description: 'step_type: implementation
 
       Implement `src/sfumato/state.py` per `ARCHITECTURE.md#2.10` after contract and
@@ -1950,6 +1950,8 @@ phases:
     - intelligence.state.contract
     - intelligence.state.tests
     agent: python-senior
+    claimed_by: python-senior
+    claimed_at: '2026-03-14T16:52:55.574395+00:00'
   - id: intelligence.news-queue
     name: Wire news queue and time-window into orchestrator
     status: pending
