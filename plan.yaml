@@ -1344,7 +1344,7 @@ phases:
       skipped until `core.pipeline` is implemented.'
   - id: core.pipeline.verify
     name: Independently verify orchestrator.run_once
-    status: pending
+    status: claimed
     description: "step_type: verification\nspec_refs:\n  - ARCHITECTURE.md#2.12\n\
       \  - ARCHITECTURE.md#2.13\n  - README.md\ntouch_paths:\n  - src/sfumato/orchestrator.py\n\
       \  - tests/test_orchestrator.py\nharness_refs:\n  - pytest\n  - orchestrator\
@@ -1380,6 +1380,8 @@ phases:
     depends_on:
     - core.pipeline
     agent: integration-verifier
+    claimed_by: integration-verifier
+    claimed_at: '2026-03-14T14:52:27.577029+00:00'
 - id: intelligence
   name: Intelligence
   status: locked
