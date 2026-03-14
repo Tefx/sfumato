@@ -23,25 +23,26 @@ import numpy as np
 
 from sfumato.config import AppConfig
 from sfumato.layout_ai import LayoutParams, analyze_painting
-from sfumato.matcher import MatcherError, select_painting
+from sfumato.matcher import MatcherError, compute_embedding, select_painting
 from sfumato.news import CurationResult, Story, refresh_news
 from sfumato.palette import PaletteColors, extract_palette
 from sfumato.paintings import (
     ArtSource,
     Orientation as PaintingsOrientation,
+    PaintingInfo as PaintingsPaintingInfo,
+    fetch_paintings,
+    list_cached_paintings,
 )
-from sfumato.paintings import PaintingInfo as PaintingsPaintingInfo
-from sfumato.paintings import list_cached_paintings
 from sfumato.render import (
     Orientation,
     PaintingInfo,
     RenderContext,
     render_to_png,
 )
+from sfumato.state import AppState
 
 if TYPE_CHECKING:
     from sfumato.render import RenderResult
-    from sfumato.state import AppState
 
 logger = logging.getLogger(__name__)
 
@@ -329,6 +330,137 @@ async def run_news_refresh(
     )
 
     return enqueued_count
+
+
+async def init_project(config: AppConfig) -> None:
+    """Initialize the sfumato project.
+
+    This is a potentially long operation (~50 LLM calls for 50 paintings).
+    Progress is printed to stdout.
+
+    Steps:
+    1. Create config file if not present
+    2. Create state directory structure
+    3. Fetch seed_size paintings from configured sources
+    4. Analyze each painting (layout + description)
+    5. Compute embeddings for each painting
+
+    Args:
+        config: Application configuration.
+
+    Raises:
+        OSError: If directories cannot be created.
+        Exception: Propagated from painting fetch, layout analysis, or embedding compute.
+    """
+    from sfumato.config import generate_default_config
+
+    # Step 1: Create config file if not present
+    config_path = config.data_dir / "config.toml"
+    if not config_path.exists():
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(generate_default_config())
+        print(f"Created config file: {config_path}")
+    else:
+        print(f"Config file already exists: {config_path}")
+
+    # Step 2: Create state directory structure
+    state_dir = config.data_dir / "state"
+    state_dir.mkdir(parents=True, exist_ok=True)
+    paintings_dir = config.paintings.cache_dir
+    paintings_dir.mkdir(parents=True, exist_ok=True)
+    output_dir = config.data_dir / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    print(f"Created directories:")
+    print(f"  - State: {state_dir}")
+    print(f"  - Paintings: {paintings_dir}")
+    print(f"  - Output: {output_dir}")
+
+    # Step 3: Fetch seed_size paintings from configured sources
+    print(
+        f"\nFetching {config.paintings.seed_size} paintings from configured sources..."
+    )
+    print(f"  Sources: {config.paintings.sources}")
+
+    paintings = await fetch_paintings(
+        sources=config.paintings.sources,
+        count=config.paintings.seed_size,
+        cache_dir=config.paintings.cache_dir,
+        exclude_ids=None,  # No exclusions for initial fetch
+    )
+
+    if not paintings:
+        print(
+            "Warning: No paintings were fetched. Check API keys and network connectivity."
+        )
+        print("  - Rijksmuseum requires RIJKSMUSEUM_API_KEY env var")
+        print("  - Met and Wikimedia require no keys but need network access")
+        return
+
+    print(f"Fetched {len(paintings)} paintings.")
+
+    # Step 4: Analyze each painting (layout + description)
+    # Step 5: Compute embeddings for each painting
+    print(f"\nAnalyzing {len(paintings)} paintings and computing embeddings...")
+
+    # Load state to get access to caches
+    state = AppState.load(state_dir)
+
+    success_count = 0
+    for i, painting in enumerate(paintings, 1):
+        try:
+            print(f"  [{i}/{len(paintings)}] {painting.title} by {painting.artist}")
+
+            # Check if already cached
+            if state.layout_cache.has(painting.content_hash):
+                print(f"    Layout already cached, skipping analysis")
+            else:
+                # Analyze painting layout
+                layout = await analyze_painting(painting.image_path, config.ai)
+
+                # Cache result
+                state.layout_cache.put(painting.content_hash, layout)
+                print(f"    Analyzed layout: {layout.template_hint}")
+
+            # Check if embedding already cached
+            if state.embedding_cache.has(painting.content_hash):
+                print(f"    Embedding already cached, skipping computation")
+            else:
+                # Compute embedding for painting description
+                # Get description from layout cache
+                layout = state.layout_cache.get(painting.content_hash)
+                if layout is None:
+                    print(f"    Warning: No layout for painting, skipping embedding")
+                    continue
+
+                description = layout.painting_description
+                if not description:
+                    print(
+                        f"    Warning: Empty description for painting, skipping embedding"
+                    )
+                    continue
+
+                # Compute embedding
+                embedding_result = await compute_embedding(description, config.ai)
+                state.embedding_cache.put(
+                    painting.content_hash, embedding_result.vector
+                )
+                print(
+                    f"    Computed embedding ({len(embedding_result.vector)} dimensions)"
+                )
+
+            success_count += 1
+
+        except Exception as e:
+            print(f"    Error: {e}")
+            logger.warning(f"Failed to analyze painting {painting.content_hash}: {e}")
+            continue
+
+    # Save state after all processing
+    state.save_all()
+    print(f"\nInitialization complete!")
+    print(f"  - Paintings fetched: {len(paintings)}")
+    print(f"  - Successfully processed: {success_count}")
+    print(f"  - State saved to: {state_dir}")
 
 
 async def run_once(

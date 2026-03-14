@@ -17,8 +17,8 @@ from typing import TYPE_CHECKING, Any
 
 import typer
 
-from sfumato.config import ConfigError, load_config
-from sfumato.orchestrator import RunOptions, run_once
+from sfumato.config import ConfigError, generate_default_config, load_config
+from sfumato.orchestrator import RunOptions, init_project, run_once
 
 if TYPE_CHECKING:
     from sfumato.layout_ai import LayoutParams
@@ -211,6 +211,80 @@ class AppState:
 # =============================================================================
 # CLI COMMANDS
 # =============================================================================
+
+
+@app.command()
+def init(
+    config: Path = typer.Option(
+        None,
+        "--config",
+        "-c",
+        help="Config file path (creates default if not found)",
+        exists=False,
+        dir_okay=False,
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "-v",
+        "--verbose",
+        help="Enable verbose output.",
+    ),
+) -> None:
+    """Initialize sfumato project: create config, fetch seed paintings, analyze them.
+
+    This command:
+    1. Creates config file if not present (with sensible defaults)
+    2. Creates state directory structure (~/.sfumato/state)
+    3. Fetches seed_size paintings from configured sources
+    4. Analyzes each painting (layout AI + description)
+    5. Computes embeddings for semantic matching
+
+    This is a potentially long operation (~50 LLM calls for 50 paintings).
+    Progress is printed to stdout.
+
+    Use this for first-time setup before running `sfumato run` or `sfumato watch`.
+    """
+    # For init, we use default config if no path specified
+    # This ensures we have a valid config for creating directories
+    if config is None:
+        config = Path.home() / ".config" / "sfumato" / "config.toml"
+
+    # Try to load existing config, or use defaults
+    try:
+        loaded_config = _load_config_or_exit(config, verbose)
+    except SystemExit:
+        # Config doesn't exist yet, create default
+        from sfumato.config import AppConfig
+
+        loaded_config = AppConfig()
+        if verbose:
+            typer.echo("Using default configuration")
+
+    # Initialize state directory
+    state_dir = loaded_config.data_dir / "state"
+    state_dir.mkdir(parents=True, exist_ok=True)
+    if verbose:
+        typer.echo(f"State directory: {state_dir}")
+
+    # Run init_project asynchronously
+    async def _init() -> None:
+        try:
+            await init_project(loaded_config)
+        except FileNotFoundError as e:
+            typer.echo(f"File not found: {e}", err=True)
+            raise typer.Exit(code=5) from e
+        except OSError as e:
+            typer.echo(f"IO error: {e}", err=True)
+            raise typer.Exit(code=5) from e
+        except Exception as e:
+            typer.echo(f"Initialization error: {e}", err=True)
+            if verbose:
+                import traceback
+
+                typer.echo(traceback.format_exc(), err=True)
+            raise typer.Exit(code=1) from e
+
+    asyncio.run(_init())
 
 
 @app.command()
