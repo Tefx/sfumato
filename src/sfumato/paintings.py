@@ -1,7 +1,7 @@
 """Fetch and cache paintings from cloud art APIs.
 
 This module implements the paintings module contract from ARCHITECTURE.md#2.3:
-- Fetch paintings from Rijksmuseum, Met Museum, Wikimedia Commons APIs
+- Fetch paintings from Met Museum, Wikimedia Commons APIs
 - Download high-resolution images to local cache with metadata sidecar
 - Manage painting pool and track which paintings have been used
 - Provide painting metadata for semantic matching
@@ -14,7 +14,6 @@ from __future__ import annotations
 import json
 import hashlib
 import logging
-import os
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import Enum
@@ -45,12 +44,10 @@ class ArtSource(Enum):
     """Art API source identifiers.
 
     Contract:
-        - RIJKSMUSEUM: Rijksmuseum API (requires RIJKSMUSEUM_API_KEY env var)
         - MET: Metropolitan Museum of Art API (no key required)
         - WIKIMEDIA: Wikimedia Commons API (no key required)
     """
 
-    RIJKSMUSEUM = "rijksmuseum"
     MET = "met"
     WIKIMEDIA = "wikimedia"
 
@@ -80,7 +77,7 @@ class PaintingInfo:
     Contract:
         - image_path is always absolute and points to an existing file
         - content_hash is SHA-256 hex digest of raw image file bytes
-        - source_id is unique within its source (rijksmuseum, met, wikimedia)
+        - source_id is unique within its source (met, wikimedia)
         - content_hash is used as the global deduplication key across all sources
         - orientation is PORTRAIT for square images (width == height)
         - All fields are populated before caching (no None values)
@@ -107,16 +104,6 @@ class PaintingInfo:
 
 class PaintingsError(Exception):
     """Base exception for paintings-related failures."""
-
-
-class SourceAuthError(PaintingsError):
-    """A source requires authentication that is not configured.
-
-    Contract:
-        - Raised when a source requires an API key but the key is missing
-        - For Rijksmuseum: RIJKSMUSEUM_API_KEY env var not set
-        - This is a SKIP scenario - the source should be excluded gracefully
-    """
 
 
 class ImageDownloadError(PaintingsError):
@@ -159,7 +146,6 @@ async def fetch_paintings(
     count: int,
     cache_dir: Path,
     exclude_ids: set[str] | None = None,
-    rijksmuseum_api_key: str | None = None,
 ) -> list[PaintingInfo]:
     """Fetch `count` paintings from the specified sources.
 
@@ -168,7 +154,7 @@ async def fetch_paintings(
     Returns PaintingInfo for each successfully downloaded painting.
 
     Args:
-        sources: List of source names: "rijksmuseum", "met", "wikimedia".
+        sources: List of source names: "met", "wikimedia".
         count: Number of paintings to fetch per source.
         cache_dir: Base cache directory, e.g. ~/.sfumato/paintings.
         exclude_ids: Set of source_id values to skip (already in pool/used).
@@ -177,11 +163,6 @@ async def fetch_paintings(
     Returns:
         List of PaintingInfo objects for successfully downloaded paintings.
         Individual download failures are logged and skipped.
-
-    Raises:
-        SourceAuthError: If Rijksmuseum source is requested but
-            RIJKSMUSEUM_API_KEY env var is not set.
-            For Met and Wikimedia, no auth is required.
 
     Contract:
         AGGREGATE SUCCESS:
@@ -192,9 +173,8 @@ async def fetch_paintings(
 
         EXCLUDE_ID FILTERING (PRE-DOWNLOAD):
         - exclude_ids is checked BEFORE making API calls
-        - If exclude_ids contains source_id "SK-A-1234", don't fetch that painting
         - This prevents downloading paintings already in the pool
-        - Format: "{source}:{source_id}" e.g. "rijksmuseum:SK-A-1234"
+        - Format: "{source}:{source_id}" e.g. "met:436535"
 
         CACHE LAYOUT:
         - Images: cache_dir/{source}/{source_id}.jpg
@@ -206,22 +186,16 @@ async def fetch_paintings(
         - If content_hash matches an existing cached painting, skip it
         - This handles the case where same image has different source_ids
 
-        DEFERRED SOURCE-AUTH BEHAVIOR:
-        - Rijksmuseum requires RIJKSMUSEUM_API_KEY env var
-        - If key is missing, log warning and SKIP that source (don't fail)
-        - Met and Wikimedia do not require auth
-        - SourceAuthError is raised only if ALL sources require auth and ALL fail
-
         ORIENTATION SEMANTICS:
         - LANDSCAPE: width > height
         - PORTRAIT: width <= height (includes square images)
 
     Example:
         >>> paintings = await fetch_paintings(
-        ...     sources=["rijksmuseum", "met"],
+        ...     sources=["met", "wikimedia"],
         ...     count=10,
         ...     cache_dir=Path("~/.sfumato/paintings"),
-        ...     exclude_ids={"rijksmuseum:SK-A-3262", "met:436535"},
+        ...     exclude_ids={"met:436535"},
         ... )
         >>> len(paintings)  # depends on API responses
         18
@@ -231,14 +205,11 @@ async def fetch_paintings(
 
     resolved_cache_dir = _resolve_cache_dir(cache_dir)
     dispatch: dict[str, _SourceFetcher] = {
-        ArtSource.RIJKSMUSEUM.value: fetch_from_rijksmuseum,
         ArtSource.MET.value: fetch_from_met,
         ArtSource.WIKIMEDIA.value: fetch_from_wikimedia,
     }
 
     requested_sources = [source.strip().lower() for source in sources]
-    known_sources = [source for source in requested_sources if source in dispatch]
-    auth_errors: list[SourceAuthError] = []
     paintings: list[PaintingInfo] = []
 
     for source in requested_sources:
@@ -248,66 +219,11 @@ async def fetch_paintings(
             continue
 
         try:
-            if source == ArtSource.RIJKSMUSEUM.value:
-                paintings.extend(
-                    await fetcher(count, resolved_cache_dir, exclude_ids, api_key=rijksmuseum_api_key)
-                )
-            else:
-                paintings.extend(await fetcher(count, resolved_cache_dir, exclude_ids))
-        except SourceAuthError as exc:
-            auth_errors.append(exc)
-            logger.warning("Skipping source '%s' due to missing auth: %s", source, exc)
+            paintings.extend(await fetcher(count, resolved_cache_dir, exclude_ids))
         except Exception as exc:  # pragma: no cover - defensive boundary
             logger.warning("Skipping source '%s' due to fetch failure: %s", source, exc)
 
-    if paintings:
-        return paintings
-
-    if (
-        auth_errors
-        and known_sources
-        and all(_source_requires_auth(source_name) for source_name in known_sources)
-    ):
-        raise auth_errors[0]
-
-    return []
-
-
-async def fetch_from_rijksmuseum(
-    count: int,
-    cache_dir: Path,
-    exclude_ids: set[str] | None = None,
-    api_key: str | None = None,
-) -> list[PaintingInfo]:
-    """Fetch paintings from Rijksmuseum API.
-
-    API key can be passed directly, set in config.toml [api_keys] section,
-    or via RIJKSMUSEUM_API_KEY env var.
-
-    Args:
-        count: Number of paintings to fetch.
-        cache_dir: Base cache directory for downloads.
-        exclude_ids: Set of source_id values to skip (PRE-DOWNLOAD filter).
-        api_key: Rijksmuseum API key. Falls back to RIJKSMUSEUM_API_KEY env var.
-
-    Returns:
-        List of PaintingInfo objects for successfully downloaded paintings.
-
-    Raises:
-        SourceAuthError: If no API key is available from any source.
-    """
-    api_key = api_key or os.getenv("RIJKSMUSEUM_API_KEY")
-    if not api_key:
-        raise SourceAuthError("RIJKSMUSEUM_API_KEY not set in config or env var")
-
-    candidates = await _discover_rijksmuseum_candidates(count=count, api_key=api_key)
-    return await _download_candidates(
-        source=ArtSource.RIJKSMUSEUM,
-        candidates=candidates,
-        count=count,
-        cache_dir=cache_dir,
-        exclude_ids=exclude_ids,
-    )
+    return paintings
 
 
 async def fetch_from_met(
@@ -331,7 +247,7 @@ async def fetch_from_met(
     Contract:
         AUTH REQUIREMENT:
         - No API key required
-        - Never raises SourceAuthError
+        - No API key required
 
         API FILTERING:
         - Only fetches objects where isPublicDomain is true
@@ -383,7 +299,7 @@ async def fetch_from_wikimedia(
     Contract:
         AUTH REQUIREMENT:
         - No API key required
-        - Never raises SourceAuthError
+        - No API key required
 
         API FILTERING:
         - Searches Category:Featured_pictures_of_paintings
@@ -512,7 +428,7 @@ def list_cached_paintings(cache_dir: Path) -> list[PaintingInfo]:
         >>> len(paintings)
         150
         >>> paintings[0].source
-        <ArtSource.RIJKSMUSEUM: 'rijksmuseum'>
+        <ArtSource.MET: 'met'>
     """
     resolved_cache_dir = _resolve_cache_dir(cache_dir)
     if not resolved_cache_dir.exists():
@@ -649,11 +565,6 @@ def _resolve_cache_dir(cache_dir: Path) -> Path:
     return cache_dir.expanduser().resolve()
 
 
-def _source_requires_auth(source_name: str) -> bool:
-    """Return whether a source currently requires credentials."""
-    return source_name == ArtSource.RIJKSMUSEUM.value
-
-
 async def _download_candidates(
     source: ArtSource,
     candidates: list[_SourceCandidate],
@@ -681,10 +592,15 @@ async def _download_candidates(
         )
     ]
 
+    import asyncio
+
     downloaded: list[PaintingInfo] = []
-    for candidate in filtered_candidates:
+    for idx, candidate in enumerate(filtered_candidates):
         if len(downloaded) >= count:
             break
+
+        if idx > 0:
+            await asyncio.sleep(2)  # Rate-limit downloads (avoid 429 from Wikimedia/Met)
 
         try:
             painting = await _download_one(
@@ -857,50 +773,6 @@ async def _download_image_bytes(image_url: str) -> bytes:
     return response.content
 
 
-async def _discover_rijksmuseum_candidates(
-    count: int,
-    api_key: str,
-) -> list[_SourceCandidate]:
-    """Discover candidate paintings from the Rijksmuseum API."""
-    params = {
-        "key": api_key,
-        "format": "json",
-        "imgonly": "True",
-        "type": "painting",
-        "ps": str(max(count * 4, 20)),
-        "p": "1",
-    }
-
-    timeout = httpx.Timeout(20.0)
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        response = await client.get(
-            "https://www.rijksmuseum.nl/api/en/collection",
-            params=params,
-        )
-        response.raise_for_status()
-        payload = response.json()
-
-    candidates: list[_SourceCandidate] = []
-    for item in payload.get("artObjects", []):
-        object_number = str(item.get("objectNumber", "")).strip()
-        web_image = item.get("webImage") or {}
-        image_url = str(web_image.get("url", "")).strip()
-        if not object_number or not image_url:
-            continue
-
-        candidates.append(
-            _SourceCandidate(
-                source_id=object_number,
-                title=str(item.get("title", "Untitled")),
-                artist=str(item.get("principalOrFirstMaker", "Unknown")),
-                year=str((item.get("dating") or {}).get("presentingDate", "")),
-                source_url=str((item.get("links") or {}).get("web", "")),
-                image_url=image_url,
-            )
-        )
-    return candidates
-
-
 async def _discover_met_candidates(count: int) -> list[_SourceCandidate]:
     """Discover candidate paintings from the Met Museum API."""
     import asyncio
@@ -924,10 +796,16 @@ async def _discover_met_candidates(count: int) -> list[_SourceCandidate]:
         candidates: list[_SourceCandidate] = []
         for object_id in object_ids[: max(count * 5, 20)]:
             await asyncio.sleep(0.5)  # Rate limit: ~2 req/s
-            object_response = await client.get(
-                f"https://collectionapi.metmuseum.org/public/collection/v1/objects/{object_id}"
-            )
-            object_response.raise_for_status()
+            try:
+                object_response = await client.get(
+                    f"https://collectionapi.metmuseum.org/public/collection/v1/objects/{object_id}"
+                )
+                object_response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code == 404:
+                    logger.debug("Met object %s returned 404, skipping", object_id)
+                    continue
+                raise
             item = object_response.json()
 
             image_url = str(item.get("primaryImage", "")).strip()
@@ -976,7 +854,7 @@ async def _discover_wikimedia_candidates(count: int) -> list[_SourceCandidate]:
         for subcat in subcategories:
             if len(all_members) >= max(count * 5, 20):
                 break
-            await asyncio.sleep(1)
+            await asyncio.sleep(2)
             members_response = await client.get(
                 "https://commons.wikimedia.org/w/api.php",
                 params={
@@ -1000,7 +878,7 @@ async def _discover_wikimedia_candidates(count: int) -> list[_SourceCandidate]:
             if not title.startswith("File:"):
                 continue
 
-            await asyncio.sleep(2)  # Wikimedia rate limit: ~1 req/2s
+            await asyncio.sleep(3)  # Wikimedia rate limit: ~1 req/3s
             image_response = await client.get(
                 "https://commons.wikimedia.org/w/api.php",
                 params={

@@ -51,7 +51,6 @@ class Orientation(Enum):
 class ArtSource(Enum):
     """Test double for paintings.ArtSource."""
 
-    RIJKSMUSEUM = "rijksmuseum"
     MET = "met"
     WIKIMEDIA = "wikimedia"
 

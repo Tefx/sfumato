@@ -38,7 +38,7 @@ def test_default_discovery_returns_default_appconfig_when_nothing_exists(
     assert isinstance(result, AppConfig)
     assert result.paintings.cache_dir.is_absolute()
     assert result.data_dir.is_absolute()
-    assert result.paintings.sources == ["rijksmuseum", "met", "wikimedia"]
+    assert result.paintings.sources == ["met", "wikimedia"]
 
 
 def test_precedence_explicit_path_beats_env_and_optional(

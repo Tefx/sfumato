@@ -22,11 +22,9 @@ from sfumato.paintings import (
     ArtSource,
     Orientation,
     PaintingInfo,
-    SourceAuthError,
     content_hash,
     detect_orientation,
     fetch_from_met,
-    fetch_from_rijksmuseum,
     fetch_paintings,
     list_cached_paintings,
 )
@@ -199,12 +197,6 @@ async def test_dispatch_routes_to_requested_sources_only(
     """dispatch: fetch_paintings calls only requested source fetchers."""
     calls: list[str] = []
 
-    async def fake_rijksmuseum(
-        count: int, cache_dir: Path, exclude_ids: set[str] | None = None
-    ) -> list[PaintingInfo]:
-        calls.append("rijksmuseum")
-        return []
-
     async def fake_met(
         count: int, cache_dir: Path, exclude_ids: set[str] | None = None
     ) -> list[PaintingInfo]:
@@ -217,7 +209,6 @@ async def test_dispatch_routes_to_requested_sources_only(
         calls.append("wikimedia")
         return []
 
-    monkeypatch.setattr(paintings, "fetch_from_rijksmuseum", fake_rijksmuseum)
     monkeypatch.setattr(paintings, "fetch_from_met", fake_met)
     monkeypatch.setattr(paintings, "fetch_from_wikimedia", fake_wikimedia)
 
@@ -411,43 +402,6 @@ async def test_sidecar_written_and_reconstructed_via_list_cache(
 
 
 @pytest.mark.asyncio
-async def test_regression_missing_rijksmuseum_key_single_source_raises(
-    monkeypatch: pytest.MonkeyPatch,
-    temp_cache_dir: Path,
-) -> None:
-    """regression: missing RIJKSMUSEUM_API_KEY raises for single-source rijks."""
-    monkeypatch.delenv("RIJKSMUSEUM_API_KEY", raising=False)
-    with pytest.raises(SourceAuthError):
-        await fetch_from_rijksmuseum(count=1, cache_dir=temp_cache_dir)
-
-
-@pytest.mark.asyncio
-async def test_regression_missing_rijksmuseum_key_skips_when_other_source_succeeds(
-    monkeypatch: pytest.MonkeyPatch,
-    temp_cache_dir: Path,
-) -> None:
-    """regression: missing rijks key does not block successful sibling source."""
-    monkeypatch.delenv("RIJKSMUSEUM_API_KEY", raising=False)
-    image = temp_cache_dir / "ok.jpg"
-    image.write_bytes(_jpeg_bytes())
-
-    async def fake_met(
-        count: int, cache_dir: Path, exclude_ids: set[str] | None = None
-    ) -> list[PaintingInfo]:
-        return [_painting_info(ArtSource.MET, "met-1", image)]
-
-    monkeypatch.setattr(paintings, "fetch_from_met", fake_met)
-
-    result = await fetch_paintings(
-        sources=["rijksmuseum", "met"],
-        count=5,
-        cache_dir=temp_cache_dir,
-    )
-
-    assert [item.source for item in result] == [ArtSource.MET]
-
-
-@pytest.mark.asyncio
 async def test_regression_one_source_fails_others_succeed(
     monkeypatch: pytest.MonkeyPatch,
     temp_cache_dir: Path,
@@ -456,7 +410,7 @@ async def test_regression_one_source_fails_others_succeed(
     image = temp_cache_dir / "ok.jpg"
     image.write_bytes(_jpeg_bytes())
 
-    async def failing_rijksmuseum(
+    async def failing_met(
         count: int, cache_dir: Path, exclude_ids: set[str] | None = None
     ) -> list[PaintingInfo]:
         raise TimeoutError("simulated timeout")
@@ -466,11 +420,11 @@ async def test_regression_one_source_fails_others_succeed(
     ) -> list[PaintingInfo]:
         return [_painting_info(ArtSource.WIKIMEDIA, "wik-1", image)]
 
-    monkeypatch.setattr(paintings, "fetch_from_rijksmuseum", failing_rijksmuseum)
+    monkeypatch.setattr(paintings, "fetch_from_met", failing_met)
     monkeypatch.setattr(paintings, "fetch_from_wikimedia", successful_wikimedia)
 
     result = await fetch_paintings(
-        sources=["rijksmuseum", "wikimedia"],
+        sources=["met", "wikimedia"],
         count=2,
         cache_dir=temp_cache_dir,
     )
@@ -482,7 +436,7 @@ def test_content_hash_not_affected_by_sidecar_changes(temp_cache_dir: Path) -> N
     """content_hash identity is derived from image bytes only, not sidecar."""
     image_path, sidecar_path = _write_cache_entry(
         cache_dir=temp_cache_dir,
-        source=ArtSource.RIJKSMUSEUM,
+        source=ArtSource.MET,
         source_id="SK-123",
         image_bytes=_jpeg_bytes(),
     )

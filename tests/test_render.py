@@ -49,8 +49,8 @@ def sample_painting_info(tmp_path: Path) -> PaintingInfo:
         orientation=Orientation.LANDSCAPE,
         width=3840,
         height=2160,
-        source="rijksmuseum",
-        source_id="SK-A-2344",
+        source="met",
+        source_id="436535",
         source_url="https://example.com/painting",
     )
 

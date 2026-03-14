@@ -360,24 +360,15 @@ def init(
             model_choice = typer.prompt(
                 "  AI Model", default="gemini-3.1-pro-preview"
             )
-            rijks_key = typer.prompt(
-                "  Rijksmuseum API key (get free at rijksmuseum.nl/en/register)",
-                default="",
-                show_default=False,
-            )
-            if not rijks_key:
-                typer.echo("    (skipped — Met + Wikimedia will be used)")
-
             language = typer.prompt("  Display language", default="zh")
 
             # Build config with user's choices
             from sfumato.config import (
-                TvConfig, AiConfig, ApiKeysConfig, NewsConfig,
+                TvConfig, AiConfig, NewsConfig,
             )
             loaded_config = AppConfig(
                 tv=TvConfig(ip=tv_ip) if tv_ip else TvConfig(ip=""),
                 ai=AiConfig(cli=cli_choice, model=model_choice),
-                api_keys=ApiKeysConfig(rijksmuseum=rijks_key),
                 news=NewsConfig(language=language),
             )
 
@@ -396,11 +387,6 @@ def init(
             config_content = config_content.replace(
                 'model = "gemini-3.1-pro-preview"', f'model = "{model_choice}"'
             )
-            if rijks_key:
-                config_content = config_content.replace(
-                    '# rijksmuseum = "your-api-key-here"',
-                    f'rijksmuseum = "{rijks_key}"',
-                )
             config_content = config_content.replace(
                 'language = "zh"', f'language = "{language}"'
             )

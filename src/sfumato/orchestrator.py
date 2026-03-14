@@ -537,7 +537,6 @@ async def run_backfill(
             count=deficit,
             cache_dir=config.paintings.cache_dir,
             exclude_ids=existing_hashes,
-            rijksmuseum_api_key=config.api_keys.rijksmuseum or None,
         )
     except Exception as e:
         logger.warning("All painting sources failed during backfill: %s", e)
@@ -869,15 +868,13 @@ async def init_project(config: AppConfig) -> None:
         count=config.paintings.seed_size,
         cache_dir=config.paintings.cache_dir,
         exclude_ids=None,  # No exclusions for initial fetch
-        rijksmuseum_api_key=config.api_keys.rijksmuseum or None,
     )
 
     if not paintings:
         print(
             "Warning: No paintings were fetched. Check API keys and network connectivity."
         )
-        print("  - Rijksmuseum requires RIJKSMUSEUM_API_KEY env var")
-        print("  - Met and Wikimedia require no keys but need network access")
+        print("  - Met and Wikimedia require network access")
         return
 
     print(f"Fetched {len(paintings)} paintings.")
@@ -1234,7 +1231,7 @@ def _create_painting_info_from_path(painting_path: Path) -> PaintingsPaintingInf
         orientation=orientation,
         width=width,
         height=height,
-        source=ArtSource.RIJKSMUSEUM,  # Use a placeholder source
+        source=ArtSource.MET,  # Placeholder source for user-provided paintings
         source_id=content_hash[:12],
         source_url="",
     )
