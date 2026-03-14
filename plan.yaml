@@ -4818,7 +4818,7 @@ phases:
   steps:
   - id: replay.config
     name: Add replay_expire_days to config
-    status: claimed
+    status: done
     description: "step_type: implementation\nagent: python-executor\nagent_source:\
       \ default\nspec_refs:\n  - README.md\ntouch_paths:\n  - src/sfumato/config.py\n\
       \  - tests/test_config.py\nharness_refs:\n  - tests/test_config.py\n\nImplement\
@@ -4841,6 +4841,26 @@ phases:
     - replay.config.test
     claimed_by: python-executor
     claimed_at: '2026-03-14T22:01:10.247039+00:00'
+    done_at: '2026-03-14T22:06:28.317814+00:00'
+    evidence: 'Step: replay.config
+
+      Commit hash(es): 4f3336ca4982a5a2bf583aaa84a827347e2acbe0; merged as [main 16baa02]
+
+      Files changed: src/sfumato/config.py, tests/test_config.py
+
+      Verification:
+
+      - uv run pytest tests/test_config.py -v -> 26 passed
+
+      - NewsConfig exposes replay_expire_days default=2
+
+      - generate_default_config includes replay_expire_days under [news]
+
+      Spec link: README.md
+
+      Gaps/Notes:
+
+      - No additional gaps reported.'
   - id: replay.queue
     name: Implement ReplayQueue in state module
     status: pending
