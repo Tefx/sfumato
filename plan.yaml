@@ -3666,3 +3666,13 @@ phases:
 
       - Test/validation artifacts only; runtime deployment implementation remains
       in downstream production.docker step.'
+- id: sdk
+  name: LiteLLM SDK Backend
+  status: pending
+  gate: backend=sdk produces valid LlmResponse via litellm.completion() and litellm.embedding();
+    backend=cli remains unchanged; Docker image builds without CLI tools
+  context: 'Add litellm SDK backend as alternative to CLI subprocess calls. Enables
+    Docker containers to call LLMs via API key without CLI tools installed. Two backends
+    coexist: cli (existing) and sdk (new).'
+  depends_on:
+  - production
