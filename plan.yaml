@@ -4957,7 +4957,7 @@ phases:
       final full whisper behavior remains in implementation step.'
   - id: art-facts.orchestrator-wire.contract
     name: Define orchestrator art-facts wiring contract
-    status: claimed
+    status: done
     description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
       \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nagent: software-architect\n\
       spec_refs:\n  - ARCHITECTURE.md#2.12\ntouch_paths:\n  - src/sfumato/orchestrator.py\n\
@@ -4987,6 +4987,27 @@ phases:
     agent: software-architect
     claimed_by: software-architect
     claimed_at: '2026-03-14T22:39:59.745084+00:00'
+    done_at: '2026-03-14T22:47:24.102573+00:00'
+    evidence: 'Step: art-facts.orchestrator-wire.contract
+
+      Commit hash(es): 64dc598; merged as [main e89ecdf]
+
+      Files changed: src/sfumato/orchestrator.py, tests/test_orchestrator.py
+
+      Verification:
+
+      - uv run pytest tests/test_orchestrator.py -k ''art_fact_flow_contract_is_explicit
+      or art_fact_index_state_ownership_and_rotation_semantics_are_pinned or rotate_art_fact_acceptance_criteria_are_explicit''
+      -> passed (3 tests)
+
+      - Contract constants/protocol stubs and orchestrator contract tests added; no
+      full integration runtime behavior implemented
+
+      Spec link: ARCHITECTURE.md#2.12
+
+      Gaps/Notes:
+
+      - Contract-only step; implementation reserved for art-facts.orchestrator-wire.'
   - id: art-facts.orchestrator-wire.test
     name: Define orchestrator art-facts contract tests
     status: pending
