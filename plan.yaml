@@ -3167,7 +3167,7 @@ phases:
       surface; no full daemon-loop implementation shipped in this step.'
   - id: production.watch.tests
     name: Author daemon watch tests
-    status: pending
+    status: claimed
     description: "step_type: test\nspec_refs:\n  - ARCHITECTURE.md#2.12\n  - ARCHITECTURE.md#2.13\n\
       touch_paths:\n  - tests/test_orchestrator.py\n  - tests/test_cli.py\n  - src/sfumato/orchestrator.py\n\
       \  - src/sfumato/cli.py\nharness_refs:\n  - pytest\n  - signal-handling harness\n\
@@ -3194,6 +3194,8 @@ phases:
     - production.scheduler
     - production.watch.contract
     agent: python-executor
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T17:55:46.756188+00:00'
   - id: production.cli-full.contract
     name: Define production CLI contract
     status: done
