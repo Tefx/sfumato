@@ -20,7 +20,7 @@ phases:
   steps:
   - id: core.config
     name: Implement config module
-    status: claimed
+    status: done
     description: "step_type: implementation\nspec_refs:\n  - ARCHITECTURE.md#2.1\n\
       touch_paths:\n  - src/sfumato/config.py\n  - tests/test_config.py\nharness_refs:\n\
       \  - pytest\nagent: python-senior\n\nImplement `src/sfumato/config.py` per `ARCHITECTURE.md#2.1`\
@@ -62,6 +62,41 @@ phases:
     agent: python-senior
     claimed_by: python-senior
     claimed_at: '2026-03-14T12:51:41.286697+00:00'
+    done_at: '2026-03-14T13:02:11.313569+00:00'
+    evidence: 'Artifact:
+
+      - Worker commits: 5ba2edd (plus atomic commit 28365c2)
+
+      - Main commit: 8ccfe2baf3c347fbd094c059aa9bb948d69c8170
+
+
+      Verification:
+
+      - Run: `uv run pytest tests/test_config.py -v` -> 13 passed, 0 failed
+
+      - Named precedence/fallback tests: `test_precedence_explicit_path_beats_env_and_optional`,
+      `test_precedence_env_beats_optional_discovery`, `test_optional_discovery_prefers_home_location_before_local`,
+      `test_optional_discovery_falls_back_to_local_when_home_missing`
+
+      - Named failure/edge tests: `test_missing_authoritative_explicit_path_raises_configerror`,
+      `test_missing_authoritative_env_target_raises_configerror`, `test_malformed_toml_raises_configerror_with_file_context`,
+      `test_wrong_field_type_raises_configerror_with_field_context`, `test_path_resolution_anchors_relative_paths_to_owning_config_file`,
+      `test_path_resolution_keeps_absolute_and_expands_tilde`
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#2.1
+
+      - src/sfumato/config.py
+
+      - tests/test_config.py
+
+
+      Gaps/Notes:
+
+      - Out of scope unchanged: config watching/live reload and per-field env overrides
+      beyond `SFUMATO_CONFIG`.'
   - id: core.llm
     name: Implement LLM invocation layer
     status: pending
