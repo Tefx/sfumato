@@ -4571,7 +4571,7 @@ phases:
     - art-facts.orchestrator-wire
   - id: art-facts.layout-prompt.contract
     name: Define layout prompt zone and art-fact contract
-    status: claimed
+    status: done
     description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
       \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nagent: software-architect\n\
       agent_source: default\nspec_refs:\n  - PROTOTYPING.md#11\n  - ARCHITECTURE.md#2.5\n\
@@ -4595,6 +4595,26 @@ phases:
       stubs'
     claimed_by: software-architect
     claimed_at: '2026-03-14T21:45:19.612530+00:00'
+    done_at: '2026-03-14T21:52:02.949896+00:00'
+    evidence: 'Step: art-facts.layout-prompt.contract
+
+      Commit hash(es): 4b298f8cf27324aa9c865d46ef8c6b0babdf9c8e; merged as [main 5f2cb8d]
+
+      Files changed: src/sfumato/layout_ai.py, tests/test_layout_ai.py
+
+      Verification:
+
+      - uv run pytest tests/test_layout_ai.py -> passed (5/5)
+
+      - Contract tests verify field presence, LLM 10-item output contract, and overlap/readability
+      prompt invariants
+
+      Spec link: PROTOTYPING.md#11, ARCHITECTURE.md#2.5
+
+      Gaps/Notes:
+
+      - Contract-only updates; runtime builders intentionally left for implementation
+      step.'
   - id: art-facts.layout-prompt.test
     name: Define layout prompt contract tests
     status: pending
