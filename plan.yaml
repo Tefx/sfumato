@@ -4066,7 +4066,7 @@ phases:
     agent: python-executor
   - id: hardening.paintings-edge-cases
     name: Paintings module edge case fixes
-    status: claimed
+    status: done
     description: "step_type: implementation\ntouch_paths:\n  - src/sfumato/paintings.py\n\
       \  - tests/test_paintings.py\nagent: python-executor\n\n## Objective\n\nFix\
       \ bugs #9, #10, #11, #12 from the hardening bug list.\n\n## Tasks\n\n### Bug\
@@ -4105,6 +4105,26 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T20:34:31.166657+00:00'
+    done_at: '2026-03-14T20:55:03.004135+00:00'
+    evidence: 'Step: hardening.paintings-edge-cases
+
+      Commit hash(es): f6b52e2; merged as [main 7eae5a1]
+
+      Files changed: src/sfumato/paintings.py, tests/test_paintings.py
+
+      Verification:
+
+      - uv run pytest tests/test_paintings.py -v -> 19 passed
+
+      - Dedicated tests verify custom-dir listing, Met partial 404 resilience, Wikimedia
+      file-query behavior, and bounded delay
+
+      Spec link: ARCHITECTURE.md
+
+      Gaps/Notes:
+
+      - Bug #11 query already used cmtype=file; step added clarifying comment and
+      verification coverage.'
   - id: hardening.integration-tests
     name: End-to-end integration tests for run_once
     status: pending
