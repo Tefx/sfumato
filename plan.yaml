@@ -3844,3 +3844,41 @@ phases:
     untested CLI command construction, missing boundary condition coverage.'
   depends_on:
   - production
+  steps:
+  - id: hardening.protocol-alignment
+    name: Protocol conformance + CLI state alignment
+    status: pending
+    description: "step_type: implementation\nspec_refs:\n  - ARCHITECTURE.md\ntouch_paths:\n\
+      \  - src/sfumato/orchestrator.py (Protocol declarations)\n  - src/sfumato/cli.py\
+      \ (_NewsQueue, _UsedPaintings, _LayoutCache, _EmbeddingCache, AppState)\n  -\
+      \ src/sfumato/state.py (reference implementation)\n  - tests/test_cli.py\nagent:\
+      \ python-senior\n\n## Objective\n\nEnsure all Protocol classes in orchestrator.py\
+      \ are complete and that cli.py's\ninline state classes conform to them. This\
+      \ is the root cause of bugs #4 and #5.\n\n## Tasks\n\n1. **Audit Protocol completeness**:\
+      \ Compare every method in state.py's\n   NewsQueue/UsedPaintings/LayoutCache/EmbeddingCache\
+      \ against the corresponding\n   Protocol in orchestrator.py. Add any missing\
+      \ method declarations to the\n   Protocol (e.g. `peek` if used by orchestrator).\n\
+      \n2. **Align cli.py mock classes**: For each of _NewsQueue, _UsedPaintings,\n\
+      \   _LayoutCache, _EmbeddingCache in cli.py:\n   - Ensure method signatures\
+      \ exactly match the Protocol\n   - Ensure return types match\n   - Ensure AppState\
+      \ satisfies AppStateProtocol\n   - Add `reset()` to _UsedPaintings if missing\
+      \ from Protocol\n\n3. **Add Protocol conformance tests**: Add explicit tests\
+      \ that verify\n   cli.py's classes satisfy the Protocols at type-check time.\
+      \ Use\n   `typing.assert_type()` or runtime isinstance checks with\n   `runtime_checkable`.\n\
+      \n4. **Run pyright**: Verify zero Protocol-related errors across the codebase.\n\
+      \nGrep hints:\n  - `grep -n 'class.*Protocol' src/sfumato/orchestrator.py`\n\
+      \  - `grep -n 'class _' src/sfumato/cli.py`\n  - `grep -n 'def ' src/sfumato/state.py\
+      \ | head -60`\n\n## Known Risks (from project history)\n- cli.py mock classes\
+      \ drift from state.py silently because no conformance check exists\n- Protocol\
+      \ declarations were incomplete from initial implementation"
+    verification: "- pyright src/sfumato/orchestrator.py src/sfumato/cli.py: zero\
+      \ Protocol-related errors\n- New conformance tests pass: uv run pytest tests/test_cli.py\
+      \ -k protocol -v\n- Every method in NewsQueueProtocol/UsedPaintingsProtocol/LayoutCacheProtocol/EmbeddingCacheProtocol\n\
+      \  has a corresponding implementation in both state.py and cli.py"
+    refs:
+    - src/sfumato/orchestrator.py
+    - src/sfumato/state.py
+    - src/sfumato/cli.py
+    - tests/test_orchestrator.py
+    - tests/test_cli.py
+    agent: python-senior
