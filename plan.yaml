@@ -5384,6 +5384,33 @@ phases:
 
       - Subagent reported unrelated pre-existing TestLayoutCacheContract failures
       outside this step scope.'
+  - id: replay.scheduler-wire.contract
+    name: Define replay scheduler wiring contract
+    status: pending
+    description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
+      \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nagent: software-architect\n\
+      spec_refs:\n  - ARCHITECTURE.md#2.12\ntouch_paths:\n  - src/sfumato/orchestrator.py\n\
+      \  - src/sfumato/state.py\n\nDefine the acceptance contract for orchestrator-side\
+      \ replay scheduling without adding implementation logic.\n\nContract scope:\n\
+      1. Specify dequeue precedence between primary news_queue and replay_queue.next()\
+      \ in rotate/dequeue flows.\n2. Specify replay transfer semantics after primary\
+      \ consumption.\n3. Specify where replay expiry is triggered during refresh_news\
+      \ and which config value drives it.\n4. Specify seen_urls overlap dedup behavior,\
+      \ including the >80% skip threshold and reuse of existing batches.\n\nAcceptance\
+      \ checks to encode explicitly:\n- primary queue precedence over replay queue\
+      \ is unambiguous\n- consumed primary batches transfer into replay storage on\
+      \ the orchestrator path\n- replay expiry is triggered during news refresh using\
+      \ replay_expire_days\n- dedup skips the LLM path when RSS overlap exceeds 80%\
+      \ and preserves existing batches\n- Contract remains implementation-free; stubs/types/docstrings\
+      \ only\n\nPattern reference: Follow existing news_queue.dequeue() and refresh_news\
+      \ wiring in src/sfumato/orchestrator.py."
+    verification: '- Contract artifact defines queue precedence, replay transfer,
+      expiry trigger, and >80% overlap dedup skip behavior clearly
+
+      - No runnable business logic added in the contract artifact
+
+      - Downstream test step can be written without inventing behavior'
+    agent: software-architect
 - id: polish
   name: 'Polish: Default Model + Documentation'
   status: locked
