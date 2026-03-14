@@ -105,6 +105,19 @@
     font-style: italic;
     color: {{DIM}};
   }
+
+  /* Whisper zone — secondary editorial text */
+  .whisper-zone {
+    position: absolute;
+    {{WHISPER_POSITION}}
+    font-family: 'Noto Sans SC', sans-serif;
+    font-size: 28px;
+    font-weight: 300;
+    line-height: 1.6;
+    color: {{WHISPER_COLOR}};
+    text-shadow: {{WHISPER_SHADOW}};
+    z-index: 3;
+  }
 </style>
 </head>
 <body>
@@ -123,5 +136,6 @@
       <div class="title-year">{{PAINTING_TITLE}}</div>
     </div>
   </div>
+  <div class="whisper-zone">{{WHISPER_TEXT}}</div>
 </body>
 </html>

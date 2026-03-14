@@ -298,14 +298,43 @@ def test_whisper_template_syntax_valid():
         # Find all whisper-related placeholders
         whisper_placeholders = re.findall(r"\{\{WHISPER_[A-Z_]+\}\}", content)
 
-        # Should have exactly 4 whisper placeholders (POSITION, COLOR, SHADOW, TEXT)
-        assert len(whisper_placeholders) == 4, (
-            f"Template {template_name} has {len(whisper_placeholders)} whisper placeholders, expected 4"
+        # Should have 8 whisper placeholders total:
+        # 4 in <template> contract (POSITION, COLOR, SHADOW, TEXT) +
+        # 4 in visible .whisper-zone (POSITION, COLOR, SHADOW, TEXT)
+        assert len(whisper_placeholders) == 8, (
+            f"Template {template_name} has {len(whisper_placeholders)} whisper placeholders, expected 8"
         )
 
         # Verify valid HTML structure around whisper contract
         assert content.count("<template") == content.count("</template>"), (
             f"Template {template_name} has mismatched template tags"
+        )
+
+
+def test_whisper_zone_visible_element_present():
+    """All three templates must have visible .whisper-zone element for rendering."""
+    templates = ["painting_text.html", "magazine.html", "portrait.html"]
+
+    for template_name in templates:
+        template_path = Path("templates") / template_name
+        content = template_path.read_text()
+
+        # All must have the visible whisper-zone div
+        assert '<div class="whisper-zone">{{WHISPER_TEXT}}</div>' in content, (
+            f"Template {template_name} missing visible whisper-zone div element"
+        )
+
+        # Verify CSS styling for whisper-zone exists
+        assert ".whisper-zone {" in content, (
+            f"Template {template_name} missing whisper-zone CSS styling"
+        )
+
+        # Verify key typography constraints from WHISPER_TEMPLATE_CONTRACT.md
+        assert "font-size: 28px" in content, (
+            f"Template {template_name} missing 28px font-size for whisper readability"
+        )
+        assert "text-shadow:" in content.lower() or "{{WHISPER_SHADOW}}" in content, (
+            f"Template {template_name} missing text-shadow for whisper readability"
         )
 
 
