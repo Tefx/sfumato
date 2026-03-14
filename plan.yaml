@@ -3889,7 +3889,7 @@ phases:
       mount behavior unchanged and documented by Dockerfile comments.'
   - id: sdk.gate
     name: SDK phase gate review
-    status: pending
+    status: claimed
     description: 'Gate review: Verify SDK backend phase completion.
 
 
@@ -3925,6 +3925,8 @@ phases:
     - sdk.llm-sdk-backend
     - sdk.dockerfile
     agent: gate-reviewer
+    claimed_by: gate-reviewer
+    claimed_at: '2026-03-14T21:38:14.879892+00:00'
 - id: hardening
   name: 'Hardening: Bug Fixes + Integration Tests'
   status: done
