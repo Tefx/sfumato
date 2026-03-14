@@ -5633,6 +5633,72 @@ phases:
       Gaps/Notes:
 
       - Merge conflict with art-facts test suite resolved by preserving both families.'
+  - id: replay.replay-fix-app-state-replay-integration
+    name: replay.fix-app-state-replay-integration
+    status: pending
+    description: "Fix ALL replay production-state blockers found by `replay.gate`\
+      \ — not just the first.\n\nstep_type: implementation\ntags:\n  - integration\n\
+      symbolic_testing: false\nspec_refs:\n  - ARCHITECTURE.md#2.10\n  - ARCHITECTURE.md#2.12\n\
+      touch_paths:\n  - src/sfumato/state.py\n  - src/sfumato/orchestrator.py\n  -\
+      \ tests/test_state.py\n  - tests/test_orchestrator.py\nharness_refs:\n  - tests/test_state.py\n\
+      \  - tests/test_orchestrator.py\neffective_truth_owner: AppState aggregate root\
+      \ in `src/sfumato/state.py`\nconsumer_surfaces:\n  - orchestrator production\
+      \ path\n  - persisted state readers\nstate_strata:\n  - persisted replay snapshot\
+      \ (`replay_queue.json`)\n  - AppState aggregate fields\n  - orchestrator runtime\
+      \ access via `_get_replay_queue(state)`\n\n## Blockers to Fix (ALL of these,\
+      \ not just the first)\n- `AppState` dataclass lacks `replay_queue` field\n-\
+      \ `AppState.load()` does not instantiate/load `ReplayQueue`\n- `AppState.save_all()`\
+      \ does not persist `ReplayQueue`\n- production orchestrator path resolves `_get_replay_queue(state)`\
+      \ to `None`\n\n## Root Cause vs Symptom\n- Root cause: replay support was implemented\
+      \ at module/protocol level, but the production `AppState` aggregate was left\
+      \ out of the persistence/runtime ownership path.\n- Symptom: tests can pass\
+      \ against seam doubles while production `AppState` never exposes a live `replay_queue`.\n\
+      - Why this fix is not surface-level: it must restore aggregate construction,\
+      \ load/save lifecycle, and real orchestrator access together.\n\n## Failure-mode\
+      \ checklist\n- relative vs absolute path behavior for `AppState.load(state_dir)`\
+      \ still resolves `replay_queue.json` under the same state root as other persisted\
+      \ components\n- missing-file fallback keeps replay state default-empty without\
+      \ startup failure\n- explicit clear semantics persist an empty replay queue\
+      \ snapshot rather than leaving stale on-disk replay entries behind\n- stale-definition\
+      \ vs new-state precedence stays consistent with `LOAD_POLICY`: disk wins on\
+      \ load, in-memory state wins after load\n- partial-write / last-successful-snapshot\
+      \ behavior for `save_all()` remains backward-compatible with existing aggregate\
+      \ save semantics\n\n## State semantics\n- last-writer-wins: the in-memory `ReplayQueue`\
+      \ persisted by `AppState.save_all()` becomes the authoritative replay snapshot\n\
+      - must preserve exactly: replay cursor/index, overlap threshold, and replay\
+      \ batch payload fidelity already covered by `ReplayQueue`\n- backward-compatible\
+      \ legacy behavior: missing `replay_queue.json` or older state directories still\
+      \ load without raising and yield an empty replay queue\n\n## Concrete regression\
+      \ targets\n- extend `tests/test_state.py` with aggregate-level coverage for\
+      \ `AppState.load()` / `AppState.save_all()` including replay persistence\n-\
+      \ extend `tests/test_orchestrator.py` with a production-`AppState` path proving\
+      \ `_get_replay_queue(state)` exposes the real queue\n- if exact test names change,\
+      \ add one focused regression per blocker above\n\n## Grep hints\n- `rg -n \"\
+      class AppState|def load\\(|def save_all\\(|replay_queue\" src/sfumato/state.py`\n\
+      - `rg -n \"_get_replay_queue|replay_queue\" src/sfumato/orchestrator.py tests/test_orchestrator.py`\n\
+      - `rg -n \"AppState.load|save_all|REPLAY_QUEUE_JSON|ReplayQueue\" tests/test_state.py`\n\
+      \n## Out-of-scope guardrail\n- Do not redesign replay deduplication, queue algorithms,\
+      \ or introduce new orchestrator fallback behavior beyond wiring the existing\
+      \ production AppState surface.\n\n## Gate Preview (what the gate WILL reject)\n\
+      1. Fixing only the dataclass field without load/save lifecycle coverage\n2.\
+      \ Mock-only proof that never exercises production `AppState`\n3. Replay snapshot\
+      \ persistence that leaves stale on-disk state after clearing the queue"
+    verification: '- Main path: targeted regressions prove production `AppState.load()`
+      constructs `ReplayQueue`, production `_get_replay_queue(state)` returns it,
+      and consumed replay functionality is reachable through the real state aggregate
+
+      - Failure path: regression covers missing replay file fallback and empty replay
+      save overwriting stale persisted replay data
+
+      - Proof: no production `AppState` path remains without replay queue ownership
+      where replay phase scope requires it
+
+      - Integration evidence must include at least one real path from `AppState.load(...)`
+      -> `_get_replay_queue(state)` -> replay-aware orchestrator behavior or persistence
+      observation'
+    depends_on:
+    - replay.gate
+    agent: python-senior
 - id: polish
   name: 'Polish: Default Model + Documentation'
   status: locked
