@@ -4957,7 +4957,7 @@ phases:
       final full whisper behavior remains in implementation step.'
   - id: art-facts.orchestrator-wire.contract
     name: Define orchestrator art-facts wiring contract
-    status: pending
+    status: claimed
     description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
       \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nagent: software-architect\n\
       spec_refs:\n  - ARCHITECTURE.md#2.12\ntouch_paths:\n  - src/sfumato/orchestrator.py\n\
@@ -4985,6 +4985,8 @@ phases:
 
       - Downstream test step can be written without inventing behavior'
     agent: software-architect
+    claimed_by: software-architect
+    claimed_at: '2026-03-14T22:39:59.745084+00:00'
   - id: art-facts.orchestrator-wire.test
     name: Define orchestrator art-facts contract tests
     status: pending
