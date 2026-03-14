@@ -2679,7 +2679,7 @@ phases:
   steps:
   - id: production.scheduler
     name: Implement scheduler module
-    status: claimed
+    status: done
     description: "step_type: implementation\nspec_refs:\n  - ARCHITECTURE.md#2.11\n\
       touch_paths:\n  - src/sfumato/scheduler.py\n  - tests/test_scheduler.py\nharness_refs:\n\
       \  - pytest\nagent: python-executor\n\nImplement `src/sfumato/scheduler.py`\
@@ -2716,6 +2716,37 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T17:44:27.012282+00:00'
+    done_at: '2026-03-14T17:55:32.321881+00:00'
+    evidence: 'Artifact:
+
+      - PR: commit 6f34a00 ([vectl] step-production.scheduler completed), source worktree
+      commit 5625fbc87817e70ce0b30172739dd531e522ee8a
+
+
+      Verification:
+
+      - Run: `uv run pytest tests/test_scheduler.py -q` -> 84 passed
+
+      - Run: `uv run invar guard --all` -> static analysis/doctest passed (per subagent
+      evidence)
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#2.11
+
+
+      Files changed:
+
+      - src/sfumato/scheduler.py
+
+      - tests/test_scheduler.py
+
+
+      Gaps/Notes:
+
+      - Implements dual-timer decision logic and hour-window boundary handling consistent
+      with scheduler contract/tests.'
   - id: production.watch
     name: Implement orchestrator.watch daemon loop
     status: pending
