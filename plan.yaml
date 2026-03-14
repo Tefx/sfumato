@@ -3668,7 +3668,7 @@ phases:
       in downstream production.docker step.'
 - id: sdk
   name: LiteLLM SDK Backend
-  status: in_progress
+  status: done
   gate: backend=sdk produces valid LlmResponse via litellm.completion() and litellm.embedding();
     backend=cli remains unchanged; Docker image builds without CLI tools
   context: 'Add litellm SDK backend as alternative to CLI subprocess calls. Enables
@@ -3890,7 +3890,7 @@ phases:
       mount behavior unchanged and documented by Dockerfile comments.'
   - id: sdk.gate
     name: SDK phase gate review
-    status: claimed
+    status: done
     description: 'Gate review: Verify SDK backend phase completion.
 
 
@@ -3928,6 +3928,21 @@ phases:
     agent: gate-reviewer
     claimed_by: gate-reviewer
     claimed_at: '2026-03-14T21:38:14.879892+00:00'
+    done_at: '2026-03-14T21:41:19.681378+00:00'
+    evidence: "Step: sdk.gate\nCommit hash(es): none (read-only gate review)\nFiles\
+      \ changed: []\nGate decision: PASS\nVerification:\n- uv run pytest tests/test_config.py\
+      \ tests/test_llm.py -v -> passed (114 tests)\n- uv run pytest tests/ -q -> passed\
+      \ (711 tests)\n- git status --porcelain -> only generated artifacts in isolated\
+      \ gate worktree (uv.lock, egg-info), no committed source changes\nFindings:\n\
+      - severity: suggestion\n  item: test execution mutates generated files in gate\
+      \ worktree\n  location: uv.lock, src/sfumato.egg-info/\n  recommendation: ignore\
+      \ or isolate generated artifacts in verification environments\nRationale:\n\
+      - AiConfig backend and sdk_provider defaults present and parsed\n- litellm dependency\
+      \ present in pyproject.toml\n- llm.py routes sdk and cli backends correctly;\
+      \ provider mapping and sdk response cli=\"sdk\" verified\n- Dockerfile contains\
+      \ SDK env defaults and OPENROUTER_API_KEY placeholder\n- Full test suite passes\
+      \ with no regressions\nSpec link: ARCHITECTURE.md\nGaps/Notes:\n- Gate review\
+      \ performed as read-only audit; no committed changes."
 - id: hardening
   name: 'Hardening: Bug Fixes + Integration Tests'
   status: done
