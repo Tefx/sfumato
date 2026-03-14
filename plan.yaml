@@ -5744,7 +5744,7 @@ phases:
       subsets.'
   - id: replay.retest-app-state-replay-integration
     name: retest-app-state-replay-integration
-    status: claimed
+    status: done
     description: "As an INDEPENDENT TESTER (`gate-reviewer`), re-test the replay blocker\
       \ family from a fresh perspective after `replay.replay-fix-app-state-replay-integration`.\n\
       \nstep_type: verification\nspec_refs:\n  - ARCHITECTURE.md#2.10\n  - ARCHITECTURE.md#2.12\n\
@@ -5817,6 +5817,44 @@ phases:
     agent: gate-reviewer
     claimed_by: gate-reviewer
     claimed_at: '2026-03-14T23:23:37.095311+00:00'
+    done_at: '2026-03-14T23:25:39.256577+00:00'
+    evidence: 'Step: replay.retest-app-state-replay-integration
+
+      Commit hash(es): none (read-only retest)
+
+      Files changed: []
+
+      Verification:
+
+      - uv run pytest tests/test_state.py tests/test_orchestrator.py -k "replay or
+      AppState" -v -> 35 passed, 191 deselected
+
+      - git status --porcelain -> clean
+
+      Blocker coverage:
+
+      - AppState field present: PASS
+
+      - AppState.load wires ReplayQueue: PASS
+
+      - AppState.save_all persists ReplayQueue: PASS
+
+      - production _get_replay_queue(state) returns live queue seam: PASS
+
+      Failure-path evidence:
+
+      - missing replay file fallback: PASS
+
+      - stale replay snapshot cursor reset / empty overwrite semantics: PASS
+
+      Verdict: PASS
+
+      Spec link: ARCHITECTURE.md#2.10
+
+      Gaps/Notes:
+
+      - Defensive seam now raises if production AppState lacks replay_queue, preventing
+      silent replay disablement.'
   - id: replay.gate-final
     name: gate-final
     status: pending
