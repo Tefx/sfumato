@@ -5772,6 +5772,70 @@ phases:
     depends_on:
     - replay.replay-fix-app-state-replay-integration
     agent: gate-reviewer
+  - id: replay.gate-final
+    name: gate-final
+    status: pending
+    description: 'Gate review: replay phase readiness after batched AppState remediation.
+
+
+      step_type: gate
+
+      review_depth: THOROUGH
+
+      review_depth_rationale:
+
+      - replay phase had a production wiring blocker discovered at gate
+
+      - phase touches persisted state ownership and runtime replay fallback semantics
+
+      - gate must reject mock-only evidence that bypasses production `AppState`
+
+
+      cross_cutting_focus:
+
+      - aggregate-state ownership for replay queue
+
+      - persisted replay lifecycle in `AppState.load()` / `AppState.save_all()`
+
+      - real orchestrator access path through `_get_replay_queue(state)`
+
+
+      As an INDEPENDENT REVIEWER (`gate-reviewer`), assess whether replay is now ready
+      to unblock downstream work.'
+    verification: '- All replay implementation and upstream contract/test steps remain
+      complete
+
+      - `replay.replay-fix-app-state-replay-integration` and `replay.retest-app-state-replay-integration`
+      provide specific evidence for all blocker bullets
+
+      - Runnable production path evidence shows replay queue is reachable from real
+      `AppState` state, not only seam doubles
+
+      - No unresolved blocker remains on replay persistence, startup load, or production
+      orchestrator access'
+    evidence_template: '## Final Replay Gate Review
+
+
+      **Reviewer**: gate-reviewer
+
+      **Phase**: replay
+
+
+      ### Required checks
+
+      - prior blocker family closed end-to-end
+
+      - evidence covers load, save, and runtime access surfaces
+
+      - production AppState path verified, not only mocks
+
+
+      ### Decision
+
+      - OPEN | BLOCKED'
+    depends_on:
+    - replay.retest-app-state-replay-integration
+    agent: gate-reviewer
 - id: polish
   name: 'Polish: Default Model + Documentation'
   status: locked
