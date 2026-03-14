@@ -1858,7 +1858,7 @@ phases:
     agent: gate-reviewer
   - id: intelligence.paintings.contract
     name: Define paintings module contract
-    status: claimed
+    status: done
     description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
       \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nspec_refs:\n  - ARCHITECTURE.md#2.3\n\
       \  - PROTOTYPING.md#semantic-art-news-matching\ntouch_paths:\n  - src/sfumato/paintings.py\n\
@@ -1895,6 +1895,43 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T16:05:21.412639+00:00'
+    done_at: '2026-03-14T16:11:07.612986+00:00'
+    evidence: 'Artifact:
+
+      - PR: commit 5bec776 ([vectl] step-intelligence.paintings.contract completed),
+      source worktree commit 9a4fe30e9c9e25c222c6c8c536bccb88408b7739
+
+
+      Verification:
+
+      - Run: `uv run mypy src/sfumato/paintings.py --strict` -> Success (no issues)
+
+      - Run: `uv run ruff check src/sfumato/paintings.py tests/test_paintings.py`
+      -> All checks passed
+
+      - Run: `uv run pytest tests/test_paintings.py -v` -> 36 passed in 0.03s
+
+      - Run: `invar guard` -> passed (static/doctest passed, per subagent evidence)
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#2.3
+
+      - PROTOTYPING.md#semantic-art-news-matching
+
+
+      Files changed:
+
+      - src/sfumato/paintings.py
+
+      - tests/test_paintings.py
+
+
+      Gaps/Notes:
+
+      - Contract-only scope preserved: download/cache/orchestrator business logic
+      remains stubbed/deferred as required.'
   - id: intelligence.paintings.tests
     name: Author paintings module tests
     status: pending
