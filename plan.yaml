@@ -3113,7 +3113,7 @@ phases:
     agent: python-executor
   - id: production.docker.contract
     name: Define container deployment contract
-    status: pending
+    status: claimed
     description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
       \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nspec_refs:\n  - ARCHITECTURE.md#9\n\
       \  - ARCHITECTURE.md#2.12\n  - ARCHITECTURE.md#2.13\ntouch_paths:\n  - Dockerfile\n\
@@ -3136,6 +3136,8 @@ phases:
       - Highest-risk failure semantics are explicit for missing runtime dependencies,
       broken mounts, and shutdown/healthcheck mismatch'
     agent: software-architect
+    claimed_by: software-architect
+    claimed_at: '2026-03-14T17:29:02.132738+00:00'
   - id: production.docker.tests
     name: Author container deployment tests
     status: pending
