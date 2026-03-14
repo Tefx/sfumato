@@ -224,20 +224,45 @@ def build_template_variables(ctx: RenderContext) -> dict[str, str]:
         "PAINTING_YEAR": ctx.painting.year,
     }
 
-    # Add palette-based colors
-    # Sanitize text_shadow: LLMs often return too-large blur radii (10px+)
-    # which create visible halo boxes around each line of text.
-    # Fallback to a proven tight shadow if the LLM value looks excessive.
+    # === LLM OUTPUT SANITIZATION ===
+    # LLMs generate CSS parameters that often need correction.
+    # Validated against prototype results in PROTOTYPING.md.
+
+    # 1. Text-shadow: constrain blur radius (LLMs return 10px+ creating halo boxes)
     text_shadow = ctx.layout.colors.text_shadow
-    if "10px" in text_shadow or "12px" in text_shadow or "15px" in text_shadow or "20px" in text_shadow:
-        # Replace with tight shadow proven in prototyping
+    if any(f"{n}px" in text_shadow for n in range(10, 30)):
         text_shadow = "0 1px 3px rgba(0,0,0,0.7), 0 0 8px rgba(0,0,0,0.3)"
+
+    # 2. Text color brightness validation against painting zone
+    # LLMs sometimes pick light text for light areas or dark text for dark areas.
+    # Use palette to detect and fix contrast issues.
+    text_primary = ctx.layout.colors.text_primary
+    text_secondary = ctx.layout.colors.text_secondary
+    text_dim = ctx.layout.colors.text_dim
+
+    if ctx.palette:
+        zone_brightness = _estimate_zone_brightness(ctx)
+        text_brightness = _hex_brightness(text_primary)
+
+        # If both are light (>160) or both are dark (<100), flip text colors
+        if zone_brightness > 160 and text_brightness > 160:
+            # Light text on light area — switch to dark text (proven in prototype)
+            text_primary = "#1a1a1a"
+            text_secondary = "rgba(40, 35, 30, 0.72)"
+            text_dim = "rgba(60, 55, 45, 0.55)"
+            text_shadow = "0 1px 3px rgba(255,255,255,0.3)"
+        elif zone_brightness < 80 and text_brightness < 80:
+            # Dark text on dark area — switch to light text
+            text_primary = "rgba(240, 235, 220, 0.92)"
+            text_secondary = "rgba(220, 215, 200, 0.78)"
+            text_dim = "rgba(200, 195, 180, 0.55)"
+            text_shadow = "0 1px 3px rgba(0,0,0,0.7), 0 0 8px rgba(0,0,0,0.3)"
 
     variables.update(
         {
-            "TEXT_COLOR": ctx.layout.colors.text_primary,
-            "TEXT_COLOR_SEC": ctx.layout.colors.text_secondary,
-            "TEXT_COLOR_DIM": ctx.layout.colors.text_dim,
+            "TEXT_COLOR": text_primary,
+            "TEXT_COLOR_SEC": text_secondary,
+            "TEXT_COLOR_DIM": text_dim,
             "TEXT_SHADOW": text_shadow,
         }
     )
@@ -248,12 +273,14 @@ def build_template_variables(ctx: RenderContext) -> dict[str, str]:
     scrim_position_css = ctx.layout.scrim.position_css
     scrim_size_css = ctx.layout.scrim.size_css if hasattr(ctx.layout.scrim, 'size_css') and ctx.layout.scrim.size_css else "width: 50%; height: 50%;"
 
+    # 3. Text width: max 38% to avoid covering painting subjects
+    # LLMs often suggest too-wide text zones. 38% = 1459px, proven in prototype.
     variables.update(
         {
             "SCRIM_POSITION": f"{scrim_position_css} {scrim_size_css}",
             "SCRIM_GRADIENT": ctx.layout.scrim.gradient_css,
             "TEXT_POSITION": text_position_css,
-            "TEXT_WIDTH": "45%",  # Default max width for text zone
+            "TEXT_WIDTH": "38%",
         }
     )
 
@@ -415,6 +442,49 @@ def render_to_png_sync(
 # =============================================================================
 # INTERNAL HELPERS
 # =============================================================================
+
+
+def _hex_brightness(color: str) -> int:
+    """Estimate brightness (0-255) from a hex color or rgba string."""
+    import re
+    # Try hex (#RRGGBB)
+    hex_match = re.search(r'#([0-9a-fA-F]{6})', color)
+    if hex_match:
+        r, g, b = int(hex_match.group(1)[:2], 16), int(hex_match.group(1)[2:4], 16), int(hex_match.group(1)[4:6], 16)
+        return int(0.299 * r + 0.587 * g + 0.114 * b)
+    # Try rgba(r,g,b,a)
+    rgba_match = re.search(r'rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)', color)
+    if rgba_match:
+        r, g, b = int(rgba_match.group(1)), int(rgba_match.group(2)), int(rgba_match.group(3))
+        return int(0.299 * r + 0.587 * g + 0.114 * b)
+    return 128  # unknown, assume mid
+
+
+def _estimate_zone_brightness(ctx: "RenderContext") -> int:
+    """Estimate average brightness of the text zone area in the painting."""
+    try:
+        from PIL import Image
+        import numpy as np
+        img = Image.open(ctx.painting.image_path).convert('L')
+        arr = np.array(img)
+        h, w = arr.shape
+        pos = ctx.layout.text_zone.position
+
+        # Sample the quadrant where text will be placed
+        if "top" in pos and "right" in pos:
+            zone = arr[:h//2, w//2:]
+        elif "top" in pos and "left" in pos:
+            zone = arr[:h//2, :w//2]
+        elif "bottom" in pos and "right" in pos:
+            zone = arr[h//2:, w//2:]
+        elif "bottom" in pos and "left" in pos:
+            zone = arr[h//2:, :w//2]
+        else:
+            zone = arr[:h//2, w//2:]  # default top-right
+
+        return int(np.mean(zone))
+    except Exception:
+        return 128  # unknown
 
 
 def _substitute_template(template: str, variables: dict[str, str]) -> str:
