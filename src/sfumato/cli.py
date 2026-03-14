@@ -173,6 +173,25 @@ class _NewsQueue:
             return None
         return self._queue.pop(0)
 
+    def enqueue(self, batch: Any) -> None:
+        """Add a batch to the queue."""
+        self._queue.append(batch)
+
+    def expire(self, expire_days: int) -> int:
+        """Drop batches older than expire_days. Returns removed count."""
+        if not self._queue:
+            return 0
+        cutoff = datetime.datetime.now().astimezone() - datetime.timedelta(days=expire_days)
+        before = len(self._queue)
+        self._queue = [b for b in self._queue if b.enqueued_at >= cutoff]
+        return before - len(self._queue)
+
+    def peek(self) -> _QueuedBatch | None:
+        """Return the next batch without removal."""
+        if not self._queue:
+            return None
+        return self._queue[0]
+
     @property
     def size(self) -> int:
         """Number of batches in queue."""
