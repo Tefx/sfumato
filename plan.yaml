@@ -4029,3 +4029,56 @@ phases:
     - src/sfumato/paintings.py
     - tests/test_paintings.py
     agent: python-executor
+  - id: hardening.integration-tests
+    name: End-to-end integration tests for run_once
+    status: pending
+    description: "step_type: implementation\ntags: [\"integration\"]\ntouch_paths:\n\
+      \  - tests/test_integration.py (NEW)\n  - tests/conftest.py (shared fixtures)\n\
+      agent: python-senior\n\n## Objective\n\nAdd end-to-end integration tests that\
+      \ exercise the full run_once pipeline\nwith real state/config/render but mock\
+      \ LLM. This addresses the root cause:\nall 137 orchestrator tests use mocks,\
+      \ so wiring bugs between modules are invisible.\n\n## Tasks\n\n1. **Create tests/test_integration.py**\
+      \ with:\n   - A fixture that sets up a real tmpdir-based environment:\n    \
+      \ - Real config (from generate_default_config() + valid feeds)\n     - Real\
+      \ state.py NewsQueue/UsedPaintings/LayoutCache/EmbeddingCache\n     - Real render\
+      \ pipeline\n     - Mock LLM that returns deterministic CurationResult and LayoutParams\n\
+      \   - Test: `test_run_once_happy_path` — full run_once produces a PNG\n   -\
+      \ Test: `test_run_once_empty_queue` — run_once with empty queue handles gracefully\n\
+      \   - Test: `test_run_once_respects_recommended_stories` — recommended_stories\
+      \ limits output\n   - Test: `test_enqueue_dequeue_roundtrip` — enqueue via orchestrator,\
+      \ dequeue matches\n\n2. **Wire real state, not cli.py mocks**: Use state.py's\
+      \ NewsQueue etc., not\n   cli.py's _NewsQueue. The point is to test the real\
+      \ implementation.\n\n3. **Verify Protocol conformance at runtime**: The integration\
+      \ test should\n   implicitly prove that state.py classes satisfy AppStateProtocol\
+      \ because\n   they're used directly with run_once().\n\n## Evidence template\n\
+      ```\n## Integration Test Evidence\nCommand: uv run pytest tests/test_integration.py\
+      \ -v\nOutput: <paste actual output>\nTests added: <count>\nPath exercised: config.load_config\
+      \ -> orchestrator.run_once -> render -> PNG\nMock boundary: LLM only (everything\
+      \ else real)\n```\n\n## Known Risks\n- Integration tests are slow; keep to 4-6\
+      \ focused tests, not exhaustive matrix\n- Mock LLM must return structurally\
+      \ valid responses (use real schema)\n- Temp directory cleanup is critical to\
+      \ avoid test pollution"
+    verification: '- uv run pytest tests/test_integration.py -v: all pass
+
+      - At least 4 integration tests covering: happy path, empty queue, recommended_stories,
+      roundtrip
+
+      - Tests use real state.py classes (not cli.py mocks)
+
+      - Mock boundary is LLM only — config/state/render are real
+
+      - No test pollution (tmpdir-based)'
+    refs:
+    - src/sfumato/orchestrator.py
+    - src/sfumato/cli.py
+    - src/sfumato/config.py
+    - src/sfumato/state.py
+    - src/sfumato/render.py
+    - tests/test_orchestrator.py
+    depends_on:
+    - hardening.protocol-alignment
+    - hardening.config-init-fixes
+    - hardening.orchestrator-batch
+    - hardening.paintings-edge-cases
+    - hardening.llm-cli-commands
+    agent: python-senior
