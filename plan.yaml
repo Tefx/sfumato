@@ -4404,7 +4404,7 @@ phases:
       \ content."
 - id: art-facts
   name: Art Facts + Whisper Text + Subject Avoidance
-  status: in_progress
+  status: done
   gate: Whisper text renders in all templates without overlap with news text or painting
     subject. Art facts cached in layout cache. Visual verification on 4K output.
   context: Validated in PROTOTYPING.md#11. LLM layout prompt outputs 3 mutually exclusive
@@ -4647,7 +4647,7 @@ phases:
       ownership, art_facts flow into render context.'
   - id: art-facts.gate
     name: Art Facts phase gate review
-    status: claimed
+    status: done
     description: 'As an INDEPENDENT REVIEWER (gate-reviewer), assess whether the art-facts
       phase
 
@@ -4699,6 +4699,18 @@ phases:
     - art-facts.orchestrator-wire
     claimed_by: gate-reviewer
     claimed_at: '2026-03-14T23:07:25.797245+00:00'
+    done_at: '2026-03-14T23:16:03.670232+00:00'
+    evidence: "Step: art-facts.gate\nCommit hash(es): none (read-only gate review)\n\
+      Files changed: []\nGate decision: PASS\nVerification:\n- uv run pytest tests/test_layout_ai.py\
+      \ tests/test_render.py tests/test_orchestrator.py -k \"whisper or art_fact\"\
+      \ -v -> 61/61 passed\n- Verified layout zones/art_facts contract, whisper template\
+      \ variables, render WHISPER_* mapping, and orchestrator whisper_fact_index rotation\
+      \ semantics\nFindings:\n- severity: suggestion\n  item: pre-existing unrelated\
+      \ lint warnings (unused imports) in non-art-facts files\n  location: src/sfumato/cli.py,\
+      \ src/sfumato/llm.py, src/sfumato/news.py\n  recommendation: clean with ruff\
+      \ --fix in separate hygiene pass\nRationale:\n- Art-facts contract and implementation\
+      \ surfaces align with PROTOTYPING.md#11 and targeted test evidence\nSpec link:\
+      \ PROTOTYPING.md#11\nGaps/Notes:\n- No blockers detected for art-facts phase."
   - id: art-facts.layout-prompt.contract
     name: Define layout prompt zone and art-fact contract
     status: done
