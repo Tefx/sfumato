@@ -3999,7 +3999,7 @@ phases:
     agent: python-executor
   - id: hardening.paintings-edge-cases
     name: Paintings module edge case fixes
-    status: pending
+    status: claimed
     description: "step_type: implementation\ntouch_paths:\n  - src/sfumato/paintings.py\n\
       \  - tests/test_paintings.py\nagent: python-executor\n\n## Objective\n\nFix\
       \ bugs #9, #10, #11, #12 from the hardening bug list.\n\n## Tasks\n\n### Bug\
@@ -4036,6 +4036,8 @@ phases:
     - src/sfumato/paintings.py
     - tests/test_paintings.py
     agent: python-executor
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T20:34:31.166657+00:00'
   - id: hardening.integration-tests
     name: End-to-end integration tests for run_once
     status: pending
