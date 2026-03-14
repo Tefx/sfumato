@@ -317,6 +317,34 @@ phases:
       - Any deferred env override behavior is documented as intentionally out of scope
       rather than left implicit'
     agent: python-senior
+  - id: core.config.tests
+    name: Author config loader tests
+    status: pending
+    description: "step_type: test\nspec_refs:\n  - ARCHITECTURE.md#2.1\ntouch_paths:\n\
+      \  - tests/test_config.py\n  - src/sfumato/config.py\nharness_refs:\n  - pytest\n\
+      agent: python-executor\n\nAdd contract-driven tests for `load_config()` and\
+      \ `generate_default_config()` before implementation logic is dispatched.\n\n\
+      Required coverage:\n- Main path: default config with no discovered file returns\
+      \ a valid `AppConfig` with absolute path fields.\n- Precedence path: explicit\
+      \ path beats `SFUMATO_CONFIG`; `SFUMATO_CONFIG` beats default search locations.\n\
+      - Failure path: explicit-path missing and missing `SFUMATO_CONFIG` target raise\
+      \ `ConfigError` instead of silently falling back.\n- Malformed input path: malformed\
+      \ TOML and wrong field types raise `ConfigError` with file context.\n- Path-resolution\
+      \ path: relative TOML paths resolve relative to the config file, while already-absolute\
+      \ paths remain unchanged.\n- Output path: `generate_default_config()` emits\
+      \ a complete TOML skeleton parseable by `tomllib`.\n\nTest names should make\
+      \ the failure modes obvious and isolated."
+    verification: '- Targeted tests exist for precedence, fallback, malformed TOML,
+      type validation, and relative-vs-absolute path handling
+
+      - Verification names both main-path and highest-risk failure-path regressions
+      rather than a generic ''config tests pass''
+
+      - Test step adds tests/helpers only; no product implementation logic beyond
+      minimal fixtures'
+    depends_on:
+    - core.config.contract
+    agent: python-executor
 - id: intelligence
   name: Intelligence
   status: locked
