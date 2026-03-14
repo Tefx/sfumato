@@ -3757,3 +3757,42 @@ phases:
     depends_on:
     - sdk.config-and-deps
     agent: python-executor
+  - id: sdk.dockerfile
+    name: Dockerfile SDK mode
+    status: pending
+    description: 'Simplify Dockerfile for SDK backend mode. When using backend=sdk,
+      the container does not need Node.js or CLI tools (gemini, codex, claude).
+
+
+      File: Dockerfile
+
+
+      Changes:
+
+      - The current Dockerfile does not install CLI tools (good), but does install
+      playwright + chromium for browser rendering
+
+      - Add ENV SFUMATO_AI_BACKEND=sdk as default for Docker
+
+      - Ensure the entrypoint/config can pick up this env var (or rely on config.toml
+      mounting)
+
+      - Add a comment documenting that CLI tools are not needed in SDK mode
+
+      - Optionally add OPENROUTER_API_KEY env var placeholder (empty default like
+      RIJKSMUSEUM_API_KEY)
+
+
+      This is a small change (~5-10 lines). The Dockerfile is already lean; main addition
+      is env vars and documentation comments.'
+    verification: '- docker build completes successfully
+
+      - OPENROUTER_API_KEY env var present in Dockerfile
+
+      - Container starts with backend=sdk config without errors about missing CLI
+      tools'
+    refs:
+    - Dockerfile
+    depends_on:
+    - sdk.config-and-deps
+    agent: python-executor
