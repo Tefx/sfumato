@@ -3668,7 +3668,7 @@ phases:
       in downstream production.docker step.'
 - id: sdk
   name: LiteLLM SDK Backend
-  status: pending
+  status: locked
   gate: backend=sdk produces valid LlmResponse via litellm.completion() and litellm.embedding();
     backend=cli remains unchanged; Docker image builds without CLI tools
   context: 'Add litellm SDK backend as alternative to CLI subprocess calls. Enables
@@ -3676,6 +3676,7 @@ phases:
     coexist: cli (existing) and sdk (new).'
   depends_on:
   - production
+  - hardening
   steps:
   - id: sdk.config-and-deps
     name: Config extension + litellm dependency
