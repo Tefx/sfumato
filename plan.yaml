@@ -4669,7 +4669,7 @@ phases:
     - art-facts.template-whisper.contract
 - id: replay
   name: News Replay Queue
-  status: pending
+  status: in_progress
   gate: Replay queue cycles consumed news batches. Expiry removes batches older than
     replay_expire_days. Primary queue takes priority over replay. Deduplication skips
     LLM when RSS overlap >80%.
@@ -4804,7 +4804,7 @@ phases:
     - replay.scheduler-wire
   - id: replay.config.contract
     name: Define replay expiry config contract
-    status: pending
+    status: claimed
     description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
       \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nagent: software-architect\n\
       agent_source: default\nspec_refs:\n  - README.md\ntouch_paths:\n  - src/sfumato/config.py\n\
@@ -4824,6 +4824,8 @@ phases:
       - Backward-compatible omitted-field behavior is explicit
 
       - No implementation logic beyond schema/stub-level contract artifacts'
+    claimed_by: software-architect
+    claimed_at: '2026-03-14T21:46:14.511276+00:00'
   - id: replay.config.test
     name: Define replay config tests
     status: pending
