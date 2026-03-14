@@ -1783,7 +1783,7 @@ phases:
       included in test evidence.'
   - id: intelligence.matcher
     name: Implement matcher module
-    status: claimed
+    status: done
     description: 'step_type: implementation
 
       Implement `src/sfumato/matcher.py` per `ARCHITECTURE.md#2.6` after the contract
@@ -1840,6 +1840,36 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T16:37:15.088012+00:00'
+    done_at: '2026-03-14T16:46:34.072345+00:00'
+    evidence: 'Artifact:
+
+      - PR: commit 498172e ([vectl] step-intelligence.matcher completed), source worktree
+      commit 1ba40fb6850ee7d2d538e495439cf4f4059af7b6
+
+
+      Verification:
+
+      - Run: `uv run pytest tests/test_matcher.py -v --tb=short` -> 37 passed in 2.38s
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#2.6
+
+      - PROTOTYPING.md#semantic-art-news-matching
+
+
+      Files changed:
+
+      - src/sfumato/matcher.py
+
+      - tests/test_matcher.py
+
+
+      Gaps/Notes:
+
+      - Implementation follows contract semantics for zero-vector/NaN handling and
+      random-vs-semantic precedence; no orchestrator wiring included in this step.'
   - id: intelligence.state
     name: Implement state module
     status: pending
