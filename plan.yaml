@@ -4619,7 +4619,7 @@ phases:
     - art-facts.layout-prompt.contract
   - id: art-facts.template-whisper.contract
     name: Define whisper template variable contract
-    status: pending
+    status: claimed
     description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
       \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nagent: software-architect\n\
       agent_source: default\nspec_refs:\n  - PROTOTYPING.md#11\ntouch_paths:\n  -\
@@ -4641,6 +4641,8 @@ phases:
       - Typography/positioning constraints are explicit
 
       - No implementation HTML/CSS beyond placeholder or stub-level contract artifacts'
+    claimed_by: software-architect
+    claimed_at: '2026-03-14T21:45:50.153031+00:00'
   - id: art-facts.template-whisper.test
     name: Define whisper template smoke tests
     status: pending
