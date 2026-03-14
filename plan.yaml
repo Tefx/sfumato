@@ -1930,7 +1930,7 @@ phases:
     agent: python-executor
   - id: intelligence.matcher.contract
     name: Define matcher module contract
-    status: pending
+    status: claimed
     description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
       \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nspec_refs:\n  - ARCHITECTURE.md#2.6\n\
       \  - PROTOTYPING.md#semantic-art-news-matching\ntouch_paths:\n  - src/sfumato/matcher.py\n\
@@ -1963,6 +1963,8 @@ phases:
       - Any fallback/degradation behavior is written explicitly rather than inferred
       by implementers'
     agent: python-executor
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T16:05:25.803361+00:00'
 - id: production
   name: Production
   status: locked
