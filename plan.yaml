@@ -4586,6 +4586,28 @@ phases:
 
       - No implementation logic beyond signatures, type definitions, interfaces, or
       stubs'
+  - id: art-facts.layout-prompt.test
+    name: Define layout prompt contract tests
+    status: pending
+    description: "step_type: test\nagent: python-executor\nagent_source: default\n\
+      spec_refs:\n  - PROTOTYPING.md#11\n  - ARCHITECTURE.md#2.5\ntouch_paths:\n \
+      \ - tests/test_layout_ai.py\n  - tests/test_integration.py\nharness_refs:\n\
+      \  - tests/test_layout_ai.py\n  - tests/test_integration.py\n\nDefine and add\
+      \ tests that lock the new layout-analysis contract before implementation.\n\n\
+      Test scope only:\n1. Add targeted tests for LayoutParams field presence and\
+      \ structured parsing of subject_zone, whisper_zone, and art_facts.\n2. Add regression\
+      \ coverage for the 10-item prompt/response contract.\n3. Add focused overlap-validation\
+      \ tests proving news_zone, subject_zone, and whisper_zone cannot overlap.\n\
+      4. Do not implement production layout logic in this step beyond minimal fixtures\
+      \ or mocks.\n\nPattern: Follow existing layout_ai test style in tests/test_layout_ai.py."
+    verification: '- Targeted contract tests exist for new LayoutParams fields and
+      JSON contract
+
+      - Overlap-validation regressions are defined
+
+      - Production logic remains unimplemented except for minimal test fixtures/mocks'
+    depends_on:
+    - art-facts.layout-prompt.contract
 - id: replay
   name: News Replay Queue
   status: pending
