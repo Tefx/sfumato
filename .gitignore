@@ -3,3 +3,10 @@ output/
 __pycache__/
 *.pyc
 .DS_Store
+.gemini/
+.opencode/
+.claude/
+GEMINI.md
+AGENTS.md
+CLAUDE.md
+plan-dashboard.html
