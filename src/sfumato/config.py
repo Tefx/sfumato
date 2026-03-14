@@ -104,6 +104,21 @@ class AppConfig:
     ai: AiConfig = field(default_factory=AiConfig)
     data_dir: Path = Path("~/.sfumato")
 
+    def __post_init__(self) -> None:
+        # Expand ~ in all Path fields so they resolve to real filesystem paths
+        object.__setattr__(self, "data_dir", self.data_dir.expanduser())
+        object.__setattr__(
+            self,
+            "paintings",
+            PaintingsConfig(
+                cache_dir=self.paintings.cache_dir.expanduser(),
+                seed_size=self.paintings.seed_size,
+                pool_size=self.paintings.pool_size,
+                sources=list(self.paintings.sources),
+                match_strategy=self.paintings.match_strategy,
+            ),
+        )
+
 
 def load_config(path: Path | None = None) -> AppConfig:
     """Load config from TOML using authoritative precedence.

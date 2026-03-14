@@ -342,16 +342,19 @@ def init(
     if config is None:
         config = Path.home() / ".config" / "sfumato" / "config.toml"
 
-    # Try to load existing config, or use defaults
-    try:
-        loaded_config = _load_config_or_exit(config, verbose)
-    except SystemExit:
-        # Config doesn't exist yet, create default
-        from sfumato.config import AppConfig
+    # Init is special: if config doesn't exist yet, use defaults and create it.
+    # Don't go through _load_config_or_exit which errors on missing files.
+    from sfumato.config import AppConfig, ConfigError
 
+    if config.expanduser().exists():
+        try:
+            loaded_config = _load_config_or_exit(config, verbose)
+        except (SystemExit, ConfigError):
+            loaded_config = AppConfig()
+            _verbose_print(verbose, "Config exists but failed to load, using defaults")
+    else:
         loaded_config = AppConfig()
-        if verbose:
-            typer.echo("Using default configuration")
+        _verbose_print(verbose, f"Config not found at {config}, will create during init")
 
     # Initialize state directory
     state_dir = loaded_config.data_dir / "state"
