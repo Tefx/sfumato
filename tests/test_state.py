@@ -13,10 +13,12 @@ current ``NotImplementedError`` stubs by skipping those paths until dispatch.
 from __future__ import annotations
 
 import json
+import ast
+import inspect
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import TypeVar
+from typing import TypeVar, get_type_hints
 
 import numpy as np
 import pytest
@@ -27,12 +29,18 @@ from sfumato.state import (
     EMBEDDING_CACHE_NPZ,
     LAYOUT_CACHE_JSON,
     NEWS_QUEUE_JSON,
+    REPLAY_QUEUE_JSON,
     USED_PAINTINGS_JSON,
     AppState,
     EmbeddingCache,
     LayoutCache,
     NewsQueue,
     UsedPaintings,
+    ReplayBatch,
+    ReplayDedupPolicy,
+    ReplayQueue,
+    ReplayQueueFileJson,
+    ReplayTransferResult,
     resolve_state_dir,
 )
 
@@ -114,14 +122,18 @@ class TestResolveStateDirContract:
         )
         assert resolved == (tmp_path / "state").resolve()
 
-    def test_resolve_state_dir_resolves_relative_against_cwd(self, tmp_path: Path) -> None:
+    def test_resolve_state_dir_resolves_relative_against_cwd(
+        self, tmp_path: Path
+    ) -> None:
         resolved = _or_skip_not_implemented(
             "resolve_state_dir relative",
             lambda: resolve_state_dir("relative/state", cwd=tmp_path, home=tmp_path),
         )
         assert resolved == (tmp_path / "relative/state").resolve()
 
-    def test_resolve_state_dir_expands_default_against_home(self, tmp_path: Path) -> None:
+    def test_resolve_state_dir_expands_default_against_home(
+        self, tmp_path: Path
+    ) -> None:
         fake_home = tmp_path / "home"
         resolved = _or_skip_not_implemented(
             "resolve_state_dir default",
@@ -134,7 +146,9 @@ class TestNewsQueueContract:
     """FIFO queue behavior, expiration, persistence, and fallback contracts."""
 
     def test_news_queue_fifo_peek_dequeue_contract(self, tmp_path: Path) -> None:
-        queue = _or_skip_not_implemented("NewsQueue.__init__", lambda: NewsQueue(tmp_path))
+        queue = _or_skip_not_implemented(
+            "NewsQueue.__init__", lambda: NewsQueue(tmp_path)
+        )
         enqueued = _or_skip_not_implemented(
             "NewsQueue.enqueue",
             lambda: queue.enqueue(_curation_result(5, tone="fifo"), batch_size=2),
@@ -165,12 +179,22 @@ class TestNewsQueueContract:
                     "version": 1,
                     "batches": [
                         {
-                            "stories": [_story(0, published_at=datetime.now(timezone.utc)).__dict__ | {"published_at": new_dt}],
+                            "stories": [
+                                _story(
+                                    0, published_at=datetime.now(timezone.utc)
+                                ).__dict__
+                                | {"published_at": new_dt}
+                            ],
                             "tone_description": "old",
                             "enqueued_at": old_dt,
                         },
                         {
-                            "stories": [_story(1, published_at=datetime.now(timezone.utc)).__dict__ | {"published_at": new_dt}],
+                            "stories": [
+                                _story(
+                                    1, published_at=datetime.now(timezone.utc)
+                                ).__dict__
+                                | {"published_at": new_dt}
+                            ],
                             "tone_description": "new",
                             "enqueued_at": new_dt,
                         },
@@ -180,14 +204,18 @@ class TestNewsQueueContract:
             encoding="utf-8",
         )
 
-        queue = _or_skip_not_implemented("NewsQueue.__init__", lambda: NewsQueue(tmp_path))
+        queue = _or_skip_not_implemented(
+            "NewsQueue.__init__", lambda: NewsQueue(tmp_path)
+        )
         _or_skip_not_implemented("NewsQueue.load", queue.load)
         removed = _or_skip_not_implemented("NewsQueue.expire", lambda: queue.expire(7))
         assert removed == 1
         assert _or_skip_not_implemented("NewsQueue.size", lambda: queue.size) == 1
 
     def test_news_queue_save_then_load_round_trip(self, tmp_path: Path) -> None:
-        queue = _or_skip_not_implemented("NewsQueue.__init__", lambda: NewsQueue(tmp_path))
+        queue = _or_skip_not_implemented(
+            "NewsQueue.__init__", lambda: NewsQueue(tmp_path)
+        )
         _or_skip_not_implemented(
             "NewsQueue.enqueue",
             lambda: queue.enqueue(_curation_result(4, tone="roundtrip"), batch_size=2),
@@ -204,8 +232,12 @@ class TestNewsQueueContract:
         assert next_batch is not None
         assert next_batch.tone_description == "roundtrip"
 
-    def test_news_queue_missing_file_and_legacy_layout_fallback(self, tmp_path: Path) -> None:
-        queue = _or_skip_not_implemented("NewsQueue.__init__", lambda: NewsQueue(tmp_path))
+    def test_news_queue_missing_file_and_legacy_layout_fallback(
+        self, tmp_path: Path
+    ) -> None:
+        queue = _or_skip_not_implemented(
+            "NewsQueue.__init__", lambda: NewsQueue(tmp_path)
+        )
         _or_skip_not_implemented("NewsQueue.load missing", queue.load)
         assert _or_skip_not_implemented("NewsQueue.size", lambda: queue.size) == 0
 
@@ -239,21 +271,37 @@ class TestNewsQueueContract:
     def test_news_queue_empty_save_overwrites_prior_file(self, tmp_path: Path) -> None:
         preexisting = {
             "version": 1,
-            "batches": [{"stories": [], "tone_description": "stale", "enqueued_at": "2026-01-01T00:00:00+00:00"}],
+            "batches": [
+                {
+                    "stories": [],
+                    "tone_description": "stale",
+                    "enqueued_at": "2026-01-01T00:00:00+00:00",
+                }
+            ],
         }
-        (tmp_path / NEWS_QUEUE_JSON).write_text(json.dumps(preexisting), encoding="utf-8")
+        (tmp_path / NEWS_QUEUE_JSON).write_text(
+            json.dumps(preexisting), encoding="utf-8"
+        )
 
-        queue = _or_skip_not_implemented("NewsQueue.__init__", lambda: NewsQueue(tmp_path))
+        queue = _or_skip_not_implemented(
+            "NewsQueue.__init__", lambda: NewsQueue(tmp_path)
+        )
         _or_skip_not_implemented("NewsQueue.save", queue.save)
 
         payload = _read_json(tmp_path / NEWS_QUEUE_JSON)
         assert isinstance(payload.get("batches"), list)
         assert payload.get("batches") == []
 
-    def test_news_queue_corrupt_partial_file_does_not_raise_on_load(self, tmp_path: Path) -> None:
-        (tmp_path / NEWS_QUEUE_JSON).write_text("{\n  \"version\": 1,\n  \"batches\": [", encoding="utf-8")
+    def test_news_queue_corrupt_partial_file_does_not_raise_on_load(
+        self, tmp_path: Path
+    ) -> None:
+        (tmp_path / NEWS_QUEUE_JSON).write_text(
+            '{\n  "version": 1,\n  "batches": [', encoding="utf-8"
+        )
 
-        queue = _or_skip_not_implemented("NewsQueue.__init__", lambda: NewsQueue(tmp_path))
+        queue = _or_skip_not_implemented(
+            "NewsQueue.__init__", lambda: NewsQueue(tmp_path)
+        )
         _or_skip_not_implemented("NewsQueue.load partial", queue.load)
         assert _or_skip_not_implemented("NewsQueue.size", lambda: queue.size) == 0
 
@@ -261,12 +309,22 @@ class TestNewsQueueContract:
 class TestUsedPaintingsContract:
     """Used painting marks, reset semantics, and persistence contracts."""
 
-    def test_used_paintings_mark_reset_and_persist_round_trip(self, tmp_path: Path) -> None:
-        used = _or_skip_not_implemented("UsedPaintings.__init__", lambda: UsedPaintings(tmp_path))
-        _or_skip_not_implemented("UsedPaintings.mark_used", lambda: used.mark_used("hash-a"))
-        _or_skip_not_implemented("UsedPaintings.mark_used", lambda: used.mark_used("hash-b"))
+    def test_used_paintings_mark_reset_and_persist_round_trip(
+        self, tmp_path: Path
+    ) -> None:
+        used = _or_skip_not_implemented(
+            "UsedPaintings.__init__", lambda: UsedPaintings(tmp_path)
+        )
+        _or_skip_not_implemented(
+            "UsedPaintings.mark_used", lambda: used.mark_used("hash-a")
+        )
+        _or_skip_not_implemented(
+            "UsedPaintings.mark_used", lambda: used.mark_used("hash-b")
+        )
 
-        assert _or_skip_not_implemented("UsedPaintings.is_used", lambda: used.is_used("hash-a"))
+        assert _or_skip_not_implemented(
+            "UsedPaintings.is_used", lambda: used.is_used("hash-a")
+        )
         assert _or_skip_not_implemented("UsedPaintings.count", lambda: used.count) == 2
 
         _or_skip_not_implemented("UsedPaintings.save", used.save)
@@ -275,52 +333,164 @@ class TestUsedPaintingsContract:
             "UsedPaintings.__init__ reload", lambda: UsedPaintings(tmp_path)
         )
         _or_skip_not_implemented("UsedPaintings.load", reloaded.load)
-        assert _or_skip_not_implemented("UsedPaintings.is_used", lambda: reloaded.is_used("hash-b"))
+        assert _or_skip_not_implemented(
+            "UsedPaintings.is_used", lambda: reloaded.is_used("hash-b")
+        )
 
         _or_skip_not_implemented("UsedPaintings.reset", reloaded.reset)
-        assert _or_skip_not_implemented("UsedPaintings.count", lambda: reloaded.count) == 0
+        assert (
+            _or_skip_not_implemented("UsedPaintings.count", lambda: reloaded.count) == 0
+        )
 
-    def test_used_paintings_load_disk_snapshot_precedes_in_memory(self, tmp_path: Path) -> None:
+    def test_used_paintings_load_disk_snapshot_precedes_in_memory(
+        self, tmp_path: Path
+    ) -> None:
         payload = {"version": 1, "content_hashes": ["disk-hash"]}
-        (tmp_path / USED_PAINTINGS_JSON).write_text(json.dumps(payload), encoding="utf-8")
+        (tmp_path / USED_PAINTINGS_JSON).write_text(
+            json.dumps(payload), encoding="utf-8"
+        )
 
-        used = _or_skip_not_implemented("UsedPaintings.__init__", lambda: UsedPaintings(tmp_path))
+        used = _or_skip_not_implemented(
+            "UsedPaintings.__init__", lambda: UsedPaintings(tmp_path)
+        )
         _or_skip_not_implemented(
             "UsedPaintings.mark_used",
             lambda: used.mark_used("in-memory-hash"),
         )
 
         _or_skip_not_implemented("UsedPaintings.load", used.load)
-        assert _or_skip_not_implemented("UsedPaintings.is_used", lambda: used.is_used("disk-hash"))
+        assert _or_skip_not_implemented(
+            "UsedPaintings.is_used", lambda: used.is_used("disk-hash")
+        )
         assert not _or_skip_not_implemented(
             "UsedPaintings.is_used",
             lambda: used.is_used("in-memory-hash"),
         )
 
 
+class TestReplayQueueContract:
+    """Replay queue remains a contract-only surface in this milestone."""
+
+    def test_replay_queue_exports_artifact_and_contract_types(self) -> None:
+        assert REPLAY_QUEUE_JSON == "replay_queue.json"
+        assert ReplayBatch.__dataclass_fields__.keys() == {
+            "stories",
+            "tone_description",
+            "source_enqueued_at",
+            "transferred_at",
+            "replay_count",
+            "last_replayed_at",
+        }
+        assert ReplayDedupPolicy().overlap_ratio_threshold == pytest.approx(0.5)
+        assert ReplayDedupPolicy().threshold_behavior == (
+            "reject-when-overlap-ratio-meets-or-exceeds-threshold"
+        )
+        assert ReplayTransferResult.__dataclass_fields__.keys() == {
+            "accepted",
+            "reason",
+            "overlap_ratio",
+            "matched_batch_index",
+        }
+
+    def test_replay_queue_persistence_contract_exposes_cursor_and_threshold(
+        self,
+    ) -> None:
+        annotations = get_type_hints(ReplayQueueFileJson)
+
+        assert annotations["version"] is int
+        assert annotations["next_index"] is int
+        assert annotations["overlap_ratio_threshold"] is float
+        assert "batches" in annotations
+
+    def test_replay_queue_public_signatures_match_contract(self) -> None:
+        assert tuple(inspect.signature(ReplayQueue.__init__).parameters) == (
+            "self",
+            "state_dir",
+            "dedup_policy",
+        )
+        assert tuple(inspect.signature(ReplayQueue.next).parameters) == ("self",)
+        assert tuple(inspect.signature(ReplayQueue.expire).parameters) == (
+            "self",
+            "expire_days",
+        )
+        assert tuple(
+            inspect.signature(ReplayQueue.transfer_from_news_queue).parameters
+        ) == ("self", "batch")
+        assert tuple(inspect.signature(ReplayQueue.persist).parameters) == ("self",)
+        assert tuple(inspect.signature(ReplayQueue.load).parameters) == ("self",)
+
+    def test_replay_queue_methods_are_stub_only_not_runtime_logic(self) -> None:
+        source = inspect.getsource(ReplayQueue)
+        replay_class = ast.parse(source).body[0]
+
+        assert isinstance(replay_class, ast.ClassDef)
+
+        stubbed_methods = {
+            "__init__",
+            "size",
+            "next_index",
+            "next",
+            "expire",
+            "transfer_from_news_queue",
+            "persist",
+            "load",
+        }
+
+        for node in replay_class.body:
+            if isinstance(node, ast.FunctionDef) and node.name in stubbed_methods:
+                body = [
+                    stmt
+                    for stmt in node.body
+                    if not (
+                        isinstance(stmt, ast.Expr)
+                        and isinstance(stmt.value, ast.Constant)
+                        and isinstance(stmt.value.value, str)
+                    )
+                ]
+                assert len(body) == 1
+                assert isinstance(body[0], ast.Raise)
+                assert isinstance(body[0].exc, ast.Call)
+                assert isinstance(body[0].exc.func, ast.Name)
+                assert body[0].exc.func.id == "NotImplementedError"
+
+
 class TestLayoutCacheContract:
     """Layout cache CRUD and overwrite/fallback contract tests."""
 
-    def test_layout_cache_put_get_has_and_persist_round_trip(self, tmp_path: Path) -> None:
-        cache = _or_skip_not_implemented("LayoutCache.__init__", lambda: LayoutCache(tmp_path))
+    def test_layout_cache_put_get_has_and_persist_round_trip(
+        self, tmp_path: Path
+    ) -> None:
+        cache = _or_skip_not_implemented(
+            "LayoutCache.__init__", lambda: LayoutCache(tmp_path)
+        )
         layout = _layout_params("one")
 
         _or_skip_not_implemented("LayoutCache.put", lambda: cache.put("hash-1", layout))
         assert _or_skip_not_implemented("LayoutCache.has", lambda: cache.has("hash-1"))
-        loaded = _or_skip_not_implemented("LayoutCache.get", lambda: cache.get("hash-1"))
+        loaded = _or_skip_not_implemented(
+            "LayoutCache.get", lambda: cache.get("hash-1")
+        )
         assert loaded is not None
         assert loaded.painting_title == layout.painting_title
 
         _or_skip_not_implemented("LayoutCache.save", cache.save)
 
-        reloaded = _or_skip_not_implemented("LayoutCache.__init__ reload", lambda: LayoutCache(tmp_path))
+        reloaded = _or_skip_not_implemented(
+            "LayoutCache.__init__ reload", lambda: LayoutCache(tmp_path)
+        )
         _or_skip_not_implemented("LayoutCache.load", reloaded.load)
-        loaded_again = _or_skip_not_implemented("LayoutCache.get", lambda: reloaded.get("hash-1"))
+        loaded_again = _or_skip_not_implemented(
+            "LayoutCache.get", lambda: reloaded.get("hash-1")
+        )
         assert loaded_again is not None
         assert loaded_again.painting_artist == layout.painting_artist
 
-    def test_layout_cache_legacy_layout_and_missing_file_fallback(self, tmp_path: Path) -> None:
-        cache = _or_skip_not_implemented("LayoutCache.__init__", lambda: LayoutCache(tmp_path))
+    def test_layout_cache_legacy_layout_and_missing_file_fallback(
+        self, tmp_path: Path
+    ) -> None:
+        cache = _or_skip_not_implemented(
+            "LayoutCache.__init__", lambda: LayoutCache(tmp_path)
+        )
         _or_skip_not_implemented("LayoutCache.load missing", cache.load)
         assert _or_skip_not_implemented("LayoutCache.size", lambda: cache.size) == 0
 
@@ -355,9 +525,13 @@ class TestLayoutCacheContract:
         }
         (tmp_path / LAYOUT_CACHE_JSON).write_text(json.dumps(legacy), encoding="utf-8")
         _or_skip_not_implemented("LayoutCache.load legacy", cache.load)
-        assert _or_skip_not_implemented("LayoutCache.has", lambda: cache.has("legacy-hash"))
+        assert _or_skip_not_implemented(
+            "LayoutCache.has", lambda: cache.has("legacy-hash")
+        )
 
-    def test_layout_cache_save_overwrites_stale_snapshot_not_merges(self, tmp_path: Path) -> None:
+    def test_layout_cache_save_overwrites_stale_snapshot_not_merges(
+        self, tmp_path: Path
+    ) -> None:
         stale = {
             "version": 1,
             "layouts": {
@@ -390,8 +564,12 @@ class TestLayoutCacheContract:
         }
         (tmp_path / LAYOUT_CACHE_JSON).write_text(json.dumps(stale), encoding="utf-8")
 
-        cache = _or_skip_not_implemented("LayoutCache.__init__", lambda: LayoutCache(tmp_path))
-        _or_skip_not_implemented("LayoutCache.put", lambda: cache.put("fresh-hash", _layout_params("fresh")))
+        cache = _or_skip_not_implemented(
+            "LayoutCache.__init__", lambda: LayoutCache(tmp_path)
+        )
+        _or_skip_not_implemented(
+            "LayoutCache.put", lambda: cache.put("fresh-hash", _layout_params("fresh"))
+        )
         _or_skip_not_implemented("LayoutCache.save", cache.save)
 
         payload = _read_json(tmp_path / LAYOUT_CACHE_JSON)
@@ -403,16 +581,24 @@ class TestLayoutCacheContract:
 class TestEmbeddingCacheContract:
     """Embedding cache CRUD and NPZ persistence/load fallback contracts."""
 
-    def test_embedding_cache_put_get_has_save_load_npz_round_trip(self, tmp_path: Path) -> None:
+    def test_embedding_cache_put_get_has_save_load_npz_round_trip(
+        self, tmp_path: Path
+    ) -> None:
         cache = _or_skip_not_implemented(
             "EmbeddingCache.__init__", lambda: EmbeddingCache(tmp_path)
         )
         vector = np.array([0.1, -0.2, 0.3], dtype=np.float32)
 
-        _or_skip_not_implemented("EmbeddingCache.put", lambda: cache.put("key-1", vector))
-        assert _or_skip_not_implemented("EmbeddingCache.has", lambda: cache.has("key-1"))
+        _or_skip_not_implemented(
+            "EmbeddingCache.put", lambda: cache.put("key-1", vector)
+        )
+        assert _or_skip_not_implemented(
+            "EmbeddingCache.has", lambda: cache.has("key-1")
+        )
 
-        loaded_vec = _or_skip_not_implemented("EmbeddingCache.get", lambda: cache.get("key-1"))
+        loaded_vec = _or_skip_not_implemented(
+            "EmbeddingCache.get", lambda: cache.get("key-1")
+        )
         assert loaded_vec is not None
         np.testing.assert_allclose(loaded_vec, vector)
 
@@ -434,7 +620,9 @@ class TestEmbeddingCacheContract:
         assert reloaded_vec is not None
         np.testing.assert_allclose(reloaded_vec, vector)
 
-    def test_embedding_cache_missing_file_and_partial_archive_fallback(self, tmp_path: Path) -> None:
+    def test_embedding_cache_missing_file_and_partial_archive_fallback(
+        self, tmp_path: Path
+    ) -> None:
         cache = _or_skip_not_implemented(
             "EmbeddingCache.__init__", lambda: EmbeddingCache(tmp_path)
         )
@@ -445,7 +633,9 @@ class TestEmbeddingCacheContract:
         _or_skip_not_implemented("EmbeddingCache.load partial", cache.load)
         assert _or_skip_not_implemented("EmbeddingCache.size", lambda: cache.size) == 0
 
-    def test_embedding_cache_load_disk_snapshot_precedes_stale_memory(self, tmp_path: Path) -> None:
+    def test_embedding_cache_load_disk_snapshot_precedes_stale_memory(
+        self, tmp_path: Path
+    ) -> None:
         disk_vector = np.array([1.0, 2.0, 3.0], dtype=np.float32)
         np.savez(tmp_path / EMBEDDING_CACHE_NPZ, shared_key=disk_vector)
 
@@ -454,11 +644,15 @@ class TestEmbeddingCacheContract:
         )
         _or_skip_not_implemented(
             "EmbeddingCache.put",
-            lambda: cache.put("shared_key", np.array([-1.0, -2.0, -3.0], dtype=np.float32)),
+            lambda: cache.put(
+                "shared_key", np.array([-1.0, -2.0, -3.0], dtype=np.float32)
+            ),
         )
 
         _or_skip_not_implemented("EmbeddingCache.load", cache.load)
-        loaded = _or_skip_not_implemented("EmbeddingCache.get", lambda: cache.get("shared_key"))
+        loaded = _or_skip_not_implemented(
+            "EmbeddingCache.get", lambda: cache.get("shared_key")
+        )
         assert loaded is not None
         np.testing.assert_allclose(loaded, disk_vector)
 
@@ -466,24 +660,44 @@ class TestEmbeddingCacheContract:
 class TestAppStateLoadContract:
     """Aggregate load behavior for missing files and path resolution contracts."""
 
-    def test_app_state_load_creates_defaults_when_all_files_missing(self, tmp_path: Path) -> None:
-        state = _or_skip_not_implemented("AppState.load", lambda: AppState.load(tmp_path))
+    def test_app_state_load_creates_defaults_when_all_files_missing(
+        self, tmp_path: Path
+    ) -> None:
+        state = _or_skip_not_implemented(
+            "AppState.load", lambda: AppState.load(tmp_path)
+        )
 
         assert isinstance(state.news_queue, NewsQueue)
         assert isinstance(state.used_paintings, UsedPaintings)
         assert isinstance(state.layout_cache, LayoutCache)
         assert isinstance(state.embedding_cache, EmbeddingCache)
 
-        assert _or_skip_not_implemented("NewsQueue.size", lambda: state.news_queue.size) == 0
-        assert _or_skip_not_implemented(
-            "UsedPaintings.count", lambda: state.used_paintings.count
-        ) == 0
-        assert _or_skip_not_implemented("LayoutCache.size", lambda: state.layout_cache.size) == 0
-        assert _or_skip_not_implemented(
-            "EmbeddingCache.size", lambda: state.embedding_cache.size
-        ) == 0
+        assert (
+            _or_skip_not_implemented("NewsQueue.size", lambda: state.news_queue.size)
+            == 0
+        )
+        assert (
+            _or_skip_not_implemented(
+                "UsedPaintings.count", lambda: state.used_paintings.count
+            )
+            == 0
+        )
+        assert (
+            _or_skip_not_implemented(
+                "LayoutCache.size", lambda: state.layout_cache.size
+            )
+            == 0
+        )
+        assert (
+            _or_skip_not_implemented(
+                "EmbeddingCache.size", lambda: state.embedding_cache.size
+            )
+            == 0
+        )
 
-    def test_app_state_load_handles_legacy_files_without_startup_failure(self, tmp_path: Path) -> None:
+    def test_app_state_load_handles_legacy_files_without_startup_failure(
+        self, tmp_path: Path
+    ) -> None:
         (tmp_path / NEWS_QUEUE_JSON).write_text(
             json.dumps(
                 {
@@ -496,7 +710,9 @@ class TestAppStateLoadContract:
                                     "source": "legacy source",
                                     "category": "legacy",
                                     "url": "https://example.com/legacy",
-                                    "published_at": datetime.now(timezone.utc).isoformat(),
+                                    "published_at": datetime.now(
+                                        timezone.utc
+                                    ).isoformat(),
                                     "featured": True,
                                 }
                             ],
@@ -518,14 +734,24 @@ class TestAppStateLoadContract:
         )
         np.savez(tmp_path / EMBEDDING_CACHE_NPZ, legacy_vec=np.array([0.0, 1.0]))
 
-        state = _or_skip_not_implemented("AppState.load", lambda: AppState.load(tmp_path))
+        state = _or_skip_not_implemented(
+            "AppState.load", lambda: AppState.load(tmp_path)
+        )
         assert isinstance(state, AppState)
-        assert _or_skip_not_implemented("NewsQueue.size", lambda: state.news_queue.size) >= 0
-        assert _or_skip_not_implemented(
-            "UsedPaintings.count", lambda: state.used_paintings.count
-        ) >= 0
+        assert (
+            _or_skip_not_implemented("NewsQueue.size", lambda: state.news_queue.size)
+            >= 0
+        )
+        assert (
+            _or_skip_not_implemented(
+                "UsedPaintings.count", lambda: state.used_paintings.count
+            )
+            >= 0
+        )
 
-    def test_app_state_load_relative_state_dir_resolves_from_cwd(self, tmp_path: Path) -> None:
+    def test_app_state_load_relative_state_dir_resolves_from_cwd(
+        self, tmp_path: Path
+    ) -> None:
         relative_dir = Path("state-data")
         expected = (tmp_path / relative_dir).resolve()
 

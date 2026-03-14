@@ -17,7 +17,7 @@ import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING, Literal, TypedDict
 
 import numpy as np
 
@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 DEFAULT_STATE_DIR = Path("~/.sfumato/state")
 
 NEWS_QUEUE_JSON = "news_queue.json"
+REPLAY_QUEUE_JSON = "replay_queue.json"
 USED_PAINTINGS_JSON = "used_paintings.json"
 LAYOUT_CACHE_JSON = "layout_cache.json"
 EMBEDDING_CACHE_NPZ = "embedding_cache.npz"
@@ -64,6 +65,41 @@ class NewsQueueFileJson(TypedDict):
 
     version: int
     batches: list[QueuedBatchJson]
+
+
+class ReplayBatchJson(TypedDict):
+    """JSON boundary for one replayable batch in ``replay_queue.json``.
+
+    Contract notes:
+    - ``source_enqueued_at`` preserves the original ``NewsQueue`` enqueue time.
+    - ``transferred_at`` records when the batch entered ``ReplayQueue``.
+    - ``last_replayed_at`` is ``None`` until ``next()`` has yielded the batch.
+    - ``replay_count`` counts completed ``next()`` yields for this batch.
+    """
+
+    stories: list[StoryJson]
+    tone_description: str
+    source_enqueued_at: str
+    transferred_at: str
+    last_replayed_at: str | None
+    replay_count: int
+
+
+class ReplayQueueFileJson(TypedDict):
+    """Versioned JSON schema boundary for replay queue persistence.
+
+    Invariants:
+    - ``next_index`` is ``0`` when ``batches`` is empty.
+    - ``next_index`` is a zero-based cursor pointing at the batch that the next
+      ``next()`` call must yield.
+    - ``next_index`` must satisfy ``0 <= next_index < len(batches)`` when the
+      queue is non-empty.
+    """
+
+    version: int
+    next_index: int
+    overlap_ratio_threshold: float
+    batches: list[ReplayBatchJson]
 
 
 class UsedPaintingsFileJson(TypedDict):
@@ -355,6 +391,65 @@ class QueuedBatch:
     enqueued_at: datetime
 
 
+@dataclass(frozen=True)
+class ReplayBatch:
+    """A replayable batch transferred from ``NewsQueue`` into cyclic storage.
+
+    Invariants:
+    - ``stories`` preserve the original story order from the source batch.
+    - ``source_enqueued_at`` is copied from the originating ``QueuedBatch``.
+    - ``transferred_at`` is monotonic per accepted transfer into ``ReplayQueue``.
+    - ``replay_count`` starts at ``0`` and increments only after a successful
+      ``next()`` yield.
+    - ``last_replayed_at`` remains ``None`` until the first successful replay.
+    """
+
+    stories: list[Story]
+    tone_description: str
+    source_enqueued_at: datetime
+    transferred_at: datetime
+    replay_count: int = 0
+    last_replayed_at: datetime | None = None
+
+
+@dataclass(frozen=True)
+class ReplayDedupPolicy:
+    """Contract boundary for replay deduplication and overlap checks.
+
+    Invariants:
+    - ``overlap_ratio_threshold`` is normalized to the closed interval
+      ``0.0 <= threshold <= 1.0`` by the caller or future implementation.
+    - Story identity is URL-first; if a story has no URL, the implementation may
+      fall back to a stable secondary fingerprint, but it must not treat batches
+      with different URLs as identical.
+    - ``overlap_ratio`` is defined as ``shared_story_count / min(candidate_size,
+      existing_size)``.
+    - Transfer must be rejected when ``overlap_ratio >= overlap_ratio_threshold``.
+    - Transfer may be accepted when ``overlap_ratio < overlap_ratio_threshold``.
+    """
+
+    overlap_ratio_threshold: float = 0.5
+    overlap_ratio_formula: str = (
+        "shared_story_count / min(candidate_size, existing_size)"
+    )
+    threshold_behavior: str = "reject-when-overlap-ratio-meets-or-exceeds-threshold"
+    identity_priority: tuple[str, ...] = ("url", "headline")
+
+
+@dataclass(frozen=True)
+class ReplayTransferResult:
+    """Outcome contract for ``NewsQueue`` -> ``ReplayQueue`` transfer."""
+
+    accepted: bool
+    reason: Literal[
+        "accepted",
+        "rejected-empty-batch",
+        "rejected-duplicate-overlap",
+    ]
+    overlap_ratio: float
+    matched_batch_index: int | None
+
+
 class NewsQueue:
     """FIFO queue of news story batches, persisted to ``news_queue.json``.
 
@@ -536,6 +631,68 @@ class NewsQueue:
                 continue
 
         self._batches = loaded
+
+
+class ReplayQueue:
+    """Cyclic replay queue persisted to ``replay_queue.json``.
+
+    Cycling semantics:
+    - ``next()`` returns the batch at ``next_index``.
+    - Successful ``next()`` advances ``next_index`` by one modulo ``size``.
+    - ``next()`` does not remove entries; replay storage is cyclic, not FIFO.
+    - Empty queue => ``next()`` returns ``None`` and ``next_index`` remains ``0``.
+
+    Persistence contract:
+    - ``persist()`` writes a full ``ReplayQueueFileJson`` snapshot to
+      ``replay_queue.json``.
+    - ``load()`` replaces in-memory state with the persisted snapshot.
+    - Missing file => default-empty queue with ``next_index == 0``.
+
+    Transfer contract:
+    - ``transfer_from_news_queue()`` evaluates overlap against existing replay
+      entries using ``ReplayDedupPolicy`` before append.
+    - Accepted transfer appends a new ``ReplayBatch`` and preserves source story
+      ordering and ``QueuedBatch.enqueued_at``.
+    - Rejected transfer leaves queue order and ``next_index`` unchanged.
+    """
+
+    def __init__(
+        self,
+        state_dir: Path | str | None,
+        *,
+        dedup_policy: ReplayDedupPolicy = ReplayDedupPolicy(),
+    ) -> None:
+        raise NotImplementedError("ReplayQueue contract only; implementation pending")
+
+    @property
+    def size(self) -> int:
+        """Return the number of replay batches currently tracked."""
+        raise NotImplementedError("ReplayQueue contract only; implementation pending")
+
+    @property
+    def next_index(self) -> int:
+        """Return the zero-based index that the next ``next()`` call will yield."""
+        raise NotImplementedError("ReplayQueue contract only; implementation pending")
+
+    def next(self) -> ReplayBatch | None:
+        """Return the next replay batch and advance cyclic cursor semantics."""
+        raise NotImplementedError("ReplayQueue contract only; implementation pending")
+
+    def expire(self, expire_days: int) -> int:
+        """Drop replay batches older than ``expire_days`` and rebase ``next_index``."""
+        raise NotImplementedError("ReplayQueue contract only; implementation pending")
+
+    def transfer_from_news_queue(self, batch: QueuedBatch) -> ReplayTransferResult:
+        """Append a ``QueuedBatch`` from ``NewsQueue`` if dedup policy permits."""
+        raise NotImplementedError("ReplayQueue contract only; implementation pending")
+
+    def persist(self) -> None:
+        """Persist replay queue snapshot to ``replay_queue.json``."""
+        raise NotImplementedError("ReplayQueue contract only; implementation pending")
+
+    def load(self) -> None:
+        """Load replay queue snapshot from ``replay_queue.json`` if present."""
+        raise NotImplementedError("ReplayQueue contract only; implementation pending")
 
 
 class UsedPaintings:
@@ -919,6 +1076,13 @@ __all__ = [
     "NewsQueueFileJson",
     "QueuedBatch",
     "QueuedBatchJson",
+    "REPLAY_QUEUE_JSON",
+    "ReplayBatch",
+    "ReplayBatchJson",
+    "ReplayDedupPolicy",
+    "ReplayQueue",
+    "ReplayQueueFileJson",
+    "ReplayTransferResult",
     "StateLoadPolicy",
     "StoryJson",
     "USED_PAINTINGS_JSON",
