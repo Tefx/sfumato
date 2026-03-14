@@ -1,0 +1,7 @@
+samsungtvws[async,encrypted]
+playwright
+Pillow
+numpy
+feedparser
+httpx
+typer>=0.9

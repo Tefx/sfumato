@@ -1,0 +1,2 @@
+[console_scripts]
+sfumato = sfumato.cli:main
