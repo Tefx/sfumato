@@ -1986,7 +1986,7 @@ phases:
       - Orchestrator wiring intentionally not changed in this step.'
   - id: intelligence.news-queue
     name: Wire news queue and time-window into orchestrator
-    status: claimed
+    status: done
     description: 'Integrate NewsQueue into orchestrator pipeline. Add time-window
       filtering (max_age_days) and batch splitting to news flow. orchestrator.run_once()
       now dequeues from NewsQueue; if empty, triggers on-demand refresh_news(). orchestrator.run_news_refresh()
@@ -2008,6 +2008,41 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T16:59:16.775881+00:00'
+    done_at: '2026-03-14T17:13:48.212660+00:00'
+    evidence: 'Artifact:
+
+      - PR: commit 41f0eba ([vectl] step-intelligence.news-queue completed), source
+      worktree commit f858ba1f61d8d1da8463b2f787fce49197e09cb1
+
+
+      Verification:
+
+      - Run: `uv run pytest tests/test_orchestrator.py -v` -> 55 passed
+
+      - Run: `uv run python -c "from sfumato.orchestrator import run_news_refresh;
+      print(''OK'')"` -> OK
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#2.10
+
+      - ARCHITECTURE.md#2.12
+
+
+      Files changed:
+
+      - src/sfumato/orchestrator.py
+
+      - tests/test_orchestrator.py
+
+
+      Gaps/Notes:
+
+      - Uses `state.news_queue` dequeue/expire/enqueue flow with on-demand refresh
+      when queue is empty.
+
+      - Time-window filtering remains driven by news refresh path and config settings.'
   - id: intelligence.semantic-match
     name: Wire semantic matching and caching into orchestrator
     status: claimed
