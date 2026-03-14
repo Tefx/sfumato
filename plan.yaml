@@ -375,6 +375,33 @@ phases:
       - Unsupported backend behavior is pinned explicitly rather than left to implementation-time
       judgment'
     agent: python-executor
+  - id: core.llm.tests
+    name: Author LLM invocation tests
+    status: pending
+    description: "step_type: test\nspec_refs:\n  - ARCHITECTURE.md#2.9\ntouch_paths:\n\
+      \  - tests/test_llm.py\n  - src/sfumato/llm.py\nharness_refs:\n  - pytest\n\
+      \  - subprocess mocking boundary\nagent: python-executor\n\nAdd contract-driven\
+      \ tests for `invoke_text()`, `invoke_vision()`, `compute_embedding()`, and `parse_json_response()`\
+      \ before product implementation is dispatched.\n\nRequired coverage:\n- Main\
+      \ path: correct subprocess command selection for each supported backend.\n-\
+      \ Retry/timeout path: timeout or connection failure retries once and stops at\
+      \ the contracted boundary.\n- Parser edge path: fenced JSON, trailing commas,\
+      \ extra whitespace, and malformed fenced payloads are handled exactly as specified.\n\
+      - Backend-selection path: unsupported or misconfigured backend selection fails\
+      \ deterministically with the contracted error.\n- Embedding path: embedding\
+      \ backend selection and error wrapping are pinned by tests.\n\nKeep tests focused\
+      \ on contract behavior and error boundaries; do not implement production subprocess\
+      \ logic here."
+    verification: '- Named tests cover command selection, retry boundary exhaustion,
+      malformed fenced JSON, and unsupported backend errors
+
+      - Verification explicitly includes both the successful dispatch path and the
+      highest-risk failure path (timeout retry and parse failure)
+
+      - Test step adds tests/helpers only'
+    depends_on:
+    - core.llm.contract
+    agent: python-executor
 - id: intelligence
   name: Intelligence
   status: locked
