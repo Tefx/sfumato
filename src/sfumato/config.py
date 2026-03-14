@@ -79,9 +79,7 @@ class PaintingsConfig:
     cache_dir: Path = Path("~/.sfumato/paintings")
     seed_size: int = 50
     pool_size: int = 200
-    sources: list[str] = field(
-        default_factory=lambda: ["met", "wikimedia"]
-    )
+    sources: list[str] = field(default_factory=lambda: ["met", "wikimedia"])
     match_strategy: str = "semantic"
 
 
@@ -91,6 +89,8 @@ class AiConfig:
 
     cli: str = "gemini"
     model: str = "gemini-3.1-pro-preview"
+    backend: str = "cli"
+    sdk_provider: str = "openrouter"
 
 
 @dataclass(frozen=True)
@@ -240,6 +240,10 @@ match_strategy = "semantic"
 [ai]
 cli = "gemini"
 model = "gemini-3.1-pro-preview"
+# backend: "cli" for CLI tools, "sdk" for LiteLLM SDK
+backend = "cli"
+# sdk_provider: "openrouter", "google", or "openai" (used when backend="sdk")
+sdk_provider = "openrouter"
 """
 
 
@@ -438,6 +442,20 @@ def _build_app_config(data: dict[str, Any], source_path: Path) -> AppConfig:
             ai_data,
             "model",
             defaults.ai.model,
+            source_path,
+            "ai",
+        ),
+        backend=_expect_str_or_default(
+            ai_data,
+            "backend",
+            defaults.ai.backend,
+            source_path,
+            "ai",
+        ),
+        sdk_provider=_expect_str_or_default(
+            ai_data,
+            "sdk_provider",
+            defaults.ai.sdk_provider,
             source_path,
             "ai",
         ),
