@@ -421,9 +421,6 @@ class TestParseJsonResponseContract:
     """Test parse_json_response leniency boundaries.
 
     These tests verify the parser handles common LLM output quirks.
-
-    NOTE: Until implementation, these tests use placeholders. After
-    implementation, replace with actual JSON parsing tests.
     """
 
     def test_strips_markdown_json_fence(self) -> None:
@@ -435,9 +432,8 @@ class TestParseJsonResponseContract:
         Implementation MUST strip fences before parsing.
         """
         input_text = '```json\n{"key": "value"}\n```'
-        # Stub raises NotImplementedError; implementation will parse
-        with pytest.raises((LlmParseError, NotImplementedError)):
-            parse_json_response(input_text)
+        result = parse_json_response(input_text)
+        assert result == {"key": "value"}
 
     def test_strips_generic_markdown_fence(self) -> None:
         """Handles ``` ... ``` wrapper without language specifier.
@@ -446,8 +442,8 @@ class TestParseJsonResponseContract:
         should parse to {"key": "value"}.
         """
         input_text = '```\n{"key": "value"}\n```'
-        with pytest.raises((LlmParseError, NotImplementedError)):
-            parse_json_response(input_text)
+        result = parse_json_response(input_text)
+        assert result == {"key": "value"}
 
     def test_trims_whitespace(self) -> None:
         """Trims leading/trailing whitespace.
@@ -456,8 +452,8 @@ class TestParseJsonResponseContract:
         should parse to {"key": "value"}.
         """
         input_text = '  {"key": "value"}  '
-        with pytest.raises((LlmParseError, NotImplementedError)):
-            parse_json_response(input_text)
+        result = parse_json_response(input_text)
+        assert result == {"key": "value"}
 
     def test_removes_trailing_comma_in_object(self) -> None:
         """Removes trailing comma before }.
@@ -466,8 +462,8 @@ class TestParseJsonResponseContract:
         should parse to {"key": "value"}.
         """
         input_text = '{"key": "value",}'
-        with pytest.raises((LlmParseError, NotImplementedError)):
-            parse_json_response(input_text)
+        result = parse_json_response(input_text)
+        assert result == {"key": "value"}
 
     def test_removes_trailing_comma_in_array(self) -> None:
         """Removes trailing comma before ].
@@ -476,8 +472,8 @@ class TestParseJsonResponseContract:
         should parse to {"items": [1, 2, 3]}.
         """
         input_text = '{"items": [1, 2, 3,]}'
-        with pytest.raises((LlmParseError, NotImplementedError)):
-            parse_json_response(input_text)
+        result = parse_json_response(input_text)
+        assert result == {"items": [1, 2, 3]}
 
     def test_handles_multiple_trailing_commas(self) -> None:
         """Handles multiple trailing commas in nested structures.
@@ -485,8 +481,8 @@ class TestParseJsonResponseContract:
         Contract: All trailing commas should be removed before parsing.
         """
         input_text = '{"outer": {"inner": [1, 2,],},}'
-        with pytest.raises((LlmParseError, NotImplementedError)):
-            parse_json_response(input_text)
+        result = parse_json_response(input_text)
+        assert result == {"outer": {"inner": [1, 2]}}
 
     def test_handles_whitespace_in_fenced_json(self) -> None:
         """Handles whitespace inside and outside fences.
@@ -494,8 +490,8 @@ class TestParseJsonResponseContract:
         Contract: Extra whitespace should not break parsing.
         """
         input_text = '```json\n\n  {"key": "value"}  \n\n```'
-        with pytest.raises((LlmParseError, NotImplementedError)):
-            parse_json_response(input_text)
+        result = parse_json_response(input_text)
+        assert result == {"key": "value"}
 
     def test_raises_llm_parse_error_on_invalid_json(self) -> None:
         """Raises LlmParseError for truly invalid JSON.
@@ -504,8 +500,7 @@ class TestParseJsonResponseContract:
         still invalid, raise LlmParseError with helpful context.
         """
         input_text = "```json\n{this is not valid json}\n```"
-        # Should raise LlmParseError (or NotImplementedError from stub)
-        with pytest.raises((LlmParseError, NotImplementedError)):
+        with pytest.raises(LlmParseError):
             parse_json_response(input_text)
 
     def test_preserves_valid_json_data(self) -> None:
@@ -514,8 +509,8 @@ class TestParseJsonResponseContract:
         Contract: Valid JSON content is preserved after transformations.
         """
         input_text = '{"name": "test", "count": 42, "items": ["a", "b", "c"]}'
-        with pytest.raises((LlmParseError, NotImplementedError)):
-            parse_json_response(input_text)
+        result = parse_json_response(input_text)
+        assert result == {"name": "test", "count": 42, "items": ["a", "b", "c"]}
 
     def test_handles_empty_object(self) -> None:
         """Handles empty JSON object.
@@ -523,8 +518,8 @@ class TestParseJsonResponseContract:
         Contract: '{}' should parse to {}.
         """
         input_text = "{}"
-        with pytest.raises((LlmParseError, NotImplementedError)):
-            parse_json_response(input_text)
+        result = parse_json_response(input_text)
+        assert result == {}
 
     def test_handles_empty_array(self) -> None:
         """Handles JSON with empty array.
@@ -532,8 +527,8 @@ class TestParseJsonResponseContract:
         Contract: '{"items": []}' should parse to {"items": []}.
         """
         input_text = '{"items": []}'
-        with pytest.raises((LlmParseError, NotImplementedError)):
-            parse_json_response(input_text)
+        result = parse_json_response(input_text)
+        assert result == {"items": []}
 
     def test_handles_nested_objects(self) -> None:
         """Handles deeply nested JSON structures.
@@ -541,8 +536,8 @@ class TestParseJsonResponseContract:
         Contract: Nested objects should parse correctly.
         """
         input_text = '{"level1": {"level2": {"level3": {"key": "value"}}}}'
-        with pytest.raises((LlmParseError, NotImplementedError)):
-            parse_json_response(input_text)
+        result = parse_json_response(input_text)
+        assert result == {"level1": {"level2": {"level3": {"key": "value"}}}}
 
     def test_handles_unicode(self) -> None:
         """Handles Unicode characters in JSON.
@@ -550,8 +545,8 @@ class TestParseJsonResponseContract:
         Contract: Unicode in JSON content should be preserved.
         """
         input_text = '{"greeting": "你好", "emoji": "🎨"}'
-        with pytest.raises((LlmParseError, NotImplementedError)):
-            parse_json_response(input_text)
+        result = parse_json_response(input_text)
+        assert result == {"greeting": "你好", "emoji": "🎨"}
 
     def test_handles_escape_sequences(self) -> None:
         """Handles JSON escape sequences.
@@ -559,8 +554,8 @@ class TestParseJsonResponseContract:
         Contract: Escape sequences should be parsed correctly.
         """
         input_text = '{"text": "line1\\nline2", "quote": "say \\"hello\\""}'
-        with pytest.raises((LlmParseError, NotImplementedError)):
-            parse_json_response(input_text)
+        result = parse_json_response(input_text)
+        assert result == {"text": "line1\nline2", "quote": 'say "hello"'}
 
 
 class TestMalformedFencedPayloads:
@@ -572,19 +567,19 @@ class TestMalformedFencedPayloads:
     def test_unclosed_fence_raises_llm_parse_error(self) -> None:
         """Unclosed markdown fence should raise LlmParseError with context."""
         input_text = '```json\n{"key": "value"}'
-        with pytest.raises((LlmParseError, NotImplementedError)):
+        with pytest.raises(LlmParseError):
             parse_json_response(input_text)
 
     def test_mismatched_fence_raises_error(self) -> None:
         """Mismatched fence markers should raise LlmParseError."""
         input_text = '```json\n{"key": "value"}\n``'
-        with pytest.raises((LlmParseError, NotImplementedError)):
+        with pytest.raises(LlmParseError):
             parse_json_response(input_text)
 
     def test_fenced_non_json_raises_error(self) -> None:
         """Fenced content that is not valid JSON should raise LlmParseError."""
         input_text = "```json\nnot json at all\n```"
-        with pytest.raises((LlmParseError, NotImplementedError)):
+        with pytest.raises(LlmParseError):
             parse_json_response(input_text)
 
     def test_fence_in_middle_of_text(self) -> None:
@@ -593,8 +588,8 @@ class TestMalformedFencedPayloads:
         Contract: Implementation should extract JSON from context.
         """
         input_text = 'Some text ```json\n{"key": "value"}\n``` more text'
-        with pytest.raises((LlmParseError, NotImplementedError)):
-            parse_json_response(input_text)
+        result = parse_json_response(input_text)
+        assert result == {"key": "value"}
 
     def test_multiple_fences_returns_first_json(self) -> None:
         """Multiple fenced blocks should use the first JSON one.
@@ -602,19 +597,20 @@ class TestMalformedFencedPayloads:
         Contract: Implementation should prefer json-fenced blocks.
         """
         input_text = '```python\nprint("hello")\n```\n```json\n{"key": "value"}\n```'
-        with pytest.raises((LlmParseError, NotImplementedError)):
-            parse_json_response(input_text)
+        # The JSON fence has priority, so it extracts from the json fence
+        result = parse_json_response(input_text)
+        assert result == {"key": "value"}
 
     def test_empty_fenced_content_raises_error(self) -> None:
         """Empty fenced content should raise LlmParseError."""
         input_text = "```json\n\n```"
-        with pytest.raises((LlmParseError, NotImplementedError)):
+        with pytest.raises(LlmParseError):
             parse_json_response(input_text)
 
     def test_fenced_content_with_only_whitespace_raises_error(self) -> None:
         """Fenced content with only whitespace should raise LlmParseError."""
         input_text = "```json\n   \n\t\n```"
-        with pytest.raises((LlmParseError, NotImplementedError)):
+        with pytest.raises(LlmParseError):
             parse_json_response(input_text)
 
 

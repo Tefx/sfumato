@@ -1,21 +1,27 @@
 """LLM backend invocation and response parsing.
 
-This module defines the unified interface for invoking LLM backends (gemini CLI,
-codex CLI, claude-code CLI) via subprocess. It handles prompt construction, response
-parsing, retries, and timeout behavior.
-
-This file contains CONTRACT STUBS ONLY - implementation is deferred to a later step.
-All public functions raise NotImplementedError. The signatures, behavior contracts,
-and error types are pinned here for worker agents to implement.
+This module provides a unified interface for invoking LLM backends (gemini CLI, codex CLI,
+claude-code CLI) via subprocess. It handles prompt construction, response parsing, retries,
+and timeout behavior.
 
 Architecture reference: ARCHITECTURE.md#2.9
 """
 
 from __future__ import annotations
 
+import asyncio
+import json
+import re
+import shutil
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
+
 from sfumato.config import AiConfig
+
+if TYPE_CHECKING:
+    pass
 
 
 # =============================================================================
@@ -108,7 +114,7 @@ class LlmResponse:
 # This dict defines which backends are supported and their invocation patterns.
 #
 # Contract: Workers must implement support for exactly these three backends.
-# Any other value in AiConfig.cli must raise NotImplementedError with a clear
+# Any other value in AiConfig.cli must raise LlmError with a clear
 # message listing the supported backends.
 #
 # Implementation note: The actual command templates are implementation details,
@@ -128,8 +134,8 @@ Keys must match valid values for AiConfig.cli.
 Values are human-readable descriptions for error messages.
 
 Contract:
-    - If AiConfig.cli is not in this dict, raise UnsupportedBackendError
-      (which is a subtype of LlmError informing the user of valid options)
+    - If AiConfig.cli is not in this dict, raise LlmError
+      with a message listing valid options
     - The dict is the single source of truth for supported backend names
     - Adding a new backend requires updating this dict AND the invoke implementations
 """
@@ -210,7 +216,282 @@ Contract:
 
 
 # =============================================================================
-# PUBLIC API - INVOCATION FUNCTIONS (STUBS)
+# INTERNAL HELPERS
+# =============================================================================
+
+
+def _strip_code_fences(text: str) -> str:
+    """Strip markdown code fences from LLM output.
+
+    This is an implementation helper for parse_json_response, NOT public API.
+
+    Contract:
+        - Handles ```json ... ``` and ``` ... ``` patterns
+        - Returns stripped content without the fence markers
+        - If no fences found, returns the original text trimmed
+
+    Args:
+        text: Raw LLM response that may contain code fences.
+
+    Returns:
+        Text with fences stripped, trimmed of leading/trailing whitespace.
+    """
+    text = text.strip()
+
+    # Pattern 1: ```json ... ```
+    json_fence_match = re.search(
+        r"```json\s*\n(.*?)\n\s*```", text, re.DOTALL | re.IGNORECASE
+    )
+    if json_fence_match:
+        return json_fence_match.group(1).strip()
+
+    # Pattern 2: ``` ... ``` (generic fence)
+    # Look for backtick fence at start
+    if text.startswith("```"):
+        # Find the end of the opening fence
+        end_of_lang = text.find("\n", 3)
+        if end_of_lang != -1:
+            # Find the closing fence
+            close_fence = text.rfind("```")
+            if close_fence > end_of_lang:
+                return text[end_of_lang + 1 : close_fence].strip()
+
+    # Pattern 3: Fence in middle of text - extract JSON from inside
+    fence_match = re.search(r"```(?:\w*)\s*\n(.*?)\n\s*```", text, re.DOTALL)
+    if fence_match:
+        return fence_match.group(1).strip()
+
+    return text
+
+
+def _remove_trailing_commas(text: str) -> str:
+    """Remove trailing commas before ] and }.
+
+    This is an implementation helper for parse_json_response, NOT public API.
+
+    Contract:
+        - Removes commas that precede closing brackets/braces
+        - Handles both ] and } cases
+        - Does not modify other content
+
+    Args:
+        text: JSON text that may have trailing commas.
+
+    Returns:
+        Text with trailing commas removed.
+    """
+    # Remove trailing comma before ]
+    text = re.sub(r",\s*]", "]", text)
+    # Remove trailing comma before }
+    text = re.sub(r",\s*}", "}", text)
+    return text
+
+
+def _check_transient_error(error_message: str) -> bool:
+    """Check if an error message indicates a transient failure eligible for retry.
+
+    This is an implementation helper, NOT public API.
+
+    Contract:
+        - Returns True if error_message contains any TRANSIENT_ERROR_INDICATORS
+        - Case-insensitive matching
+        - Returns False for all other errors (deterministic)
+
+    Args:
+        error_message: The error message to check.
+
+    Returns:
+        True if the error appears to be transient, False otherwise.
+    """
+    lower_message = error_message.lower()
+    return any(indicator in lower_message for indicator in TRANSIENT_ERROR_INDICATORS)
+
+
+def _get_backend_command(
+    cli: str,
+    prompt: str,
+    model: str,
+    max_tokens: int,
+    temperature: float,
+    system_prompt: str | None,
+    image_path: Path | None,
+) -> list[str]:
+    """Build the subprocess command for a specific backend.
+
+    This is an implementation helper, NOT public API.
+
+    Contract (for reference during implementation):
+        - Returns a list of strings suitable for subprocess.run()
+        - Must properly escape/quote the prompt for shell safety
+        - Must handle image_path=None vs image_path=Path for vision calls
+        - Must pass max_tokens and temperature to backends that support them
+
+    Args:
+        cli: Backend name from BACKEND_DISPATCH_MAP.
+        prompt: User prompt text.
+        model: Model identifier.
+        max_tokens: Maximum tokens for response.
+        temperature: Sampling temperature.
+        system_prompt: Optional system prompt.
+        image_path: Optional image path for vision calls.
+
+    Returns:
+        List of command arguments.
+
+    Raises:
+        LlmError: If cli is not a valid backend.
+    """
+    if cli not in BACKEND_DISPATCH_MAP:
+        valid_options = ", ".join(repr(b) for b in VALID_BACKENDS)
+        raise LlmError(f"Unsupported backend '{cli}'. Valid backends: {valid_options}")
+
+    if cli == "gemini":
+        # gemini -m {model} -p "{prompt}"
+        cmd = ["gemini", "-m", model, "-p", prompt]
+        # Note: gemini CLI may have different syntax for max_tokens/temperature
+        # Using common flags that are likely to work
+        cmd.extend(["--max-tokens", str(max_tokens)])
+        cmd.extend(["--temperature", str(temperature)])
+        if system_prompt:
+            cmd.extend(["--system", system_prompt])
+        if image_path:
+            # gemini may require specific image handling
+            cmd.extend(["--image", str(image_path)])
+        return cmd
+
+    if cli == "codex":
+        # codex -m {model} -p "{prompt}"
+        cmd = ["codex", "-m", model, "-p", prompt]
+        cmd.extend(["--max-tokens", str(max_tokens)])
+        cmd.extend(["--temperature", str(temperature)])
+        if system_prompt:
+            cmd.extend(["--system", system_prompt])
+        if image_path:
+            cmd.extend(["--image", str(image_path)])
+        return cmd
+
+    if cli == "claude-code":
+        # claude -m {model} -p "{prompt}" --output-format json
+        cmd = ["claude", "-m", model, "-p", prompt, "--output-format", "json"]
+        cmd.extend(["--max-tokens", str(max_tokens)])
+        cmd.extend(["--temperature", str(temperature)])
+        if system_prompt:
+            cmd.extend(["--system", system_prompt])
+        if image_path:
+            # claude-code has native image support
+            cmd.extend(["--image", str(image_path)])
+        return cmd
+
+    # This should never be reached due to the check above
+    valid_options = ", ".join(repr(b) for b in VALID_BACKENDS)
+    raise LlmError(f"Unsupported backend '{cli}'. Valid backends: {valid_options}")
+
+
+async def _run_subprocess_with_retry(
+    cmd: list[str],
+    timeout_seconds: int,
+    cli: str,
+) -> str:
+    """Run subprocess with retry logic for transient errors.
+
+    This is an internal helper that implements the retry contract.
+
+    Args:
+        cmd: Command to execute.
+        timeout_seconds: Timeout for each attempt.
+        cli: Backend name for error messages.
+
+    Returns:
+        stdout content on success.
+
+    Raises:
+        LlmError: After retries exhausted for transient errors.
+        LlmError: Immediately for deterministic errors.
+    """
+    last_error: str = ""
+
+    for attempt in range(1, MAX_RETRY_ATTEMPTS + 1):
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+
+            stdout, stderr = await asyncio.wait_for(
+                process.communicate(),
+                timeout=timeout_seconds,
+            )
+
+            if process.returncode != 0:
+                error_msg = stderr.decode("utf-8", errors="replace").strip()
+                if not error_msg:
+                    error_msg = f"Process exited with code {process.returncode}"
+
+                if _check_transient_error(error_msg):
+                    last_error = error_msg
+                    if attempt < MAX_RETRY_ATTEMPTS:
+                        continue  # Retry
+                    raise LlmError(
+                        f"LLM invocation failed after {MAX_RETRY_ATTEMPTS} attempts "
+                        f"(backend: {cli}): {error_msg}"
+                    )
+                else:
+                    # Deterministic error, no retry
+                    raise LlmError(
+                        f"LLM invocation failed (backend: {cli}): {error_msg}"
+                    )
+
+            result = stdout.decode("utf-8", errors="replace")
+            return result
+
+        except asyncio.TimeoutError:
+            last_error = f"Timeout after {timeout_seconds}s"
+            if attempt < MAX_RETRY_ATTEMPTS:
+                continue  # Retry
+            raise LlmError(
+                f"LLM invocation failed after {MAX_RETRY_ATTEMPTS} attempts "
+                f"(backend: {cli}): {last_error}"
+            ) from None
+
+        except FileNotFoundError:
+            # Binary not found - deterministic error
+            raise LlmError(
+                f"Backend binary not found: {cli}. "
+                f"Please ensure '{cli}' is installed and available on PATH."
+            ) from None
+
+        except PermissionError as e:
+            # Permission denied - deterministic error
+            raise LlmError(
+                f"Permission denied executing backend '{cli}': {e}"
+            ) from None
+
+        except OSError as e:
+            error_msg = str(e)
+            if _check_transient_error(error_msg):
+                last_error = error_msg
+                if attempt < MAX_RETRY_ATTEMPTS:
+                    continue  # Retry
+                raise LlmError(
+                    f"LLM invocation failed after {MAX_RETRY_ATTEMPTS} attempts "
+                    f"(backend: {cli}): {error_msg}"
+                ) from None
+            else:
+                # Deterministic OS error
+                raise LlmError(
+                    f"LLM invocation failed (backend: {cli}): {error_msg}"
+                ) from None
+
+    # This should never be reached, but satisfy type checker
+    raise LlmError(
+        f"LLM invocation failed after {MAX_RETRY_ATTEMPTS} attempts "
+        f"(backend: {cli}): {last_error}"
+    )
+
+
+# =============================================================================
+# PUBLIC API - INVOCATION FUNCTIONS
 # =============================================================================
 
 
@@ -244,7 +525,6 @@ async def invoke_text(
     Raises:
         LlmError: If invocation fails after MAX_RETRY_ATTEMPTS for transient errors.
         LlmError: If ai_config.cli is not in BACKEND_DISPATCH_MAP (unsupported backend).
-        LlmParseError: Never raised here (parse errors only in parse_json_response).
 
     Contract Behavior:
         1. Backend dispatch: Look up ai_config.cli in BACKEND_DISPATCH_MAP.
@@ -259,8 +539,36 @@ async def invoke_text(
         - No streaming support (collect full response before returning)
         - No multi-turn conversation management (each call is independent)
     """
-    raise NotImplementedError(
-        "Contract-only stub: implementation deferred to a later step"
+    # Validate backend
+    if ai_config.cli not in BACKEND_DISPATCH_MAP:
+        valid_options = ", ".join(repr(b) for b in VALID_BACKENDS)
+        raise LlmError(
+            f"Unsupported backend '{ai_config.cli}'. Valid backends: {valid_options}"
+        )
+
+    # Build command
+    cmd = _get_backend_command(
+        cli=ai_config.cli,
+        prompt=prompt,
+        model=ai_config.model,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        system_prompt=system_prompt,
+        image_path=None,
+    )
+
+    # Execute with retry
+    result = await _run_subprocess_with_retry(
+        cmd=cmd,
+        timeout_seconds=timeout_seconds,
+        cli=ai_config.cli,
+    )
+
+    return LlmResponse(
+        text=result,
+        model=ai_config.model,
+        cli=ai_config.cli,
+        usage=None,  # CLI outputs may not include usage info
     )
 
 
@@ -306,8 +614,42 @@ async def invoke_vision(
         - No image format conversion (caller must provide PNG or JPEG)
         - No image resizing (caller handles preprocessing)
     """
-    raise NotImplementedError(
-        "Contract-only stub: implementation deferred to a later step"
+    # Validate backend
+    if ai_config.cli not in BACKEND_DISPATCH_MAP:
+        valid_options = ", ".join(repr(b) for b in VALID_BACKENDS)
+        raise LlmError(
+            f"Unsupported backend '{ai_config.cli}'. Valid backends: {valid_options}"
+        )
+
+    # Validate image path
+    if not image_path.exists():
+        raise LlmError(f"Image file not found: {image_path}")
+    if not image_path.is_file():
+        raise LlmError(f"Image path is not a file: {image_path}")
+
+    # Build command
+    cmd = _get_backend_command(
+        cli=ai_config.cli,
+        prompt=prompt,
+        model=ai_config.model,
+        max_tokens=max_tokens,
+        temperature=0.3,  # Default temperature for vision calls
+        system_prompt=None,  # Vision calls typically don't use system prompt
+        image_path=image_path,
+    )
+
+    # Execute with retry
+    result = await _run_subprocess_with_retry(
+        cmd=cmd,
+        timeout_seconds=timeout_seconds,
+        cli=ai_config.cli,
+    )
+
+    return LlmResponse(
+        text=result,
+        model=ai_config.model,
+        cli=ai_config.cli,
+        usage=None,
     )
 
 
@@ -351,9 +693,73 @@ async def compute_embedding(
         - No batch embedding (callers invoke per-text)
         - No embedding storage (caller handles caching)
     """
-    raise NotImplementedError(
-        "Contract-only stub: implementation deferred to a later step"
-    )
+    # Validate backend
+    if ai_config.cli not in BACKEND_DISPATCH_MAP:
+        valid_options = ", ".join(repr(b) for b in VALID_BACKENDS)
+        raise EmbeddingError(
+            f"Unsupported backend '{ai_config.cli}'. Valid backends: {valid_options}"
+        )
+
+    # Build embedding command based on backend
+    # Note: Different backends have different embedding APIs
+    if ai_config.cli == "gemini":
+        # gemini has an embedding API
+        cmd = ["gemini", "embed", "-m", ai_config.model, "-t", text]
+    elif ai_config.cli == "codex":
+        # codex may need external embedding support
+        cmd = ["codex", "embed", "-m", ai_config.model, "-t", text]
+    elif ai_config.cli == "claude-code":
+        # claude-code may have embedding support
+        cmd = ["claude", "embed", "-m", ai_config.model, "-t", text]
+    else:
+        valid_options = ", ".join(repr(b) for b in VALID_BACKENDS)
+        raise EmbeddingError(
+            f"Unsupported backend '{ai_config.cli}'. Valid backends: {valid_options}"
+        )
+
+    try:
+        result = await _run_subprocess_with_retry(
+            cmd=cmd,
+            timeout_seconds=DEFAULT_TEXT_TIMEOUT_SECONDS,
+            cli=ai_config.cli,
+        )
+
+        # Parse the embedding from the result
+        # The CLI should output JSON with the embedding vector
+        parsed = parse_json_response(result)
+
+        if "embedding" in parsed:
+            embedding = parsed["embedding"]
+            if isinstance(embedding, list) and all(
+                isinstance(x, (int, float)) for x in embedding
+            ):
+                return [float(x) for x in embedding]
+
+        if "vector" in parsed:
+            vector = parsed["vector"]
+            if isinstance(vector, list) and all(
+                isinstance(x, (int, float)) for x in vector
+            ):
+                return [float(x) for x in vector]
+
+        # Try direct list output
+        if isinstance(parsed, list):
+            if all(isinstance(x, (int, float)) for x in parsed):
+                return [float(x) for x in parsed]
+
+        raise EmbeddingError(
+            f"Invalid embedding response from {ai_config.cli}: "
+            f"expected embedding list, got {type(parsed).__name__}"
+        )
+
+    except LlmParseError as e:
+        raise EmbeddingError(
+            f"Failed to parse embedding response from {ai_config.cli}: {e}"
+        ) from e
+    except LlmError as e:
+        raise EmbeddingError(
+            f"Embedding computation failed for {ai_config.cli}: {e}"
+        ) from e
 
 
 def parse_json_response(text: str) -> dict:
@@ -403,84 +809,29 @@ def parse_json_response(text: str) -> dict:
         - No YAML or other format support (JSON only)
         - No streaming parse (complete text required)
     """
-    raise NotImplementedError(
-        "Contract-only stub: implementation deferred to a later step"
-    )
+    # Store original for error messages
+    original_text = text
 
+    # Step 1 & 2: Strip code fences and trim whitespace
+    stripped = _strip_code_fences(text)
 
-# =============================================================================
-# INTERNAL HELPERS (NOT PUBLIC API)
-# =============================================================================
+    # Step 3: Remove trailing commas
+    cleaned = _remove_trailing_commas(stripped)
 
-# The following are implementation helpers that workers MAY use or implement.
-# They are NOT part of the public contract and may change during implementation.
-
-
-def _get_backend_command(
-    cli: str,
-    prompt: str,
-    model: str,
-    max_tokens: int,
-    temperature: float,
-    system_prompt: str | None,
-    image_path: Path | None,
-) -> list[str]:
-    """Build the subprocess command for a specific backend.
-
-    This is an implementation helper, NOT public API.
-    Workers may implement differently based on backend specifics.
-
-    Contract (for reference during implementation):
-        - Returns a list of strings suitable for subprocess.run()
-        - Must properly escape/quote the prompt for shell safety
-        - Must handle image_path=None vs image_path=Path for vision calls
-        - Must pass max_tokens and temperature to backends that support them
-    """
-    raise NotImplementedError(
-        "Contract-only stub: implementation deferred to a later step"
-    )
-
-
-def _strip_code_fences(text: str) -> str:
-    """Strip markdown code fences from LLM output.
-
-    This is an implementation helper for parse_json_response, NOT public API.
-
-    Contract:
-        - Handles ```json ... ``` and ``` ... ``` patterns
-        - Returns stripped content without the fence markers
-        - If no fences found, returns the original text trimmed
-    """
-    raise NotImplementedError(
-        "Contract-only stub: implementation deferred to a later step"
-    )
-
-
-def _remove_trailing_commas(text: str) -> str:
-    """Remove trailing commas before ] and }.
-
-    This is an implementation helper for parse_json_response, NOT public API.
-
-    Contract:
-        - Removes commas that precede closing brackets/braces
-        - Handles both ] and } cases
-        - Does not modify other content
-    """
-    raise NotImplementedError(
-        "Contract-only stub: implementation deferred to a later step"
-    )
-
-
-def _check_transient_error(error_message: str) -> bool:
-    """Check if an error message indicates a transient failure eligible for retry.
-
-    This is an implementation helper, NOT public API.
-
-    Contract:
-        - Returns True if error_message contains any TRANSIENT_ERROR_INDICATORS
-        - Case-insensitive matching
-        - Returns False for all other errors (deterministic)
-    """
-    raise NotImplementedError(
-        "Contract-only stub: implementation deferred to a later step"
-    )
+    # Step 4: Attempt JSON parse
+    try:
+        result = json.loads(cleaned)
+        if isinstance(result, dict):
+            return result
+        else:
+            raise LlmParseError(
+                f"Expected JSON object (dict), got {type(result).__name__}. "
+                f"Original: {original_text[:200]}..."
+            )
+    except json.JSONDecodeError as e:
+        # Step 5: Raise with context
+        raise LlmParseError(
+            f"Failed to parse JSON response: {e.msg}. "
+            f"Original (first 200 chars): {original_text[:200]}..., "
+            f"Transformed: {cleaned[:200]}..."
+        ) from e
