@@ -99,7 +99,7 @@ phases:
       beyond `SFUMATO_CONFIG`.'
   - id: core.llm
     name: Implement LLM invocation layer
-    status: pending
+    status: claimed
     description: "step_type: implementation\nspec_refs:\n  - ARCHITECTURE.md#2.9\n\
       touch_paths:\n  - src/sfumato/llm.py\n  - tests/test_llm.py\nharness_refs:\n\
       \  - pytest\n  - subprocess mocking boundary\nagent: python-executor\n\nImplement\
@@ -136,6 +136,8 @@ phases:
     depends_on:
     - core.llm.tests
     agent: python-executor
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T13:08:27.118259+00:00'
   - id: core.palette
     name: Implement palette extraction
     status: pending
