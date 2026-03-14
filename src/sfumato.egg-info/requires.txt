@@ -5,3 +5,4 @@ numpy
 feedparser
 httpx
 typer>=0.9
+litellm

@@ -24,10 +24,13 @@ src/sfumato.egg-info/top_level.txt
 tests/test_cli.py
 tests/test_config.py
 tests/test_deployment_contract.py
+tests/test_integration.py
+tests/test_layout_ai.py
 tests/test_llm.py
 tests/test_matcher.py
 tests/test_news.py
 tests/test_orchestrator.py
+tests/test_orchestrator_batching.py
 tests/test_paintings.py
 tests/test_palette.py
 tests/test_render.py

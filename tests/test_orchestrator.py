@@ -592,6 +592,43 @@ class MockUsedPaintings:
         return len(self._used)
 
 
+class MockArtFactRotation:
+    """Seam double for state.ArtFactRotation."""
+
+    def __init__(self) -> None:
+        self._state: dict[str, int] = {}
+
+    def get_next_index(self, content_hash: str, art_fact_count: int) -> int | None:
+        """Simulate get_next_index behavior."""
+        if art_fact_count == 0:
+            return None
+        stored = self._state.get(content_hash)
+        if stored is None:
+            return 0
+        return stored % art_fact_count
+
+    def commit_rotation(self, content_hash: str, art_fact_count: int) -> int | None:
+        """Simulate commit_rotation behavior."""
+        if art_fact_count == 0:
+            return None
+        current = self.get_next_index(content_hash, art_fact_count)
+        assert current is not None
+        self._state[content_hash] = (current + 1) % art_fact_count
+        return current
+
+    def clear(self, content_hash: str) -> None:
+        """Simulate clear behavior."""
+        self._state.pop(content_hash, None)
+
+    def save(self) -> None:
+        """Simulate save behavior."""
+        pass
+
+    def load(self) -> None:
+        """Simulate load behavior."""
+        pass
+
+
 class MockAppState:
     """Seam double for state.AppState."""
 
@@ -600,6 +637,7 @@ class MockAppState:
         self.used_paintings = MockUsedPaintings()
         self.layout_cache = MockLayoutCache()
         self.embedding_cache = MockEmbeddingCache()
+        self.art_fact_rotation = MockArtFactRotation()
 
     def save_all(self) -> None:
         """Simulate state persistence."""
@@ -4586,6 +4624,7 @@ class TestWhisperTemplateVariablesContract:
         variables = build_template_variables(ctx)
         # Per contract in render.py: "Index out of range: use empty to satisfy contract"
         assert variables["WHISPER_TEXT"] == ""
+
 
 # =============================================================================
 # REPLAY SCHEDULER WIRING CONTRACT TESTS

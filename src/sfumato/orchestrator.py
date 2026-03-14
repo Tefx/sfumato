@@ -655,6 +655,11 @@ class AppStateProtocol(Protocol):
         """Embedding cache state component."""
         ...
 
+    @property
+    def art_fact_rotation(self) -> ArtFactRotationStateProtocol:
+        """Art-fact rotation state component."""
+        ...
+
     def save_all(self) -> None:
         """Persist all state components."""
         ...
@@ -1282,6 +1287,14 @@ async def run_once(
         config=config,
     )
 
+    # Stage 3.5: resolve_whisper_fact_index
+    # CONTRACT: ART_FACT_INDEX_STATE_OWNERSHIP - orchestrator resolves index
+    # from rotation state before render, empty art_facts => index is None
+    art_fact_count = len(layout.art_facts)
+    whisper_fact_index: int | None = state.art_fact_rotation.get_next_index(
+        painting.content_hash, art_fact_count
+    )
+
     # Stage 4: palette_extraction
     # CONTRACT: Always extract (no caching in palette module), propagate errors
     palette = extract_palette(painting.image_path)
@@ -1307,6 +1320,7 @@ async def run_once(
         palette=palette,
         template_name=template_name,
         config=config,
+        whisper_fact_index=whisper_fact_index,
     )
 
     # Stage 7: tv_upload_and_display_optional
@@ -1321,6 +1335,12 @@ async def run_once(
     # Stage 8: mark_painting_used
     # CONTRACT: Mark after successful render
     state.used_paintings.mark_used(painting.content_hash)
+
+    # Stage 8.5: commit_art_fact_rotation
+    # CONTRACT: Only advance rotation after successful render (failure boundary)
+    # ROTATE_ART_FACT_ACCEPTANCE_CRITERIA: successful rotate advances modulo count
+    if art_fact_count > 0:
+        state.art_fact_rotation.commit_rotation(painting.content_hash, art_fact_count)
 
     # Stage 9: preview_optional
     # CONTRACT: Open in system viewer if preview=True
@@ -1618,6 +1638,7 @@ async def _render_4k(
     palette: PaletteColors,
     template_name: str,
     config: AppConfig,
+    whisper_fact_index: int | None = None,
 ) -> "RenderResult":
     """Render the 4K PNG.
 
@@ -1628,6 +1649,7 @@ async def _render_4k(
         palette: Extracted color palette.
         template_name: Template to use.
         config: Application configuration.
+        whisper_fact_index: Caller-selected art-fact index for whisper rendering.
 
     Returns:
         RenderResult with png_path and metadata.
@@ -1648,6 +1670,7 @@ async def _render_4k(
         language=config.news.language,
         date_str=date_str,
         time_str=time_str,
+        whisper_fact_index=whisper_fact_index,
     )
 
     # Use default output directory

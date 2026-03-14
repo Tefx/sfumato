@@ -33,6 +33,7 @@ REPLAY_QUEUE_JSON = "replay_queue.json"
 USED_PAINTINGS_JSON = "used_paintings.json"
 LAYOUT_CACHE_JSON = "layout_cache.json"
 EMBEDDING_CACHE_NPZ = "embedding_cache.npz"
+ART_FACT_ROTATION_JSON = "art_fact_rotation.json"
 
 
 class StoryJson(TypedDict):
@@ -137,6 +138,19 @@ class LayoutCacheFileJson(TypedDict):
 
     version: int
     layouts: dict[str, LayoutCacheEntryJson]
+
+
+class ArtFactRotationFileJson(TypedDict):
+    """Versioned JSON schema boundary for art-fact rotation state persistence.
+
+    Contract:
+        - Keys are ``painting.content_hash`` values.
+        - Values are zero-based next whisper_fact_index to emit.
+        - Missing key means "start at index 0" when art_fact_count > 0.
+    """
+
+    version: int
+    rotation_state: dict[str, int]
 
 
 @dataclass(frozen=True)
@@ -1317,6 +1331,144 @@ class EmbeddingCache:
         self._embeddings = loaded
 
 
+class ArtFactRotation:
+    """Art-fact rotation state keyed by ``painting.content_hash``.
+
+    Contract (ART_FACT_INDEX_STATE_OWNERSHIP):
+        - State is keyed by ``painting.content_hash``.
+        - Values represent the next zero-based ``whisper_fact_index`` to emit.
+        - Missing state resolves to ``whisper_fact_index=0`` when ``art_fact_count > 0``.
+        - Empty art-fact sets resolve to ``whisper_fact_index=None`` and do not
+          require persisted cursor state.
+        - Stored indexes are rebased modulo ``art_fact_count`` before use.
+        - Successful rotate advances the next index by one modulo current count.
+        - Pre-render failures do NOT commit cursor advancement.
+
+    Persistence boundary:
+        - ``art_fact_rotation.json`` stores versioned JSON with mapping from
+          content_hash to next index.
+        - Missing file => empty rotation state.
+        - ``save()`` overwrites persisted state with current in-memory state.
+    """
+
+    def __init__(self, state_dir: Path | str | None) -> None:
+        """Initialize art-fact rotation state with state directory contract.
+
+        Raises:
+            ValueError: If ``state_dir`` cannot be resolved.
+        """
+        self._state_dir = resolve_state_dir(state_dir)
+        self._path = self._state_dir / ART_FACT_ROTATION_JSON
+        self._rotation_state: dict[str, int] = {}
+
+    def get_next_index(self, content_hash: str, art_fact_count: int) -> int | None:
+        """Return the next caller-owned whisper index for ``content_hash``.
+
+        Contract:
+            - Returns ``None`` when ``art_fact_count == 0`` (disabled).
+            - Returns ``0`` when ``art_fact_count > 0`` and no stored state exists.
+            - Rebases stored index modulo ``art_fact_count`` before returning.
+
+        Args:
+            content_hash: Painting content hash for state key lookup.
+            art_fact_count: Number of art facts in the layout (determines mod base).
+
+        Returns:
+            Zero-based index (when art_fact_count > 0) or ``None`` (when count == 0).
+
+        Raises:
+            Nothing.
+        """
+        if art_fact_count == 0:
+            return None
+
+        stored_index = self._rotation_state.get(content_hash)
+        if stored_index is None:
+            return 0
+
+        # Rebase modulo current count in case layout changed
+        return stored_index % art_fact_count
+
+    def commit_rotation(self, content_hash: str, art_fact_count: int) -> int | None:
+        """Advance and persist the next whisper index after a successful rotate.
+
+        Contract:
+            - Must only be called after successful render commit.
+            - Advances index by one modulo ``art_fact_count``.
+            - Stores the next index for future rotations.
+            - Returns the index that was just committed (the one used for render).
+
+        Args:
+            content_hash: Painting content hash for state key.
+            art_fact_count: Number of art facts in the layout.
+
+        Returns:
+            The index that was used for this rotation, or ``None`` if disabled.
+
+        Raises:
+            Nothing.
+        """
+        if art_fact_count == 0:
+            return None
+
+        current_index = self.get_next_index(content_hash, art_fact_count)
+        assert current_index is not None, "art_fact_count > 0 guarantees non-None"
+        # Advance and store next index modulo count
+        next_index = (current_index + 1) % art_fact_count
+        self._rotation_state[content_hash] = next_index
+        return current_index
+
+    def clear(self, content_hash: str) -> None:
+        """Drop any stored cursor for ``content_hash``.
+
+        Raises:
+            Nothing.
+        """
+        self._rotation_state.pop(content_hash, None)
+
+    def save(self) -> None:
+        """Persist rotation state snapshot to JSON boundary.
+
+        Raises:
+            OSError: If file write fails.
+        """
+        payload: ArtFactRotationFileJson = {
+            "version": 1,
+            "rotation_state": dict(self._rotation_state),
+        }
+        _atomic_write_text(self._path, json.dumps(payload, ensure_ascii=False))
+
+    def load(self) -> None:
+        """Load rotation state snapshot from disk according to ``LOAD_POLICY``.
+
+        Raises:
+            Nothing.
+        """
+        if not self._path.exists():
+            self._rotation_state = {}
+            return
+
+        try:
+            raw_text = self._path.read_text(encoding="utf-8")
+            payload = json.loads(raw_text)
+        except (OSError, json.JSONDecodeError):
+            return
+
+        if not isinstance(payload, dict):
+            return
+
+        rotation_raw = payload.get("rotation_state")
+        if not isinstance(rotation_raw, dict):
+            return
+
+        loaded: dict[str, int] = {}
+        for key, value in rotation_raw.items():
+            if isinstance(key, str) and isinstance(value, int):
+                loaded[key] = value
+
+        self._rotation_state = loaded
+
+
 @dataclass
 class AppState:
     """Aggregate root for daemon state surfaces.
@@ -1335,6 +1487,7 @@ class AppState:
     used_paintings: UsedPaintings
     layout_cache: LayoutCache
     embedding_cache: EmbeddingCache
+    art_fact_rotation: ArtFactRotation
 
     @classmethod
     def load(cls, state_dir: Path | str | None) -> AppState:
@@ -1356,17 +1509,20 @@ class AppState:
         used_paintings = UsedPaintings(resolved)
         layout_cache = LayoutCache(resolved)
         embedding_cache = EmbeddingCache(resolved)
+        art_fact_rotation = ArtFactRotation(resolved)
 
         news_queue.load()
         used_paintings.load()
         layout_cache.load()
         embedding_cache.load()
+        art_fact_rotation.load()
 
         return cls(
             news_queue=news_queue,
             used_paintings=used_paintings,
             layout_cache=layout_cache,
             embedding_cache=embedding_cache,
+            art_fact_rotation=art_fact_rotation,
         )
 
     def save_all(self) -> None:
@@ -1384,9 +1540,13 @@ class AppState:
         self.used_paintings.save()
         self.layout_cache.save()
         self.embedding_cache.save()
+        self.art_fact_rotation.save()
 
 
 __all__ = [
+    "ART_FACT_ROTATION_JSON",
+    "ArtFactRotation",
+    "ArtFactRotationFileJson",
     "DEFAULT_STATE_DIR",
     "EMBEDDING_CACHE_NPZ",
     "EmbeddingCache",
