@@ -2111,7 +2111,7 @@ phases:
       orchestrator changes.'
   - id: intelligence.init-cmd
     name: Implement sfumato init command
-    status: claimed
+    status: done
     description: 'Implement orchestrator.init_project() and wire it to CLI init command
       per ARCHITECTURE.md. init_project(): create config file if absent, create state
       dirs, fetch seed_size paintings from cloud sources, analyze each (layout_ai),
@@ -2133,6 +2133,43 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T17:14:10.078913+00:00'
+    done_at: '2026-03-14T17:19:33.294242+00:00'
+    evidence: 'Artifact:
+
+      - PR: commit 6b92783 ([vectl] step-intelligence.init-cmd completed), source
+      worktree commit eedfe62
+
+
+      Verification:
+
+      - Run: `uv run pytest tests/test_orchestrator.py tests/test_state.py -v` ->
+      all passed
+
+      - Run: `uv run pytest tests/ -v` -> 386 passed
+
+      - Run: `uv run sfumato init --help` -> init command interface available
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#2.12
+
+      - ARCHITECTURE.md#2.13
+
+
+      Files changed:
+
+      - src/sfumato/orchestrator.py
+
+      - src/sfumato/cli.py
+
+
+      Gaps/Notes:
+
+      - `init_project()` and CLI `init` wiring added with progress output and cache/state
+      persistence path.
+
+      - Scope was constrained to init command and orchestrator init behavior only.'
   - id: intelligence.gate
     name: 'Gate: Intelligence'
     status: pending
