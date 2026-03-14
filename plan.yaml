@@ -2892,18 +2892,59 @@ phases:
   - id: production.gate
     name: 'Gate: Production'
     status: pending
-    description: 'Gate review: Verify production readiness. sfumato watch should start
-      as a daemon, respond to scheduler timers, handle SIGTERM gracefully. sfumato
-      tv subcommands should work. Docker image should build and run sfumato watch.
-      proto.py should be removed. All CLI commands documented in --help.'
-    verification: sfumato watch starts and handles SIGTERM; sfumato tv status works;
-      Docker builds and runs; proto.py removed; all imports clean
+    description: "step_type: gate\nspec_refs:\n  - ARCHITECTURE.md#2.11\n  - ARCHITECTURE.md#2.12\n\
+      \  - ARCHITECTURE.md#2.13\n  - ARCHITECTURE.md#9\ntouch_paths:\n  - src/sfumato/scheduler.py\n\
+      \  - src/sfumato/orchestrator.py\n  - src/sfumato/cli.py\n  - Dockerfile\n \
+      \ - docker-compose.yml\n  - src/sfumato/proto.py\nharness_refs:\n  - pytest\n\
+      \  - typer CLI harness\n  - signal-handling harness\n  - docker build/runtime\
+      \ smoke harness\nagent: gate-reviewer\nreview_depth: THOROUGH\nreview_depth_rationale:\
+      \ |\n  - Phase introduces runnable daemon, CLI, and container surfaces\n  -\
+      \ Multiple integration-tagged implementation steps require runtime-entrypoint\
+      \ scrutiny\n  - Shutdown, mount persistence, and command wiring are the highest-risk\
+      \ failure families\ncross_cutting_focus:\n  - runtime entrypoint reaches real\
+      \ watch loop from CLI and container surfaces\n  - graceful shutdown saves state\
+      \ exactly once on SIGINT/SIGTERM\n  - config/state persistence works across\
+      \ container restarts\n  - cleanup removes proto references without damaging\
+      \ supported entrypoints\n\nGate review: verify production readiness before any\
+      \ downstream execution.\n\nYou are the deployability gate for the runnable `watch`\
+      \ and container surfaces. Block the phase if handler/unit evidence exists without\
+      \ runnable entrypoint proof."
+    verification: '- All production contract, test, and implementation steps are complete
+      and their evidence is specific
+
+      - Main path: runnable evidence identifies the watch entrypoint, exact CLI/container
+      launch commands, successful loop startup, and TV/CLI command exposure
+
+      - Failure path: evidence explicitly covers SIGTERM during active work, startup
+      failure before loop entry, broken volume mounts or missing runtime dependencies,
+      and stale `proto.py` references
+
+      - Proof: at least one real watch invocation path and one real container invocation
+      path reach the declared entrypoints end-to-end; handler-only or build-only evidence
+      is insufficient'
     refs:
-    - ARCHITECTURE.md
+    - ARCHITECTURE.md#2.11
+    - ARCHITECTURE.md#2.12
+    - ARCHITECTURE.md#2.13
+    - ARCHITECTURE.md#9
+    - src/sfumato/scheduler.py
+    - src/sfumato/orchestrator.py
+    - src/sfumato/cli.py
+    - Dockerfile
+    - docker-compose.yml
+    - src/sfumato/proto.py
     depends_on:
+    - production.scheduler.contract
+    - production.scheduler.tests
     - production.scheduler
+    - production.watch.contract
+    - production.watch.tests
     - production.watch
+    - production.cli-full.contract
+    - production.cli-full.tests
     - production.cli-full
+    - production.docker.contract
+    - production.docker.tests
     - production.docker
     - production.cleanup
     agent: gate-reviewer
