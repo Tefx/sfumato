@@ -4647,7 +4647,7 @@ phases:
       ownership, art_facts flow into render context.'
   - id: art-facts.gate
     name: Art Facts phase gate review
-    status: pending
+    status: claimed
     description: 'As an INDEPENDENT REVIEWER (gate-reviewer), assess whether the art-facts
       phase
 
@@ -4697,6 +4697,8 @@ phases:
     - art-facts.orchestrator-wire.contract
     - art-facts.orchestrator-wire.test
     - art-facts.orchestrator-wire
+    claimed_by: gate-reviewer
+    claimed_at: '2026-03-14T23:07:25.797245+00:00'
   - id: art-facts.layout-prompt.contract
     name: Define layout prompt zone and art-fact contract
     status: done
