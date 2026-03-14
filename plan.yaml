@@ -5099,7 +5099,7 @@ phases:
       - Test-only step; runtime wiring implementation deferred to art-facts.orchestrator-wire.'
 - id: replay
   name: News Replay Queue
-  status: in_progress
+  status: done
   gate: Replay queue cycles consumed news batches. Expiry removes batches older than
     replay_expire_days. Primary queue takes priority over replay. Deduplication skips
     LLM when RSS overlap >80%.
@@ -5857,7 +5857,7 @@ phases:
       silent replay disablement.'
   - id: replay.gate-final
     name: gate-final
-    status: claimed
+    status: done
     description: 'Gate review: replay phase readiness after batched AppState remediation.
 
 
@@ -5921,9 +5921,45 @@ phases:
     agent: gate-reviewer
     claimed_by: gate-reviewer
     claimed_at: '2026-03-14T23:25:44.854415+00:00'
+    done_at: '2026-03-14T23:28:12.713698+00:00'
+    evidence: 'Step: replay.gate-final
+
+      Commit hash(es): none (read-only gate review)
+
+      Files changed: []
+
+      Gate decision: PASS
+
+      Verification:
+
+      - uv run pytest tests/test_state.py tests/test_orchestrator.py -k "replay or
+      AppState" -v -> 35 passed
+
+      - Production AppState load/save replay lifecycle verified: replay_queue field,
+      load(), save_all() persistence path
+
+      - Orchestrator production seam `_get_replay_queue()` verified against real AppState
+      path
+
+      - git status --porcelain -> clean
+
+      Findings:
+
+      - none
+
+      Rationale:
+
+      - Prior replay.gate blocker family closed end-to-end with production-path evidence,
+      not only mocks
+
+      Spec link: ARCHITECTURE.md#2.10
+
+      Gaps/Notes:
+
+      - Read-only gate run; no code mutations.'
 - id: polish
   name: 'Polish: Default Model + Documentation'
-  status: locked
+  status: pending
   gate: Default model is gemini-3-flash-preview. README and ARCHITECTURE.md reflect
     all new features (whisper text, replay queue, subject avoidance).
   context: 'Final cleanup phase: update default model and documentation to match implemented
