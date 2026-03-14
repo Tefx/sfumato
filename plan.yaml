@@ -4810,7 +4810,7 @@ phases:
       by subagent as out-of-scope for this test-only step.'
   - id: art-facts.render-whisper.contract
     name: Define render whisper contract
-    status: claimed
+    status: done
     description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
       \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nagent_source: default\n\
       spec_refs:\n  - ARCHITECTURE.md#2.7\ntouch_paths:\n  - src/sfumato/render.py\n\
@@ -4842,6 +4842,26 @@ phases:
     agent: software-architect
     claimed_by: software-architect
     claimed_at: '2026-03-14T22:11:55.404138+00:00'
+    done_at: '2026-03-14T22:18:01.470574+00:00'
+    evidence: 'Step: art-facts.render-whisper.contract
+
+      Commit hash(es): 0eb688d00ac996f517cc0183068ecd80e4497e76; merged as [main c9012db]
+
+      Files changed: src/sfumato/render.py, tests/test_render.py
+
+      Verification:
+
+      - uv run pytest tests/test_render.py -q -> passed (28 passed)
+
+      - Verified contract surfaces: RenderContext.whisper_fact_index, WHISPER_* variable
+      type definitions, and mapping/index semantics docs
+
+      Spec link: ARCHITECTURE.md#2.7
+
+      Gaps/Notes:
+
+      - Contract-only updates; no final whisper rendering behavior implementation
+      in this step.'
   - id: art-facts.render-whisper.test
     name: Define render whisper contract tests
     status: pending
