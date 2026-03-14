@@ -1679,7 +1679,7 @@ phases:
       evidence-only completion.'
 - id: intelligence
   name: Intelligence
-  status: pending
+  status: in_progress
   gate: Semantic matching selects relevant paintings for news batches; sfumato init
     pre-fetches and analyzes seed paintings
   context: 'Semantic art-news matching, seed painting library, news batching queue.
@@ -1858,7 +1858,7 @@ phases:
     agent: gate-reviewer
   - id: intelligence.paintings.contract
     name: Define paintings module contract
-    status: pending
+    status: claimed
     description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
       \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nspec_refs:\n  - ARCHITECTURE.md#2.3\n\
       \  - PROTOTYPING.md#semantic-art-news-matching\ntouch_paths:\n  - src/sfumato/paintings.py\n\
@@ -1893,6 +1893,8 @@ phases:
       - Any deferred source-auth behavior is documented explicitly rather than left
       implicit'
     agent: python-executor
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T16:05:21.412639+00:00'
   - id: intelligence.paintings.tests
     name: Author paintings module tests
     status: pending
