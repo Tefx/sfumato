@@ -3668,7 +3668,7 @@ phases:
       in downstream production.docker step.'
 - id: sdk
   name: LiteLLM SDK Backend
-  status: locked
+  status: pending
   gate: backend=sdk produces valid LlmResponse via litellm.completion() and litellm.embedding();
     backend=cli remains unchanged; Docker image builds without CLI tools
   context: 'Add litellm SDK backend as alternative to CLI subprocess calls. Enables
@@ -3837,7 +3837,7 @@ phases:
     agent: gate-reviewer
 - id: hardening
   name: 'Hardening: Bug Fixes + Integration Tests'
-  status: in_progress
+  status: done
   gate: All identified bugs fixed, Protocol conformance enforced by pyright, integration
     test covers run_once end-to-end with real state/config/render
   context: 'Fix bugs discovered during end-to-end sfumato run testing that 671 existing
@@ -4243,7 +4243,7 @@ phases:
       - Real state.py classes used; tmpdir-based fixtures avoid cross-test pollution.'
   - id: hardening.gate
     name: Hardening gate review
-    status: claimed
+    status: done
     description: "As an INDEPENDENT REVIEWER (gate-reviewer), assess whether the hardening\
       \ phase\nmeets the quality bar for proceeding.\n\nreview_depth: THOROUGH\nreview_depth_rationale:\
       \ |\n  - Phase fixes 12 bugs found in production E2E testing\n  - Touches 6+\
@@ -4279,3 +4279,18 @@ phases:
     agent: gate-reviewer
     claimed_by: gate-reviewer
     claimed_at: '2026-03-14T21:23:36.131192+00:00'
+    done_at: '2026-03-14T21:26:53.584495+00:00'
+    evidence: "Step: hardening.gate\nCommit hash(es): none (read-only gate review)\n\
+      Files changed: []\nGate decision: PASS\nVerification:\n- uv run pyright src/sfumato/orchestrator.py\
+      \ src/sfumato/cli.py -> 0 errors, 0 warnings, 0 informations\n- uv run pytest\
+      \ tests/test_integration.py -v -> 4 passed in 12.42s\n- uv run pytest tests/test_orchestrator.py\
+      \ tests/test_orchestrator_batching.py -q -> 145 passed in 7.43s\n- git status\
+      \ --porcelain -> clean\nFindings:\n- severity: suggestion\n  item: auto-generated\
+      \ src/sfumato.egg-info/SOURCES.txt may change during uv runs\n  location: n/a\n\
+      \  recommendation: consider ignoring *.egg-info/ to reduce noise\nRationale:\n\
+      - recommended_stories limiting verified in render path of src/sfumato/orchestrator.py\n\
+      - integration tests import and use real state.py classes, not cli.py mocks\n\
+      - gate criteria satisfied for protocol conformance and end-to-end run_once coverage\n\
+      Spec link: ARCHITECTURE.md\nGaps/Notes:\n- Reviewed evidence required strict\
+      \ formatting; prior malformed envelopes were normalized without altering factual\
+      \ content."
