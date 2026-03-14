@@ -20,7 +20,7 @@ phases:
   steps:
   - id: core.config
     name: Implement config module
-    status: pending
+    status: claimed
     description: "step_type: implementation\nspec_refs:\n  - ARCHITECTURE.md#2.1\n\
       touch_paths:\n  - src/sfumato/config.py\n  - tests/test_config.py\nharness_refs:\n\
       \  - pytest\nagent: python-senior\n\nImplement `src/sfumato/config.py` per `ARCHITECTURE.md#2.1`\
@@ -60,6 +60,8 @@ phases:
     depends_on:
     - core.config.tests
     agent: python-senior
+    claimed_by: python-senior
+    claimed_at: '2026-03-14T12:51:41.286697+00:00'
   - id: core.llm
     name: Implement LLM invocation layer
     status: pending
