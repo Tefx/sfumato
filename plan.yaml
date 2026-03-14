@@ -299,7 +299,7 @@ phases:
       consumers are handled by later steps.'
   - id: core.layout-ai
     name: Refactor layout_ai module
-    status: claimed
+    status: done
     description: 'Refactor src/sfumato/layout_ai.py per ARCHITECTURE.md section 2.5.
       Implement full dataclass hierarchy: TextZone, LayoutColors, ScrimParams, PortraitLayout,
       LayoutParams. Refactor analyze_painting() to use llm.invoke_vision() and return
@@ -321,6 +321,38 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T13:16:45.055748+00:00'
+    done_at: '2026-03-14T13:30:28.623967+00:00'
+    evidence: 'Artifact:
+
+      - Worker commit: 7b98752 (isolated worktree)
+
+      - Main commit: ebc0ad8158a25ea96c0148578c42828637bf8b9d
+
+
+      Verification:
+
+      - Run: `pyright src/sfumato/layout_ai.py` -> 0 errors, 0 warnings
+
+      - Run: import/signature verification for exported dataclasses (`TextZone`, `LayoutColors`,
+      `ScrimParams`, `PortraitLayout`, `LayoutParams`) and async `analyze_painting(Path,
+      AiConfig) -> LayoutParams`
+
+      - Worker evidence confirms `analyze_painting()` now uses `llm.invoke_vision()`
+      and structured prompt covers 7 analysis aspects
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#2.5
+
+      - src/sfumato/layout_ai.py
+
+
+      Gaps/Notes:
+
+      - Merge resolution preserved divergent local pre-merge `layout_ai.py` in stash
+      (`backup pre-core.layout-ai local layout_ai.py`) before applying step branch
+      content.'
   - id: core.render
     name: Refactor render module
     status: pending
