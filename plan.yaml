@@ -2944,3 +2944,28 @@ phases:
     - production.watch
     - production.cli-full.contract
     agent: python-executor
+  - id: production.docker.contract
+    name: Define container deployment contract
+    status: pending
+    description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
+      \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nspec_refs:\n  - ARCHITECTURE.md#9\n\
+      \  - ARCHITECTURE.md#2.12\n  - ARCHITECTURE.md#2.13\ntouch_paths:\n  - Dockerfile\n\
+      \  - docker-compose.yml\nharness_refs:\n  - docker build/runtime smoke harness\n\
+      agent: software-architect\n\nDefine the acceptance contract for the runnable\
+      \ container surface without shipping Docker implementation.\n\nContract scope:\n\
+      - image/runtime obligations for launching `sfumato watch` as the real container\
+      \ entrypoint\n- persistence mounts for config and state directories across restarts\n\
+      - healthcheck expectations and shutdown behavior for the long-running watch\
+      \ process\n- dependency/runtime assumptions for browser/system packages required\
+      \ by the application\n\nConstraints:\n- container contract, compose surface,\
+      \ and behavioral notes only\n- no completed Dockerfile or compose implementation\
+      \ in this step"
+    verification: '- Contract defines the runnable container entrypoint, persistence
+      mounts, and healthcheck surface
+
+      - Main path semantics are explicit for image build, container start, and restart
+      persistence expectations
+
+      - Highest-risk failure semantics are explicit for missing runtime dependencies,
+      broken mounts, and shutdown/healthcheck mismatch'
+    agent: software-architect
