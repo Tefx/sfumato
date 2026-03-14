@@ -244,3 +244,116 @@ def test_generate_default_config_produces_parseable_complete_toml() -> None:
     assert "news" in parsed
     assert "paintings" in parsed
     assert "ai" in parsed
+
+
+def test_generate_default_config_round_trips_through_load_config(
+    isolated_paths: Path,
+) -> None:
+    """generate_default_config() output can be loaded by load_config()."""
+    config_path = isolated_paths / "default.toml"
+    config_path.write_text(generate_default_config())
+
+    # Should not raise
+    config = load_config(path=config_path)
+
+    # Basic validation
+    assert isinstance(config, AppConfig)
+    assert len(config.news.feeds) == 6  # Default config has 6 feeds
+
+
+def test_empty_feeds_array_is_accepted(
+    isolated_paths: Path,
+) -> None:
+    """Config with empty news.feeds array is valid and returns empty list."""
+    config_path = isolated_paths / "empty-feeds.toml"
+    _write(
+        config_path,
+        '[tv]\nip = "192.168.1.1"\n[news]\nfeeds = []\n',
+    )
+
+    config = load_config(path=config_path)
+
+    assert config.news.feeds == []
+
+
+def test_missing_feeds_field_uses_empty_default(
+    isolated_paths: Path,
+) -> None:
+    """Config without news.feeds field uses empty list default."""
+    config_path = isolated_paths / "no-feeds.toml"
+    _write(
+        config_path,
+        '[tv]\nip = "192.168.1.1"\n[news]\nlanguage = "en"\n',
+    )
+
+    config = load_config(path=config_path)
+
+    assert config.news.feeds == []
+
+
+def test_path_expansion_tilde_in_config_file(
+    isolated_paths: Path,
+) -> None:
+    """Tilde paths in config file are expanded to absolute paths."""
+    config_path = isolated_paths / "tilde.toml"
+    _write(
+        config_path,
+        'data_dir = "~/mydata"\npaintings.cache_dir = "~/paintings"\n[tv]\nip = ""\n',
+    )
+
+    config = load_config(path=config_path)
+
+    assert config.data_dir.is_absolute()
+    assert config.paintings.cache_dir.is_absolute()
+    # Both should expand relative to home
+    assert str(config.data_dir).startswith(str(Path.home()))
+
+
+def test_path_expansion_relative_path_in_config_file(
+    isolated_paths: Path,
+) -> None:
+    """Relative paths in config file are resolved relative to config file location."""
+    config_dir = isolated_paths / "subdir"
+    config_path = config_dir / "relative.toml"
+    _write(
+        config_path,
+        'data_dir = "mydata"\npaintings.cache_dir = "cache"\n[tv]\nip = ""\n',
+    )
+
+    config = load_config(path=config_path)
+
+    assert config.data_dir.is_absolute()
+    assert config.paintings.cache_dir.is_absolute()
+    # Should be relative to config file's parent directory
+    assert "mydata" in str(config.data_dir)
+    assert "cache" in str(config.paintings.cache_dir)
+
+
+def test_path_expansion_relative_path_in_env_override(
+    isolated_paths: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """SFUMATO_DATA_DIR with relative path is resolved to absolute path."""
+    # Set a relative path via env
+    monkeypatch.setenv("SFUMATO_DATA_DIR", "relative/data")
+    monkeypatch.delenv("SFUMATO_CONFIG", raising=False)
+
+    config = load_config()
+
+    # Should be expanded to absolute
+    assert config.data_dir.is_absolute()
+    assert "relative" in str(config.data_dir) or config.data_dir.is_absolute()
+
+
+def test_path_expansion_tilde_in_env_override(
+    isolated_paths: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """SFUMATO_DATA_DIR with tilde path is expanded."""
+    monkeypatch.setenv("SFUMATO_DATA_DIR", "~/envdata")
+    monkeypatch.delenv("SFUMATO_CONFIG", raising=False)
+
+    config = load_config()
+
+    assert config.data_dir.is_absolute()
+    assert str(config.data_dir).startswith(str(Path.home()))

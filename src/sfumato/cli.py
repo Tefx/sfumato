@@ -178,14 +178,14 @@ class _NewsQueue:
 
     def enqueue(self, result: "CurationResult", batch_size: int) -> int:
         """Split curation result into batches and append to queue."""
-        if not result.stories:
+        if not hasattr(result, "stories") or not result.stories:
             return 0
         enqueued = 0
         for idx in range(0, len(result.stories), batch_size):
             self._queue.append(
                 _QueuedBatch(
                     stories=result.stories[idx : idx + batch_size],
-                    tone_description=result.tone_description,
+                    tone_description=getattr(result, "tone_description", ""),
                     enqueued_at=datetime.datetime.now().astimezone(),
                 )
             )
@@ -402,10 +402,14 @@ def init(
             loaded_config = AppConfig()
             _verbose_print(verbose, "Config exists but failed to load, using defaults")
     else:
-        # First time — interactive setup
+        # First time — create default config
         if non_interactive:
+            # Non-interactive mode: create default config file
             loaded_config = AppConfig()
-            typer.echo("Using default configuration (non-interactive mode)")
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config_content = generate_default_config()
+            config_path.write_text(config_content)
+            typer.echo(f"Created default config at {config_path}")
         else:
             typer.echo("\nWelcome to sfumato! Let's set things up.\n")
 
