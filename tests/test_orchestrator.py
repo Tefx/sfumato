@@ -540,6 +540,96 @@ class MockQueuedBatch:
         self.enqueued_at = datetime.now()
 
 
+class MockReplayTransferResult:
+    """Seam double for replay transfer outcomes."""
+
+    def __init__(
+        self,
+        *,
+        accepted: bool,
+        reason: str,
+        overlap_ratio: float,
+        matched_batch_index: int | None,
+    ) -> None:
+        self.accepted = accepted
+        self.reason = reason
+        self.overlap_ratio = overlap_ratio
+        self.matched_batch_index = matched_batch_index
+
+
+class MockReplayBatch:
+    """Seam double for replay queue batch payload."""
+
+    def __init__(
+        self,
+        stories: list["Story"] | None = None,
+        tone_description: str = "A thoughtful mood",
+        replay_count: int = 0,
+    ) -> None:
+        self.stories = list(stories or [])
+        self.tone_description = tone_description
+        now = datetime.now()
+        self.source_enqueued_at = now
+        self.transferred_at = now
+        self.replay_count = replay_count
+        self.last_replayed_at: datetime | None = None
+
+
+class MockReplayQueue:
+    """Seam double for state.ReplayQueue."""
+
+    def __init__(self) -> None:
+        self._batches: list[MockReplayBatch] = []
+        self._next_index: int = 0
+        self._transfer_calls: list[MockQueuedBatch] = []
+        self._expire_calls: list[int] = []
+
+    @property
+    def size(self) -> int:
+        return len(self._batches)
+
+    def add_batch(self, batch: MockReplayBatch) -> None:
+        self._batches.append(batch)
+
+    def next(self) -> MockReplayBatch | None:
+        if not self._batches:
+            self._next_index = 0
+            return None
+        idx = self._next_index % len(self._batches)
+        batch = self._batches[idx]
+        batch.replay_count += 1
+        batch.last_replayed_at = datetime.now()
+        self._next_index = (idx + 1) % len(self._batches)
+        return batch
+
+    def expire(self, expire_days: int) -> int:
+        self._expire_calls.append(expire_days)
+        return 0
+
+    def transfer_from_news_queue(
+        self,
+        batch: MockQueuedBatch,
+    ) -> MockReplayTransferResult:
+        self._transfer_calls.append(batch)
+        replay_batch = MockReplayBatch(
+            stories=list(batch.stories),
+            tone_description=batch.tone_description,
+        )
+        self._batches.append(replay_batch)
+        return MockReplayTransferResult(
+            accepted=True,
+            reason="accepted",
+            overlap_ratio=0.0,
+            matched_batch_index=None,
+        )
+
+    def persist(self) -> None:
+        return None
+
+    def load(self) -> None:
+        return None
+
+
 class MockLayoutCache:
     """Seam double for state.LayoutCache."""
 
@@ -635,6 +725,7 @@ class MockAppState:
     def __init__(self) -> None:
         self.news_queue = MockNewsQueue()
         self.used_paintings = MockUsedPaintings()
+        self.replay_queue = MockReplayQueue()
         self.layout_cache = MockLayoutCache()
         self.embedding_cache = MockEmbeddingCache()
         self.art_fact_rotation = MockArtFactRotation()
@@ -4716,8 +4807,9 @@ class TestReplayQueuePrecedence:
 
         # Primary queue was dequeued (dequeue_calls should be 1)
         assert mock_state.news_queue.dequeue_calls == 1
-        # Replay queue was NOT called (replay.next not invoked)
-        assert mock_state.replay_queue.size == 1  # Replay batch still present
+        # Replay fallback was NOT consumed (replay.next not invoked), but
+        # consumed primary is transferred into replay storage.
+        assert mock_state.replay_queue.size == 2
         # Stories from primary batch were used
         assert result.story_count == 1
 

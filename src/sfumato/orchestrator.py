@@ -665,6 +665,15 @@ class AppStateProtocol(Protocol):
         ...
 
 
+@dataclass
+class _ReplayCompatibleBatch:
+    """Adapter payload to feed replay fallback stories into existing flow."""
+
+    stories: list[Story]
+    tone_description: str
+    enqueued_at: datetime.datetime
+
+
 # =============================================================================
 # PUBLIC API
 # =============================================================================
@@ -716,14 +725,35 @@ async def run_news_refresh(
         ai_config=config.ai,
     )
 
-    if not result.stories:
-        logger.info("No stories curated from feeds")
-        return 0
-
     # Expire old batches before adding new ones
     expired_count = state.news_queue.expire(config.news.expire_days)
     if expired_count > 0:
         logger.info("Expired %d old batches from queue", expired_count)
+
+    replay_queue = _get_replay_queue(state)
+    if replay_queue is not None:
+        replay_expired_count = replay_queue.expire(config.news.replay_expire_days)
+        if replay_expired_count > 0:
+            logger.info(
+                "Expired %d old batches from replay queue",
+                replay_expired_count,
+            )
+
+    if not result.stories:
+        logger.info("No stories curated from feeds")
+        return 0
+
+    should_skip_enqueue, overlap_ratio = _should_skip_enqueue_due_to_replay_overlap(
+        state=state,
+        stories=result.stories,
+    )
+    if should_skip_enqueue:
+        logger.info(
+            "Skipping primary enqueue due to replay overlap %.3f > %.3f",
+            overlap_ratio,
+            RUN_NEWS_REFRESH_REPLAY_CURATION_SKIP_OVERLAP_RATIO,
+        )
+        return 0
 
     # Enqueue in batches
     enqueued_count = state.news_queue.enqueue(result, batch_size)
@@ -1260,13 +1290,29 @@ async def run_once(
     # Stage 1: news_dequeue_or_refresh
     # CONTRACT: Skip if no_news, propagate errors
     # CONTRACT: If queue is empty, trigger on-demand refresh then dequeue
-    batch: QueuedBatch | None = None
+    batch: QueuedBatch | _ReplayCompatibleBatch | None = None
     if not options.no_news:
-        batch = state.news_queue.dequeue()
-        if batch is None:
+        primary_batch = state.news_queue.dequeue()
+        if primary_batch is not None:
+            batch = primary_batch
+            _transfer_primary_batch_to_replay(state=state, batch=primary_batch)
+        else:
             # On-demand refresh when queue is empty
             await run_news_refresh(config, state)
-            batch = state.news_queue.dequeue()
+            primary_batch = state.news_queue.dequeue()
+            if primary_batch is not None:
+                batch = primary_batch
+                _transfer_primary_batch_to_replay(state=state, batch=primary_batch)
+            else:
+                replay_queue = _get_replay_queue(state)
+                if replay_queue is not None:
+                    replay_batch = replay_queue.next()
+                    if replay_batch is not None:
+                        batch = _ReplayCompatibleBatch(
+                            stories=list(replay_batch.stories),
+                            tone_description=replay_batch.tone_description,
+                            enqueued_at=replay_batch.source_enqueued_at,
+                        )
 
     # Stage 2: painting_selection
     # CONTRACT: Use painting_path if specified, semantic matching when available
@@ -1374,7 +1420,7 @@ async def _select_painting(
     config: AppConfig,
     state: AppStateProtocol,
     painting_path: Path | None,
-    batch: QueuedBatch | None,
+    batch: QueuedBatch | _ReplayCompatibleBatch | None,
 ) -> tuple[PaintingsPaintingInfo, float | None]:
     """Select a painting for this rotation.
 
@@ -1761,3 +1807,85 @@ def _open_preview(png_path: Path) -> None:
             logger.warning(f"Unknown platform {system}, cannot open preview")
     except Exception as e:
         logger.warning(f"Failed to open preview: {e}")
+
+
+def _get_replay_queue(state: AppStateProtocol) -> ReplayQueueProtocol | None:
+    """Return replay queue when the state surface exposes one."""
+    replay_queue = getattr(state, "replay_queue", None)
+    if replay_queue is None:
+        return None
+    return cast(ReplayQueueProtocol, replay_queue)
+
+
+def _transfer_primary_batch_to_replay(
+    state: AppStateProtocol,
+    batch: QueuedBatch,
+) -> None:
+    """Attempt transfer of consumed primary batches into replay storage."""
+    replay_queue = _get_replay_queue(state)
+    if replay_queue is None:
+        return
+
+    try:
+        transfer_result = replay_queue.transfer_from_news_queue(batch)
+        if transfer_result.accepted:
+            logger.debug(
+                "Transferred consumed primary batch to replay queue (size=%d)",
+                replay_queue.size,
+            )
+        else:
+            logger.debug(
+                "Skipped replay transfer for consumed primary batch: %s (overlap=%.3f)",
+                transfer_result.reason,
+                transfer_result.overlap_ratio,
+            )
+    except Exception as exc:
+        logger.warning("Replay transfer failed for consumed primary batch: %s", exc)
+
+
+def _should_skip_enqueue_due_to_replay_overlap(
+    state: AppStateProtocol,
+    stories: list[Story],
+) -> tuple[bool, float]:
+    """Return skip decision and overlap ratio for refresh-vs-replay dedup."""
+    replay_queue = _get_replay_queue(state)
+    if replay_queue is None:
+        return (False, 0.0)
+
+    replay_batches = getattr(replay_queue, "_batches", None)
+    if not isinstance(replay_batches, list) or not replay_batches:
+        return (False, 0.0)
+
+    curated_ids = _story_identity_set(stories)
+    if not curated_ids:
+        return (False, 0.0)
+
+    backlog_ids: set[str] = set()
+    for replay_batch in replay_batches:
+        batch_stories = getattr(replay_batch, "stories", None)
+        if isinstance(batch_stories, list):
+            backlog_ids.update(_story_identity_set(batch_stories))
+
+    denominator = min(len(curated_ids), len(backlog_ids))
+    if denominator == 0:
+        return (False, 0.0)
+
+    overlap_ratio = len(curated_ids & backlog_ids) / denominator
+    should_skip = overlap_ratio > RUN_NEWS_REFRESH_REPLAY_CURATION_SKIP_OVERLAP_RATIO
+    return (should_skip, overlap_ratio)
+
+
+def _story_identity_set(stories: list[Story]) -> set[str]:
+    """Compute replay-dedup identities from story urls/headlines."""
+    identities: set[str] = set()
+    for story in stories:
+        normalized_url = story.url.strip()
+        if normalized_url:
+            identities.add(normalized_url)
+            continue
+
+        headline = story.headline.strip()
+        if headline:
+            identities.add(headline)
+
+    return identities
