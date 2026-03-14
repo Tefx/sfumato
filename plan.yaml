@@ -5231,7 +5231,7 @@ phases:
       step.'
   - id: replay.queue.test
     name: Define ReplayQueue contract tests
-    status: claimed
+    status: done
     description: "step_type: test\nagent_source: default\nspec_refs:\n  - ARCHITECTURE.md#2.10\n\
       touch_paths:\n  - tests/test_state.py\n  - src/sfumato/state.py\n\nDefine contract\
       \ tests for ReplayQueue persistence, cycling, expiry, and dedup semantics.\n\
@@ -5259,6 +5259,26 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T22:18:29.447946+00:00'
+    done_at: '2026-03-14T22:27:00.720687+00:00'
+    evidence: 'Step: replay.queue.test
+
+      Commit hash(es): 324d0e3; merged as [main cb29141]
+
+      Files changed: tests/test_state.py
+
+      Verification:
+
+      - uv run pytest tests/test_state.py::TestReplayQueueContract -xvs -> 30 passed
+
+      - Tests assert ReplayQueue interface, cycling/persistence/dedup contract expectations
+      while methods remain stubs
+
+      Spec link: ARCHITECTURE.md#2.10
+
+      Gaps/Notes:
+
+      - Subagent reported unrelated pre-existing TestLayoutCacheContract failures
+      outside this step scope.'
 - id: polish
   name: 'Polish: Default Model + Documentation'
   status: locked
