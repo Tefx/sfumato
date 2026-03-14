@@ -3128,7 +3128,7 @@ phases:
     agent: python-executor
   - id: production.cli-full.contract
     name: Define production CLI contract
-    status: claimed
+    status: done
     description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
       \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nspec_refs:\n  - ARCHITECTURE.md#2.13\n\
       \  - ARCHITECTURE.md#2.12\ntouch_paths:\n  - src/sfumato/cli.py\n  - src/sfumato/__main__.py\n\
@@ -3151,6 +3151,34 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T17:28:56.109698+00:00'
+    done_at: '2026-03-14T17:40:20.815543+00:00'
+    evidence: 'Artifact:
+
+      - PR: commit 490189b ([vectl] step-production.cli-full.contract completed),
+      source worktree commit 95501d309a2884bf0f73076b59115909c7426711
+
+
+      Verification:
+
+      - Run: `uv run pytest tests/test_cli.py` -> 68 passed in 0.17s
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#2.13
+
+
+      Files changed:
+
+      - src/sfumato/cli.py
+
+      - tests/test_cli.py
+
+
+      Gaps/Notes:
+
+      - Contract-only scope preserved: command signatures/flags/output contract surfaces
+      are defined; full production command behavior remains for implementation step.'
   - id: production.cli-full.tests
     name: Author production CLI tests
     status: pending
