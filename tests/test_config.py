@@ -197,6 +197,18 @@ def test_path_resolution_keeps_absolute_and_expands_tilde(
     assert result.data_dir == Path("/var/lib/sfumato").resolve()
 
 
+def test_env_data_dir_override_rehomes_default_runtime_paths(
+    isolated_paths: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SFUMATO_DATA_DIR", "/data")
+
+    result = load_config()
+
+    assert result.data_dir == Path("/data")
+    assert result.paintings.cache_dir == Path("/data/paintings")
+
+
 def test_selected_source_values_win_and_unspecified_fields_use_defaults(
     isolated_paths: Path,
 ) -> None:

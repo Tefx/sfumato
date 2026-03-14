@@ -14,6 +14,7 @@ Spec references:
 from __future__ import annotations
 
 import datetime
+import json
 import logging
 import random
 from dataclasses import dataclass
@@ -46,6 +47,8 @@ if TYPE_CHECKING:
     from sfumato.render import RenderResult
 
 logger = logging.getLogger(__name__)
+
+WATCH_HEALTH_FILE: Final[str] = "last_action.json"
 
 
 # =============================================================================
@@ -662,13 +665,29 @@ async def watch(config: AppConfig) -> None:
     """
     import asyncio
     import signal
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     from sfumato.scheduler import Action, Scheduler, SchedulerState
 
     # Stage 1: load_state_once
     state_dir = config.data_dir / "state"
     state = AppState.load(state_dir)
+
+    def write_health(
+        status: str, action_names: list[str], error: str | None = None
+    ) -> None:
+        health_path = state_dir / WATCH_HEALTH_FILE
+        payload = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "status": status,
+            "actions": action_names,
+            "error": error,
+        }
+        temp_path = health_path.with_suffix(".tmp")
+        temp_path.write_text(
+            json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8"
+        )
+        temp_path.replace(health_path)
 
     # Initialize scheduler and scheduler state
     scheduler = Scheduler(config.schedule)
@@ -691,6 +710,7 @@ async def watch(config: AppConfig) -> None:
     signal.signal(signal.SIGTERM, handle_shutdown)
 
     logger.info("Watch daemon started, entering main loop")
+    write_health("starting", [])
 
     # Main daemon loop
     while not shutdown_requested:
@@ -721,6 +741,8 @@ async def watch(config: AppConfig) -> None:
             pass
 
         # Dispatch actions in WATCH_ACTION_DISPATCH_ORDER
+        executed_actions: list[str] = []
+        action_error: str | None = None
         for act in actions_to_dispatch:
             # Check for shutdown between actions
             if shutdown_requested:
@@ -731,22 +753,26 @@ async def watch(config: AppConfig) -> None:
                     logger.info("Dispatching REFRESH_NEWS")
                     await run_news_refresh(config, state)
                     scheduler_state.last_news_refresh = now
+                    executed_actions.append(str(act.name))
 
                 elif act == Action.ROTATE:
                     logger.info("Dispatching ROTATE")
                     await run_once(config, state, RunOptions())
                     scheduler_state.last_rotation = now
+                    executed_actions.append(str(act.name))
 
                 elif act == Action.BACKFILL:
                     logger.info("Dispatching BACKFILL")
                     added = await run_backfill(config, state)
                     scheduler_state.last_backfill = now
                     logger.info("Backfill added %d paintings", added)
+                    executed_actions.append(str(act.name))
 
                 elif act == Action.QUIET_ART:
                     logger.info("Dispatching QUIET_ART")
                     await run_once(config, state, RunOptions(no_news=True))
                     scheduler_state.last_rotation = now
+                    executed_actions.append(str(act.name))
 
             except Exception as e:
                 # Per-action recoverable errors: scope to current action
@@ -757,12 +783,18 @@ async def watch(config: AppConfig) -> None:
                     act.name,
                     e,
                 )
+                action_error = f"{act.name}: {e}"
                 # Don't update timestamps for failed actions
                 # Next cycle will retry
 
         # Stage 4: state_save
         try:
             state.save_all()
+            write_health(
+                "degraded" if action_error else "ok",
+                executed_actions,
+                error=action_error,
+            )
         except Exception as e:
             # Persistence failure: fatal, propagate
             logger.critical("State persistence failed, terminating daemon: %s", e)
@@ -779,6 +811,7 @@ async def watch(config: AppConfig) -> None:
             await asyncio.sleep(sleep_seconds)
 
     logger.info("Watch daemon shut down gracefully")
+    write_health("stopped", [], error=None)
 
 
 async def init_project(config: AppConfig) -> None:

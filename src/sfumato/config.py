@@ -19,12 +19,13 @@ from typing import Any
 CONFIG_SOURCE_PRECEDENCE: tuple[str, ...] = (
     "path argument",
     "SFUMATO_CONFIG",
+    "SFUMATO_DATA_DIR",
     "~/.config/sfumato/config.toml",
     "./sfumato.toml",
 )
 """Source precedence for `load_config` from highest to lowest authority."""
 
-SUPPORTED_ENV_OVERRIDES: tuple[str, ...] = ("SFUMATO_CONFIG",)
+SUPPORTED_ENV_OVERRIDES: tuple[str, ...] = ("SFUMATO_CONFIG", "SFUMATO_DATA_DIR")
 """Supported env overrides in core config contract for this phase."""
 
 
@@ -142,10 +143,10 @@ def load_config(path: Path | None = None) -> AppConfig:
     selected = _select_config_source(path)
 
     if selected is None:
-        return _normalize_paths(AppConfig(), base_dir=Path.cwd())
+        return _apply_env_overrides(_normalize_paths(AppConfig(), base_dir=Path.cwd()))
 
     data = _read_toml(selected)
-    return _build_app_config(data=data, source_path=selected)
+    return _apply_env_overrides(_build_app_config(data=data, source_path=selected))
 
 
 def generate_default_config() -> str:
@@ -551,6 +552,33 @@ def _normalize_paths(config: AppConfig, base_dir: Path) -> AppConfig:
         news=config.news,
         paintings=PaintingsConfig(
             cache_dir=resolved_paintings_cache,
+            seed_size=config.paintings.seed_size,
+            pool_size=config.paintings.pool_size,
+            sources=list(config.paintings.sources),
+            match_strategy=config.paintings.match_strategy,
+        ),
+        ai=config.ai,
+        data_dir=resolved_data_dir,
+    )
+
+
+def _apply_env_overrides(config: AppConfig) -> AppConfig:
+    env_data_dir = os.environ.get("SFUMATO_DATA_DIR")
+    if not env_data_dir:
+        return config
+
+    resolved_data_dir = _normalize_path(Path(env_data_dir), Path.cwd())
+    default_cache_dir = PaintingsConfig().cache_dir.expanduser().resolve()
+    resolved_cache_dir = config.paintings.cache_dir
+    if resolved_cache_dir == default_cache_dir:
+        resolved_cache_dir = resolved_data_dir / "paintings"
+
+    return AppConfig(
+        tv=config.tv,
+        schedule=config.schedule,
+        news=config.news,
+        paintings=PaintingsConfig(
+            cache_dir=resolved_cache_dir,
             seed_size=config.paintings.seed_size,
             pool_size=config.paintings.pool_size,
             sources=list(config.paintings.sources),

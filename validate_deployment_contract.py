@@ -1,11 +1,11 @@
-"""Validate Dockerfile and compose contract artifacts.
+"""Validate Dockerfile and compose deployment artifacts.
 
 This script enforces the deployment contract defined in:
 - ARCHITECTURE.md#9
 - DEPLOYMENT_CONTRACT.md
 
-It is intentionally static and contract-focused. It does not require a runnable
-production container implementation.
+It is primarily static so it can run quickly in CI. Runtime build verification is
+performed separately by step evidence commands.
 """
 
 from __future__ import annotations
@@ -67,11 +67,42 @@ def validate_dockerfile_text(text: str) -> None:
         "ENV RIJKSMUSEUM_API_KEY=",
         "Dockerfile must expose RIJKSMUSEUM_API_KEY for runtime injection",
     )
+    require(text, "COPY src ./src", "Dockerfile runtime image must include source tree")
+    require(
+        text,
+        "COPY templates ./templates",
+        "Dockerfile runtime image must include templates directory",
+    )
+    require(
+        text,
+        "COPY docker ./docker",
+        "Dockerfile runtime image must include deployment helper scripts",
+    )
+    require(
+        text,
+        "python -m pip install /tmp/dist/*.whl",
+        "Dockerfile runtime stage must install the built package wheel",
+    )
+    require(
+        text,
+        "python -m playwright install --with-deps chromium",
+        "Dockerfile runtime stage must install Playwright Chromium",
+    )
     require(text, 'VOLUME ["/data"]', "Dockerfile must declare /data volume")
     require(
         text,
-        'ENTRYPOINT ["python3", "-c", "raise SystemExit(\'Dockerfile contract stub only; see DEPLOYMENT_CONTRACT.md\')"]',
-        "Dockerfile must remain a contract stub in this phase",
+        'ENTRYPOINT ["/opt/sfumato/docker/entrypoint.sh"]',
+        "Dockerfile must use the container entrypoint script",
+    )
+    require(
+        text,
+        'CMD ["sfumato", "watch", "--config", "/data/config.toml"]',
+        "Dockerfile must default to watch mode",
+    )
+    require(
+        text,
+        'CMD ["python", "/opt/sfumato/docker/healthcheck.py"]',
+        "Dockerfile healthcheck must use the bundled healthcheck script",
     )
 
 
@@ -80,6 +111,12 @@ def validate_compose_text(text: str) -> None:
         text,
         r"^services:\n\s+sfumato:\n",
         "Compose file must define an sfumato service",
+    )
+    require(text, "image: sfumato:local", "Compose file must name the runtime image")
+    require(
+        text,
+        "restart: unless-stopped",
+        "Compose file must restart the daemon unless explicitly stopped",
     )
     require(text, "target: runtime", "Compose file must target the runtime stage")
     require(
@@ -104,8 +141,13 @@ def validate_compose_text(text: str) -> None:
     )
     require(
         text,
-        'test: ["CMD-SHELL", "test -s /data/state/last_action.json"]',
-        "Compose healthcheck must read the freshness artifact path",
+        'test: ["CMD", "python", "/opt/sfumato/docker/healthcheck.py"]',
+        "Compose healthcheck must invoke the bundled healthcheck script",
+    )
+    require(
+        text,
+        "SFUMATO_HEALTH_MAX_AGE_SECONDS: 2100",
+        "Compose file must define the health freshness window",
     )
     for source, target in (
         ("source: ./data/config.toml", "target: /data/config.toml"),
