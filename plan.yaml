@@ -247,7 +247,7 @@ phases:
       evidence.'
   - id: core.news
     name: Refactor news module
-    status: pending
+    status: claimed
     description: 'Refactor src/sfumato/news.py per ARCHITECTURE.md section 2.2. Implement
       Story and CurationResult dataclasses. Implement fetch_feeds() with httpx+feedparser,
       URL deduplication, age filtering. Implement curate() using llm.invoke_text()
@@ -266,6 +266,8 @@ phases:
     - core.config
     - core.llm
     agent: python-executor
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T13:16:40.623597+00:00'
   - id: core.layout-ai
     name: Refactor layout_ai module
     status: pending
