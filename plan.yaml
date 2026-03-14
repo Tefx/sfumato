@@ -4864,7 +4864,7 @@ phases:
       in this step.'
   - id: art-facts.render-whisper.test
     name: Define render whisper contract tests
-    status: claimed
+    status: done
     description: "step_type: test\nagent_source: default\nspec_refs:\n  - ARCHITECTURE.md#2.7\n\
       touch_paths:\n  - tests/test_render.py\n  - src/sfumato/render.py\n\nDefine\
       \ contract tests for whisper variable population in `build_template_variables()`.\n\
@@ -4889,6 +4889,26 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T22:18:23.057032+00:00'
+    done_at: '2026-03-14T22:26:48.369806+00:00'
+    evidence: 'Step: art-facts.render-whisper.test
+
+      Commit hash(es): 7e022c8; merged as [main 03d9be0]
+
+      Files changed: src/sfumato/render.py, tests/test_render.py
+
+      Verification:
+
+      - uv run pytest tests/test_render.py -v -> 50 passed, 0 failed
+
+      - Added contract tests for WHISPER_* mapping, whisper_fact_index behavior, and
+      art-fact indexing semantics
+
+      Spec link: ARCHITECTURE.md#2.7
+
+      Gaps/Notes:
+
+      - Step included minimal fixture-level render contract scaffolding in render.py;
+      final full whisper behavior remains in implementation step.'
 - id: replay
   name: News Replay Queue
   status: in_progress
