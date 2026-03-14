@@ -4677,23 +4677,26 @@ phases:
   - id: replay.config
     name: Add replay_expire_days to config
     status: pending
-    description: "step_type: implementation\nagent: python-executor\nspec_refs:\n\
-      \  - README.md\ntouch_paths:\n  - src/sfumato/config.py\n  - tests/test_config.py\n\
-      \nAdd replay_expire_days field to NewsConfig:\n\nFile: src/sfumato/config.py\n\
-      - Add to NewsConfig: replay_expire_days: int = 2\n- Update generate_default_config()\
+    description: "step_type: implementation\nagent: python-executor\nagent_source:\
+      \ default\nspec_refs:\n  - README.md\ntouch_paths:\n  - src/sfumato/config.py\n\
+      \  - tests/test_config.py\nharness_refs:\n  - tests/test_config.py\n\nImplement\
+      \ the previously defined NewsConfig contract for replay_expire_days.\n\nAdd\
+      \ replay_expire_days field to NewsConfig:\n\nFile: src/sfumato/config.py\n-\
+      \ Add to NewsConfig: replay_expire_days: int = 2\n- Update generate_default_config()\
       \ to include replay_expire_days = 2\n  under [news] section\n\nPattern: Follow\
       \ existing NewsConfig fields (max_age_days, expire_days).\nTests: Update tests/test_config.py\
-      \ to verify new field parses correctly.\n"
+      \ to verify new field parses correctly.\n\nThis step executes only after the\
+      \ upstream contract and test-definition steps are in place."
     verification: '- NewsConfig has replay_expire_days field with default 2
 
       - generate_default_config() output includes replay_expire_days
 
-      - uv run pytest tests/test_config.py -v passes
-
-      '
+      - uv run pytest tests/test_config.py -v passes'
     refs:
     - src/sfumato/config.py
     - tests/test_config.py
+    depends_on:
+    - replay.config.test
   - id: replay.queue
     name: Implement ReplayQueue in state module
     status: pending
