@@ -558,7 +558,7 @@ phases:
       subprocess invocation implementation deferred.'
   - id: core.llm.tests
     name: Author LLM invocation tests
-    status: claimed
+    status: done
     description: "step_type: test\nspec_refs:\n  - ARCHITECTURE.md#2.9\ntouch_paths:\n\
       \  - tests/test_llm.py\n  - src/sfumato/llm.py\nharness_refs:\n  - pytest\n\
       \  - subprocess mocking boundary\nagent: python-executor\n\nAdd contract-driven\
@@ -585,6 +585,36 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T12:51:47.272316+00:00'
+    done_at: '2026-03-14T13:05:28.017281+00:00'
+    evidence: 'Artifact:
+
+      - Worker commit: 69e13b9 (isolated worktree)
+
+      - Main commit: c78a2ceb9542e259ff61824ae90598d4081fe3b5
+
+
+      Verification:
+
+      - Run: `uv run pytest tests/test_llm.py -v` -> 85 passed
+
+      - Named coverage includes command selection, retry-boundary exhaustion, malformed
+      fenced JSON, and unsupported backend behavior
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#2.9
+
+      - tests/test_llm.py
+
+
+      Gaps/Notes:
+
+      - Merge resolution required preserving divergent local `tests/test_llm.py` in
+      stash (`backup before core.llm.tests merge resolution`) before applying step
+      branch content.
+
+      - Step scope remained tests/helpers only.'
   - id: core.palette.contract
     name: Define palette extraction contract
     status: done
