@@ -4709,7 +4709,7 @@ phases:
       - Contract artifact is additive/inert and scoped for downstream implementation.'
   - id: art-facts.template-whisper.test
     name: Define whisper template smoke tests
-    status: claimed
+    status: done
     description: "step_type: test\nagent: python-executor\nagent_source: default\n\
       spec_refs:\n  - PROTOTYPING.md#11\ntouch_paths:\n  - tests/test_render.py\n\
       \  - templates/painting_text.html\n  - templates/magazine.html\n  - templates/portrait.html\n\
@@ -4733,6 +4733,26 @@ phases:
     - art-facts.template-whisper.contract
     claimed_by: python-executor
     claimed_at: '2026-03-14T21:53:03.914070+00:00'
+    done_at: '2026-03-14T21:59:55.971462+00:00'
+    evidence: 'Step: art-facts.template-whisper.test
+
+      Commit hash(es): 9a6caa0e3ad0e398d6138fd46722666bf6397278; merged as [main 84e47cf]
+
+      Files changed: tests/test_render.py
+
+      Verification:
+
+      - uv run pytest tests/test_render.py -v -k "whisper" -> 9 passed
+
+      - Coverage asserts WHISPER_* variables in painting_text/magazine/portrait templates,
+      uniform whisper contract structure, and template syntax smoke checks
+
+      Spec link: PROTOTYPING.md#11
+
+      Gaps/Notes:
+
+      - Pre-existing fixture mismatches outside whisper-focused selection were reported
+      by subagent as out-of-scope for this test-only step.'
 - id: replay
   name: News Replay Queue
   status: in_progress
