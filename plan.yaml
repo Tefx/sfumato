@@ -672,7 +672,7 @@ phases:
       algorithm implementation remains deferred.'
   - id: core.palette.tests
     name: Author palette extraction tests
-    status: claimed
+    status: done
     description: "step_type: test\nspec_refs:\n  - ARCHITECTURE.md#2.4\ntouch_paths:\n\
       \  - tests/test_palette.py\n  - src/sfumato/palette.py\nharness_refs:\n  - pytest\n\
       \  - image fixtures\nagent: python-executor\n\nAdd contract-driven tests for\
@@ -697,6 +697,35 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T12:51:50.542953+00:00'
+    done_at: '2026-03-14T13:08:15.987668+00:00'
+    evidence: 'Artifact:
+
+      - Worker commit: a7fb762213e49398734c43c119817064f79bd7c1
+
+      - Main integration: no-op (patch already present in main tree; `cherry-pick
+      --no-commit` produced nothing to commit)
+
+
+      Verification:
+
+      - Run: `.venv/bin/python -m pytest .vectl/worktrees/core.palette.tests/tests/test_palette.py
+      -v` -> 19 passed, 31 skipped
+
+      - Coverage includes invalid image handling, tiny-image behavior, monochrome/low-variance
+      invariants, hex normalization, and luminance classification
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#2.4
+
+      - tests/test_palette.py
+
+
+      Gaps/Notes:
+
+      - Step content was already reflected in the current main tree at integration
+      time, so no additional merge commit was created.'
 - id: intelligence
   name: Intelligence
   status: locked
