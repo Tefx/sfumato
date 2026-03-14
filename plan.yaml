@@ -508,26 +508,62 @@ phases:
   - id: core.pipeline
     name: Implement orchestrator.run_once
     status: pending
-    description: 'Implement src/sfumato/orchestrator.py per ARCHITECTURE.md section
-      2.12 (run_once only). Wire all modules together: RunOptions, RunResult dataclasses.
-      Implement run_once() pipeline: dequeue/refresh news -> select painting (random
-      for now, semantic in Phase 2) -> analyze layout (via layout_ai) -> extract palette
-      -> choose template -> render 4K PNG -> upload to TV (if available) -> preview
-      (if requested). Handle --no-upload and --no-news flags. File: src/sfumato/orchestrator.py
-      (new). Completion: run_once() executes full pipeline; handles all RunOptions
-      flags; returns RunResult.'
-    verification: run_once() with no_upload=True produces a RenderResult with valid
-      png_path; pipeline stages execute in correct order
+    description: "step_type: implementation\nspec_refs:\n  - ARCHITECTURE.md#2.12\n\
+      \  - ARCHITECTURE.md#2.13\n  - README.md\n  - PROTOTYPING.md\ntouch_paths:\n\
+      \  - src/sfumato/orchestrator.py\n  - tests/test_orchestrator.py\nharness_refs:\n\
+      \  - pytest\n  - orchestrator seam doubles for news/layout/render/tv/state\n\
+      agent: python-executor\ntags:\n  - integration\n\nImplement `src/sfumato/orchestrator.py::run_once`\
+      \ against the contracted `RunOptions` / `RunResult` surfaces and the upstream\
+      \ orchestrator tests.\n\nScope:\n- Implement `run_once()` only; do not expand\
+      \ into `watch()`, `run_news_refresh()`, `run_backfill()`, or `init_project()`\
+      \ in this step.\n- Use the contracted stage ordering: dequeue/refresh news ->\
+      \ select painting -> analyze layout -> extract palette -> choose template ->\
+      \ render 4K PNG -> optional TV upload/display -> mark used -> optional preview\
+      \ -> state save.\n- Keep Phase 1 painting selection random when news is present;\
+      \ semantic matching remains deferred to `intelligence`.\n\nFailure-mode checklist:\n\
+      - `--no-upload`: render locally, return `uploaded=False`, and skip TV availability/upload/display\
+      \ side effects.\n- `--no-news`: skip dequeue/refresh, use the pure-art selection/render\
+      \ path, and keep the same render/output guarantees.\n- Stage ordering: flag\
+      \ branches must not reorder analyze/palette/render/upload/save boundaries.\n\
+      - TV-unavailable branch: when the TV cannot accept a push, keep the rendered\
+      \ local PNG, return `uploaded=False`, and avoid turning a successful render\
+      \ into a fatal error.\n- Error propagation boundaries: refresh/dequeue, layout,\
+      \ palette, and render failures must surface to the caller rather than being\
+      \ silently downgraded.\n- Output-path guarantees: every successful render branch\
+      \ returns `RunResult.render_result.png_path` for the generated local 4K PNG\
+      \ regardless of upload outcome.\n\nState semantics:\n- Last-writer-wins: the\
+      \ final saved state reflects the run that actually completed.\n- Must preserve\
+      \ exactly: the local render artifact path and the truth of whether a TV upload\
+      \ actually happened.\n- Backward-compatible Phase 1 behavior: random painting\
+      \ selection remains valid until semantic matching lands in the `intelligence`\
+      \ phase.\n\nOut of scope:\n- No CLI argument parsing here.\n- No semantic matcher\
+      \ wiring in this step.\n- No compatibility wrapper around `proto.py`; use it\
+      \ only as a behavior reference.\n\nGate Preview (what the gate WILL reject)\n\
+      1. Flag branches that skip required stages or silently swallow upstream errors.\n\
+      2. TV-unavailable handling that loses the local PNG or reports `uploaded=True`\
+      \ without a real push.\n3. Output-path drift where success branches do not return\
+      \ a usable local render artifact."
+    verification: '- Main path: focused orchestrator tests prove contracted stage
+      ordering, successful render, and the upload-enabled branch
+
+      - Failure path: focused regressions cover `--no-upload`, `--no-news`, TV unavailable
+      while preserving local output, and upstream stage-error propagation
+
+      - Proof includes exact pytest commands and the named regressions for both the
+      success path and the highest-risk failure path'
     refs:
     - ARCHITECTURE.md#2.12
-    - src/sfumato/orchestrator.py
+    - ARCHITECTURE.md#2.13
+    - README.md
     - PROTOTYPING.md
-    - ARCHITECTURE.md
-    - src/sfumato/proto.py
+    - src/sfumato/orchestrator.py
+    - tests/test_orchestrator.py
     depends_on:
     - core.news
     - core.render
     - core.tv
+    - core.pipeline.contract
+    - core.pipeline.tests
     agent: python-executor
   - id: core.cli-run
     name: Implement CLI run and preview commands
