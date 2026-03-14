@@ -3437,7 +3437,7 @@ phases:
       implementation verification remains for downstream steps.'
   - id: production.docker.tests
     name: Author container deployment tests
-    status: claimed
+    status: done
     description: "step_type: test\nspec_refs:\n  - ARCHITECTURE.md#9\n  - ARCHITECTURE.md#2.12\n\
       \  - ARCHITECTURE.md#2.13\ntouch_paths:\n  - Dockerfile\n  - docker-compose.yml\n\
       \  - tests/test_docker_runtime.py\nharness_refs:\n  - docker build/runtime smoke\
@@ -3464,3 +3464,37 @@ phases:
     agent: software-architect
     claimed_by: software-architect
     claimed_at: '2026-03-14T18:06:40.434504+00:00'
+    done_at: '2026-03-14T18:10:53.555193+00:00'
+    evidence: 'Artifact:
+
+      - PR: commit dd81b8d ([vectl] step-production.docker.tests completed), source
+      worktree commit c8433abe9e7cc94e886965ebef4f4fd6edd17f98
+
+
+      Verification:
+
+      - Run: `python3 validate_deployment_contract.py` -> passed
+
+      - Run: `./.venv/bin/pytest tests/test_deployment_contract.py` -> 7 passed
+
+      - Run: `git diff --check` -> passed
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#9
+
+      - DEPLOYMENT_CONTRACT.md
+
+
+      Files changed:
+
+      - tests/test_deployment_contract.py
+
+      - validate_deployment_contract.py
+
+
+      Gaps/Notes:
+
+      - Test/validation artifacts only; runtime deployment implementation remains
+      in downstream production.docker step.'
