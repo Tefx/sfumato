@@ -6,6 +6,7 @@ src/sfumato/config.py
 src/sfumato/layout_ai.py
 src/sfumato/llm.py
 src/sfumato/news.py
+src/sfumato/orchestrator.py
 src/sfumato/palette.py
 src/sfumato/proto.py
 src/sfumato/render.py
@@ -19,4 +20,7 @@ src/sfumato.egg-info/top_level.txt
 tests/test_config.py
 tests/test_llm.py
 tests/test_news.py
+tests/test_orchestrator.py
 tests/test_palette.py
+tests/test_render.py
+tests/test_tv.py

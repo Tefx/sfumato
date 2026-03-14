@@ -138,16 +138,81 @@ def test_error_propagation_boundary_is_explicit() -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_once_is_contract_stub_until_implementation_dispatch() -> None:
-    """run_once intentionally raises until implementation step."""
-    with pytest.raises(NotImplementedError) as exc_info:
-        await run_once(
-            config=AppConfig(),
-            state=object(),  # type: ignore[arg-type]
-            options=RunOptions(painting_path=Path("painting.jpg")),
+async def test_run_once_no_news_with_painting_path_succeeds(tmp_path: Path) -> None:
+    """run_once with painting_path and no_news succeeds.
+
+    This is the basic success path for pure art mode with a specific painting.
+
+    Verification:
+    - Returns RunResult with render_result.png_path existing
+    - story_count is 0 (no_news)
+    - uploaded is False (no_upload)
+    - match_score is None (Phase 1)
+    - action is "pure_art"
+    - painting is marked used in state
+    - layout is cached
+    """
+    # Create a test painting file
+    from PIL import Image
+    from unittest.mock import AsyncMock, patch, MagicMock
+
+    painting_path = tmp_path / "test_painting.jpg"
+    img = Image.new("RGB", (3840, 2160), color="#1a237e")
+    img.save(painting_path)
+
+    # Create mock state
+    mock_state = MockAppState()
+
+    # Create config with data_dir pointing to tmp
+    from sfumato.config import (
+        AppConfig,
+        AiConfig,
+        NewsConfig,
+        PaintingsConfig,
+        ScheduleConfig,
+        TvConfig,
+    )
+
+    config = AppConfig(
+        tv=TvConfig(ip="192.168.1.100", port=8002, max_uploads=5),
+        schedule=ScheduleConfig(),
+        news=NewsConfig(language="en"),
+        paintings=PaintingsConfig(cache_dir=tmp_path / "paintings"),
+        ai=AiConfig(cli="gemini", model="test-model"),
+        data_dir=tmp_path,
+    )
+
+    # Create mock layout params
+    mock_layout = create_mock_layout_params()
+
+    # Mock the external dependencies
+    with patch(
+        "sfumato.orchestrator.analyze_painting", new_callable=AsyncMock
+    ) as mock_analyze:
+        mock_analyze.return_value = mock_layout
+
+        result = await run_once(
+            config=config,
+            state=mock_state,  # type: ignore[arg-type]
+            options=RunOptions(
+                no_news=True, no_upload=True, painting_path=painting_path
+            ),
         )
 
-    assert "contract" in str(exc_info.value)
+    # Verify result
+    assert result.render_result is not None
+    assert result.render_result.png_path.exists()
+    assert result.painting is not None
+    assert result.story_count == 0  # no_news means no stories
+    assert result.uploaded is False  # no_upload means not uploaded
+    assert result.match_score is None  # Phase 1 has no semantic matching
+    assert result.action == "pure_art"
+
+    # Verify painting was marked used
+    assert mock_state.used_paintings.is_used(result.painting.content_hash)
+
+    # Verify layout was cached
+    assert mock_state.layout_cache.has(result.painting.content_hash)
 
 
 # =============================================================================
