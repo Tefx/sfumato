@@ -1527,7 +1527,7 @@ phases:
       fix pass; no intentional skip markers remain in `tests/test_orchestrator.py`.'
   - id: core.core-pipeline-verify-retest-full-suite
     name: core.pipeline.verify.retest-full-suite
-    status: pending
+    status: claimed
     description: "step_type: verification\nspec_refs:\n  - ARCHITECTURE.md#2.12\n\
       \  - ARCHITECTURE.md#2.13\n  - README.md\ntouch_paths:\n  - tests/test_orchestrator.py\n\
       \  - src/sfumato/orchestrator.py\nharness_refs:\n  - pytest\n  - orchestrator\
@@ -1558,6 +1558,8 @@ phases:
     depends_on:
     - core.core-pipeline-verify-fix-skip-blockers
     agent: integration-verifier
+    claimed_by: integration-verifier
+    claimed_at: '2026-03-14T15:08:09.790804+00:00'
 - id: intelligence
   name: Intelligence
   status: locked
