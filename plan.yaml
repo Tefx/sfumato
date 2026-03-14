@@ -1783,7 +1783,7 @@ phases:
       included in test evidence.'
   - id: intelligence.matcher
     name: Implement matcher module
-    status: pending
+    status: claimed
     description: 'step_type: implementation
 
       Implement `src/sfumato/matcher.py` per `ARCHITECTURE.md#2.6` after the contract
@@ -1838,6 +1838,8 @@ phases:
     - intelligence.matcher.contract
     - intelligence.matcher.tests
     agent: python-executor
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T16:37:15.088012+00:00'
   - id: intelligence.state
     name: Implement state module
     status: pending
