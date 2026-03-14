@@ -4414,7 +4414,7 @@ phases:
   steps:
   - id: art-facts.layout-prompt
     name: Upgrade layout prompt with zones + art facts
-    status: pending
+    status: claimed
     description: "step_type: implementation\nagent: python-senior\nagent_source: default\n\
       spec_refs:\n  - PROTOTYPING.md#11\n  - ARCHITECTURE.md#2.5\ntouch_paths:\n \
       \ - src/sfumato/layout_ai.py\n  - tests/test_layout_ai.py\nharness_refs:\n \
@@ -4450,6 +4450,8 @@ phases:
     - tests/test_layout_ai.py
     depends_on:
     - art-facts.layout-prompt.test
+    claimed_by: python-senior
+    claimed_at: '2026-03-14T22:00:27.866056+00:00'
   - id: art-facts.template-whisper
     name: Add whisper block to all production templates
     status: pending
