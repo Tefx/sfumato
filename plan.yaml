@@ -1690,7 +1690,7 @@ phases:
   steps:
   - id: intelligence.paintings
     name: Implement paintings module
-    status: pending
+    status: claimed
     description: "step_type: implementation\nspec_refs:\n  - ARCHITECTURE.md#2.3\n\
       \  - PROTOTYPING.md#semantic-art-news-matching\ntouch_paths:\n  - src/sfumato/paintings.py\n\
       \  - tests/test_paintings.py\nharness_refs:\n  - pytest\n  - tmp_path image\
@@ -1736,6 +1736,8 @@ phases:
     - intelligence.paintings.contract
     - intelligence.paintings.tests
     agent: python-executor
+    claimed_by: python-senior
+    claimed_at: '2026-03-14T16:19:10.499381+00:00'
   - id: intelligence.matcher
     name: Implement matcher module
     status: pending
