@@ -5650,7 +5650,7 @@ phases:
       - Merge conflict with art-facts test suite resolved by preserving both families.'
   - id: replay.replay-fix-app-state-replay-integration
     name: replay.fix-app-state-replay-integration
-    status: pending
+    status: claimed
     description: "Fix ALL replay production-state blockers found by `replay.gate`\
       \ — not just the first.\n\nstep_type: implementation\ntags:\n  - integration\n\
       symbolic_testing: false\nspec_refs:\n  - ARCHITECTURE.md#2.10\n  - ARCHITECTURE.md#2.12\n\
@@ -5714,6 +5714,8 @@ phases:
     depends_on:
     - replay.gate
     agent: python-senior
+    claimed_by: python-senior
+    claimed_at: '2026-03-14T23:19:55.084421+00:00'
   - id: replay.retest-app-state-replay-integration
     name: retest-app-state-replay-integration
     status: pending
