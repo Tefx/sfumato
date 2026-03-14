@@ -404,7 +404,7 @@ phases:
       file updates.'
   - id: core.config.tests
     name: Author config loader tests
-    status: claimed
+    status: done
     description: "step_type: test\nspec_refs:\n  - ARCHITECTURE.md#2.1\ntouch_paths:\n\
       \  - tests/test_config.py\n  - src/sfumato/config.py\nharness_refs:\n  - pytest\n\
       agent: python-executor\n\nAdd contract-driven tests for `load_config()` and\
@@ -432,6 +432,36 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T12:37:26.103689+00:00'
+    done_at: '2026-03-14T12:51:27.396885+00:00'
+    evidence: 'Artifact:
+
+      - Worker commit: 0d3edb6a6234f0364b1282bc7ed40731c05dda69 (isolated worktree)
+
+      - Main commit: 95d4271f16ddc78139e52b1257a5972f025ba879
+
+
+      Verification:
+
+      - Run: `uv run pytest tests/test_config.py --collect-only` -> 22 tests collected
+
+      - Run: `uv run pytest tests/test_config.py -v` -> 21 tests fail with NotImplementedError
+      (expected at contract/test stage)
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#2.1
+
+      - tests/test_config.py
+
+
+      Gaps/Notes:
+
+      - This is a test-authoring step before implementation; failing execution due
+      stubs is expected.
+
+      - Evidence notes one potentially over-strict expectation around empty TOML defaulting,
+      to be validated during implementation.'
   - id: core.llm.contract
     name: Define LLM invocation contract
     status: done
