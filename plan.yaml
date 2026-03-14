@@ -1864,6 +1864,39 @@ phases:
       - Any deferred source-auth behavior is documented explicitly rather than left
       implicit'
     agent: python-executor
+  - id: intelligence.paintings.tests
+    name: Author paintings module tests
+    status: pending
+    description: "step_type: test\nspec_refs:\n  - ARCHITECTURE.md#2.3\ntouch_paths:\n\
+      \  - tests/test_paintings.py\n  - src/sfumato/paintings.py\nharness_refs:\n\
+      \  - pytest\n  - tmp_path image fixtures\nagent: python-executor\n\nAdd contract-driven\
+      \ tests for `src/sfumato/paintings.py` before implementation logic is dispatched.\n\
+      \nRequired coverage:\n- Main path: cache sidecar round-trip via `list_cached_paintings()`\
+      \ produces `PaintingInfo` records with absolute image paths and preserved source\
+      \ metadata.\n- Source dispatch path: `fetch_paintings()` routes to requested\
+      \ sources only and aggregates successful results.\n- Failure path: per-source\
+      \ API or download failures are skipped and reported without discarding successful\
+      \ paintings from sibling sources.\n- Dedup path: `exclude_ids` prevents pre-download\
+      \ fetches for matching source ids and preserves non-excluded candidates.\n-\
+      \ Hash path: repeated `content_hash()` calls over identical bytes produce the\
+      \ same SHA-256 value; changed bytes produce a different hash.\n- Orientation\
+      \ edge path: landscape, portrait, and square fixtures pin the `width > height`\
+      \ and `width <= height` boundary.\n- Auth path: Rijksmuseum missing-key behavior\
+      \ is pinned with a targeted regression so the contract is executable.\n\nTest\
+      \ names should isolate failure modes instead of hiding them in a single integration\
+      \ test."
+    verification: '- Targeted tests exist for source dispatch, exclude-id filtering,
+      hash stability, sidecar round-trip, and orientation boundaries
+
+      - Verification names both the main-path cache round-trip and the highest-risk
+      failure-path source-failure/auth regressions rather than a generic ''paintings
+      tests pass''
+
+      - Test step adds tests/helpers/fixtures only; no product implementation logic
+      beyond minimal local fixtures and mocks'
+    depends_on:
+    - intelligence.paintings.contract
+    agent: python-executor
 - id: production
   name: Production
   status: locked
