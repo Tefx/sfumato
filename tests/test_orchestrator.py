@@ -47,10 +47,20 @@ from sfumato.orchestrator import (
     RUN_BACKFILL_STAGE_ORDER,
     RUN_ONCE_ERROR_SURFACE_STAGES,
     RUN_ONCE_FLAG_SEMANTICS,
+    RUN_ONCE_PRIMARY_BATCH_REPLAY_TRANSFER_GUARANTEE,
+    RUN_ONCE_QUEUE_SOURCE_PRECEDENCE,
+    RUN_ONCE_REPLAY_FALLBACK_GUARANTEE,
+    RUN_NEWS_REFRESH_REPLAY_CURATION_SKIP_GUARANTEE,
+    RUN_NEWS_REFRESH_REPLAY_CURATION_SKIP_OVERLAP_RATIO,
+    RUN_NEWS_REFRESH_REPLAY_EXPIRY_GUARANTEE,
     RUN_ONCE_OUTPUT_PATH_GUARANTEE,
     RUN_ONCE_STAGE_ORDER,
     RUN_ONCE_TV_DOWNGRADE_SEMANTICS,
     ROTATE_ART_FACT_ACCEPTANCE_CRITERIA,
+    AppStateProtocol,
+    ReplayBatchProtocol,
+    ReplayQueueProtocol,
+    ReplayTransferResultProtocol,
     WATCH_ACTION_DISPATCH_ORDER,
     WATCH_ERROR_PROPAGATION_BOUNDARIES,
     WATCH_LOOP_STAGE_ORDER,
@@ -195,6 +205,51 @@ def test_rotate_art_fact_acceptance_criteria_are_explicit() -> None:
         "When layout.art_facts is empty, rotate passes whisper_fact_index=None and emits no art-fact selection.",
         "A failed rotate attempt must not consume the next art-fact index.",
     )
+
+
+def test_replay_queue_wiring_contract_is_explicit() -> None:
+    """Primary news batches win, then transfer to replay, then replay fallback."""
+    assert RUN_ONCE_QUEUE_SOURCE_PRECEDENCE == (
+        "primary_news_queue",
+        "replay_queue",
+    )
+    assert "ReplayQueue.transfer_from_news_queue(batch)" in (
+        RUN_ONCE_PRIMARY_BATCH_REPLAY_TRANSFER_GUARANTEE
+    )
+    assert "ReplayQueue.next()" in RUN_ONCE_REPLAY_FALLBACK_GUARANTEE
+    assert "primary NewsQueue stays empty" in RUN_ONCE_REPLAY_FALLBACK_GUARANTEE
+
+
+def test_refresh_replay_expiry_and_high_overlap_skip_contracts_are_pinned() -> None:
+    """Refresh expires replay backlog and skips near-duplicate curation payloads."""
+    assert "config.news.replay_expire_days" in RUN_NEWS_REFRESH_REPLAY_EXPIRY_GUARANTEE
+    assert RUN_NEWS_REFRESH_REPLAY_CURATION_SKIP_OVERLAP_RATIO == pytest.approx(0.8)
+    assert "more than 80%" in RUN_NEWS_REFRESH_REPLAY_CURATION_SKIP_GUARANTEE
+    assert "skip primary curation enqueue" in (
+        RUN_NEWS_REFRESH_REPLAY_CURATION_SKIP_GUARANTEE
+    )
+
+
+def test_replay_protocol_surfaces_are_declared_for_orchestrator_wiring() -> None:
+    """Orchestrator state seam exposes replay queue contracts without implementation."""
+    assert sorted(ReplayTransferResultProtocol.__annotations__) == [
+        "accepted",
+        "matched_batch_index",
+        "overlap_ratio",
+        "reason",
+    ]
+    assert sorted(ReplayBatchProtocol.__annotations__) == [
+        "last_replayed_at",
+        "replay_count",
+        "source_enqueued_at",
+        "stories",
+        "tone_description",
+        "transferred_at",
+    ]
+    assert sorted(
+        name for name in ReplayQueueProtocol.__dict__ if not name.startswith("_")
+    ) == ["expire", "load", "next", "persist", "size", "transfer_from_news_queue"]
+    assert "replay_queue" in AppStateProtocol.__dict__
 
 
 def test_error_propagation_boundary_is_explicit() -> None:

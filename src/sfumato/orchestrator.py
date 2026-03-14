@@ -20,7 +20,7 @@ import logging
 import random
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, Protocol
+from typing import TYPE_CHECKING, Final, Protocol, cast
 
 import numpy as np
 
@@ -169,6 +169,69 @@ ROTATE_ART_FACT_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
 """Acceptance criteria for rotate-mode art-fact behavior.
 
 Source: task contract for rotate behavior and render-context propagation.
+"""
+
+
+RUN_ONCE_QUEUE_SOURCE_PRECEDENCE: Final[tuple[str, ...]] = (
+    "primary_news_queue",
+    "replay_queue",
+)
+"""Ordered batch-source precedence for ``run_once`` news input.
+
+Primary queue content must be consumed before replay is considered. Replay is a
+fallback source, not a peer with equal priority.
+"""
+
+
+RUN_ONCE_PRIMARY_BATCH_REPLAY_TRANSFER_GUARANTEE: Final[str] = (
+    "When run_once consumes a primary NewsQueue batch, it must attempt "
+    "ReplayQueue.transfer_from_news_queue(batch) before downstream painting "
+    "selection so consumed primary batches become replay-eligible."
+)
+"""Replay-transfer guarantee for consumed primary batches.
+
+This pins the ownership boundary: primary queue remains the source of fresh
+content while replay queue retains already-consumed primary batches for later
+fallback use.
+"""
+
+
+RUN_ONCE_REPLAY_FALLBACK_GUARANTEE: Final[str] = (
+    "ReplayQueue.next() may be consulted only after the primary NewsQueue stays "
+    "empty following the contracted dequeue/refresh attempt."
+)
+"""Fallback rule for replay consumption inside ``run_once``.
+
+This preserves primary-first semantics while allowing rotations to continue when
+fresh primary batches are unavailable.
+"""
+
+
+RUN_NEWS_REFRESH_REPLAY_EXPIRY_GUARANTEE: Final[str] = (
+    "Each run_news_refresh cycle must trigger ReplayQueue.expire("
+    "config.news.replay_expire_days) during refresh before replay-aware enqueue "
+    "decisions are finalized."
+)
+"""Replay expiry trigger pinned to refresh cycles.
+
+This keeps replay backlog freshness aligned to ``config.news.replay_expire_days``
+instead of piggybacking on the primary queue expiry horizon.
+"""
+
+
+RUN_NEWS_REFRESH_REPLAY_CURATION_SKIP_OVERLAP_RATIO: Final[float] = 0.8
+"""Strict overlap threshold for skipping replay-duplicate curation enqueue."""
+
+
+RUN_NEWS_REFRESH_REPLAY_CURATION_SKIP_GUARANTEE: Final[str] = (
+    "If curated refresh output overlaps the replay backlog by more than 80%, the "
+    "refresh cycle must skip primary curation enqueue for that payload to avoid "
+    "reintroducing near-duplicate replay content."
+)
+"""Replay-aware dedup contract for refresh cycles.
+
+This is intentionally stricter than replay-transfer acceptance thresholds because
+the refresh path decides whether to introduce another primary payload at all.
 """
 
 
@@ -395,6 +458,58 @@ class NewsQueueProtocol(Protocol):
         ...
 
 
+class ReplayTransferResultProtocol(Protocol):
+    """Protocol for replay-transfer outcome data."""
+
+    accepted: bool
+    reason: str
+    overlap_ratio: float
+    matched_batch_index: int | None
+
+
+class ReplayBatchProtocol(Protocol):
+    """Protocol for replay queue batch payloads."""
+
+    stories: list[Story]
+    tone_description: str
+    source_enqueued_at: datetime.datetime
+    transferred_at: datetime.datetime
+    replay_count: int
+    last_replayed_at: datetime.datetime | None
+
+
+class ReplayQueueProtocol(Protocol):
+    """Protocol for replay queue operations used by orchestrator wiring."""
+
+    def next(self) -> ReplayBatchProtocol | None:
+        """Return the next replay batch without destructive removal."""
+        ...
+
+    def expire(self, expire_days: int) -> int:
+        """Drop replay batches older than ``expire_days`` and return removed count."""
+        ...
+
+    def transfer_from_news_queue(
+        self,
+        batch: QueuedBatch,
+    ) -> ReplayTransferResultProtocol:
+        """Attempt to transfer a consumed primary batch into replay storage."""
+        ...
+
+    @property
+    def size(self) -> int:
+        """Number of replay batches currently tracked."""
+        ...
+
+    def persist(self) -> None:
+        """Persist replay queue state."""
+        ...
+
+    def load(self) -> None:
+        """Load replay queue state."""
+        ...
+
+
 class LayoutCacheProtocol(Protocol):
     """Protocol for layout cache operations."""
 
@@ -526,6 +641,11 @@ class AppStateProtocol(Protocol):
         ...
 
     @property
+    def replay_queue(self) -> ReplayQueueProtocol:
+        """Replay queue state component."""
+        ...
+
+    @property
     def layout_cache(self) -> LayoutCacheProtocol:
         """Layout cache state component."""
         ...
@@ -574,7 +694,10 @@ async def run_news_refresh(
     Contract:
         - Uses config.news.max_age_days for filtering old articles
         - Uses config.news.expire_days for expiring old queue batches
+        - Uses config.news.replay_expire_days for expiring replay batches during refresh
         - Uses config.news.stories_per_refresh as the target batch size default
+        - Skips primary curation enqueue when replay overlap exceeds
+          RUN_NEWS_REFRESH_REPLAY_CURATION_SKIP_OVERLAP_RATIO
         - Individual feed fetch failures are non-fatal (logged, skipped)
         - State is NOT saved; caller must call state.save_all() if persistence needed
     """
@@ -812,6 +935,7 @@ async def watch(config: AppConfig) -> None:
     # Stage 1: load_state_once
     state_dir = config.data_dir / "state"
     state = AppState.load(state_dir)
+    typed_state = cast(AppStateProtocol, state)
 
     def write_health(
         status: str, action_names: list[str], error: str | None = None
@@ -891,26 +1015,26 @@ async def watch(config: AppConfig) -> None:
             try:
                 if act == Action.REFRESH_NEWS:
                     logger.info("Dispatching REFRESH_NEWS")
-                    await run_news_refresh(config, state)
+                    await run_news_refresh(config, typed_state)
                     scheduler_state.last_news_refresh = now
                     executed_actions.append(str(act.name))
 
                 elif act == Action.ROTATE:
                     logger.info("Dispatching ROTATE")
-                    await run_once(config, state, RunOptions())
+                    await run_once(config, typed_state, RunOptions())
                     scheduler_state.last_rotation = now
                     executed_actions.append(str(act.name))
 
                 elif act == Action.BACKFILL:
                     logger.info("Dispatching BACKFILL")
-                    added = await run_backfill(config, state)
+                    added = await run_backfill(config, typed_state)
                     scheduler_state.last_backfill = now
                     logger.info("Backfill added %d paintings", added)
                     executed_actions.append(str(act.name))
 
                 elif act == Action.QUIET_ART:
                     logger.info("Dispatching QUIET_ART")
-                    await run_once(config, state, RunOptions(no_news=True))
+                    await run_once(config, typed_state, RunOptions(no_news=True))
                     scheduler_state.last_rotation = now
                     executed_actions.append(str(act.name))
 
@@ -1085,7 +1209,7 @@ async def run_once(
     """Execute one orchestrated rotation cycle.
 
     Ordered stage boundary (must not be reordered by flag branches):
-    1. news dequeue/refresh branch
+        1. news dequeue/refresh branch
     2. painting selection
     3. layout analysis
     4. palette extraction
@@ -1097,8 +1221,13 @@ async def run_once(
     10. state save
 
     Error propagation boundary:
-    - news/layout/palette/render failures surface to caller
-    - only TV availability/upload branch may degrade to local-render success
+        - news/layout/palette/render failures surface to caller
+        - only TV availability/upload branch may degrade to local-render success
+
+    Replay wiring contract:
+        - primary news queue precedes replay queue for content selection
+        - consumed primary batches are transferred to replay before downstream use
+        - replay is a fallback only after the primary dequeue/refresh path is empty
 
     Art-fact wiring contract:
     - ``layout_analysis`` is the sole source of ``layout.art_facts`` for the cycle,
