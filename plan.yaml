@@ -1009,7 +1009,7 @@ phases:
       stash before applying step branch content.'
   - id: core.tv.tests
     name: Author TV control tests
-    status: pending
+    status: claimed
     description: "step_type: test\nspec_refs:\n  - ARCHITECTURE.md#2.8\n  - PROTOTYPING.md#1\n\
       touch_paths:\n  - tests/test_tv.py\n  - src/sfumato/tv.py\nharness_refs:\n \
       \ - pytest\n  - samsungtvws art-mode seam doubles\nagent: python-executor\n\n\
@@ -1040,6 +1040,8 @@ phases:
     depends_on:
     - core.tv.contract
     agent: python-executor
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T13:48:31.790532+00:00'
 - id: intelligence
   name: Intelligence
   status: locked
