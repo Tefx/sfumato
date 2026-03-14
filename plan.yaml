@@ -4363,6 +4363,157 @@ phases:
     zones + art facts. Templates render whisper text at 26-28px with text-shadow.
   depends_on:
   - hardening
+  steps:
+  - id: art-facts.layout-prompt
+    name: Upgrade layout prompt with zones + art facts
+    status: pending
+    description: "step_type: implementation\nagent: python-senior\nspec_refs:\n  -\
+      \ PROTOTYPING.md#11\n  - ARCHITECTURE.md#2.5\ntouch_paths:\n  - src/sfumato/layout_ai.py\n\
+      \  - tests/test_layout_ai.py\n\nRedesign the LLM layout analysis prompt and\
+      \ data model to output three\nmutually exclusive zones and art facts in a single\
+      \ call:\n\n1. Add new dataclasses: WhisperZone (position_css, color, text_shadow),\n\
+      \   SubjectZone (bounding area of painting subject).\n2. Add fields to LayoutParams:\
+      \ subject_zone, whisper_zone, art_facts (list[str]).\n3. Rewrite the LLM prompt\
+      \ to request all 10 items:\n   - Items 1-7: existing (quiet zones, text placement,\
+      \ colors, story count, scrim, mood, template hint)\n   - Item 8: subject_zone\
+      \ — bounding area of the main subject\n   - Item 9: whisper_zone — position\
+      \ for art fact text, must not overlap news_zone or subject_zone\n   - Item 10:\
+      \ art_facts — 3-5 independent facts/trivia about the painting\n4. Add overlap_check\
+      \ validation: verify zones don't overlap.\n5. Aesthetic constraint: LLM decides\
+      \ whisper zone width to avoid too-narrow line breaks.\n\nPattern: Follow existing\
+      \ LayoutParams/TextZone dataclass style.\nTests: Update tests/test_layout_ai.py\
+      \ for new fields.\n"
+    verification: '- LayoutParams now has subject_zone, whisper_zone, art_facts fields
+
+      - LLM prompt requests all 10 items in structured JSON
+
+      - Overlap check validates zone mutual exclusivity
+
+      - Existing tests still pass; new field tests added
+
+      - uv run pytest tests/test_layout_ai.py -v passes
+
+      '
+    refs:
+    - PROTOTYPING.md#11
+    - ARCHITECTURE.md#2.5
+    - src/sfumato/layout_ai.py
+    - tests/test_layout_ai.py
+  - id: art-facts.template-whisper
+    name: Add whisper block to all production templates
+    status: pending
+    description: "step_type: implementation\nagent: python-executor\nspec_refs:\n\
+      \  - PROTOTYPING.md#11\ntouch_paths:\n  - templates/painting_text.html\n  -\
+      \ templates/magazine.html\n  - templates/portrait.html\n\nAdd a {{WHISPER_BLOCK}}\
+      \ area to all 3 production templates:\n\nFile: templates/painting_text.html\n\
+      - Add a .whisper-zone div with absolute positioning via {{WHISPER_POSITION}}\n\
+      - Font: 'Noto Sans SC', 26-28px, font-weight 300\n- Color: {{WHISPER_COLOR}}\
+      \ (LLM-decided based on zone brightness)\n- text-shadow: {{WHISPER_SHADOW}}\
+      \ for readability\n- Content: {{WHISPER_TEXT}}\n\nFile: templates/magazine.html\n\
+      - Same whisper zone pattern, positioned within magazine layout\n\nFile: templates/portrait.html\n\
+      - Same whisper zone pattern, positioned within portrait layout\n\nPattern: Follow\
+      \ existing {{TEXT_POSITION}} / {{TEXT_COLOR}} variable style.\nEach template\
+      \ already uses CSS absolute positioning with template variables.\n"
+    verification: '- All 3 templates contain .whisper-zone div
+
+      - Template variables {{WHISPER_POSITION}}, {{WHISPER_COLOR}}, {{WHISPER_SHADOW}},
+      {{WHISPER_TEXT}} present
+
+      - Templates render without syntax errors
+
+      '
+    refs:
+    - PROTOTYPING.md#11
+    - templates/painting_text.html
+    - templates/magazine.html
+    - templates/portrait.html
+  - id: art-facts.render-whisper
+    name: Wire whisper into render module
+    status: pending
+    description: "step_type: implementation\nagent: python-executor\nspec_refs:\n\
+      \  - ARCHITECTURE.md#2.7\ntouch_paths:\n  - src/sfumato/render.py\n  - tests/test_render.py\n\
+      \nUpdate build_template_variables() in src/sfumato/render.py to populate\nwhisper\
+      \ template variables from LayoutParams:\n\n- WHISPER_POSITION: from layout.whisper_zone.position_css\n\
+      - WHISPER_COLOR: from layout.whisper_zone.color\n- WHISPER_SHADOW: from layout.whisper_zone.text_shadow\n\
+      - WHISPER_TEXT: select one art fact from layout.art_facts (rotation index from\
+      \ RenderContext)\n\nAdd whisper_fact_index: int = 0 to RenderContext for fact\
+      \ rotation.\n\nPattern: Follow existing TEXT_POSITION / TEXT_COLOR variable\
+      \ population.\nTests: Update tests/test_render.py for whisper variable population.\n"
+    verification: '- build_template_variables() outputs WHISPER_* variables
+
+      - RenderContext has whisper_fact_index field
+
+      - uv run pytest tests/test_render.py -v passes
+
+      '
+    refs:
+    - ARCHITECTURE.md#2.7
+    - src/sfumato/render.py
+    - tests/test_render.py
+    depends_on:
+    - art-facts.layout-prompt
+    - art-facts.template-whisper
+  - id: art-facts.orchestrator-wire
+    name: Wire art facts through orchestrator
+    status: pending
+    description: "step_type: implementation\nagent: python-executor\ntags: [\"integration\"\
+      ]\nspec_refs:\n  - ARCHITECTURE.md#2.12\ntouch_paths:\n  - src/sfumato/orchestrator.py\n\
+      \nWire art_facts and whisper rotation into the orchestrator pipeline:\n\n1.\
+      \ In run_once / rotate action: pass whisper_fact_index to RenderContext\n2.\
+      \ Track whisper_fact_index in AppState or rotation counter\n3. Increment index\
+      \ mod len(art_facts) on each rotation\n4. Ensure art_facts from layout cache\
+      \ flow into RenderContext\n\nPattern: Follow existing layout -> RenderContext\
+      \ wiring in orchestrator.py.\n"
+    verification: '- Orchestrator passes whisper_fact_index to RenderContext
+
+      - Fact index rotates across successive rotations
+
+      - Integration: sfumato run --no-upload shows whisper text in output
+
+      '
+    refs:
+    - ARCHITECTURE.md#2.12
+    - src/sfumato/orchestrator.py
+    depends_on:
+    - art-facts.render-whisper
+  - id: art-facts.gate
+    name: Art Facts phase gate review
+    status: pending
+    description: 'As an INDEPENDENT REVIEWER (gate-reviewer), assess whether the art-facts
+      phase
+
+      meets the quality bar.
+
+
+      review_depth: STANDARD
+
+
+      Review criteria:
+
+      1. LayoutParams has subject_zone, whisper_zone, art_facts fields
+
+      2. All 3 production templates have whisper zone rendering
+
+      3. Render module populates whisper variables correctly
+
+      4. Orchestrator wires facts and rotates index
+
+      5. No overlap between news zone, whisper zone, and subject zone
+
+      6. Visual: 4K output shows whisper text at correct size (26-28px)
+
+      '
+    verification: '- All implementation steps completed
+
+      - uv run pytest tests/ passes
+
+      - Visual spot-check: render output contains whisper text
+
+      - Zone overlap validation works
+
+      '
+    depends_on:
+    - art-facts.orchestrator-wire
 - id: replay
   name: News Replay Queue
   status: pending
