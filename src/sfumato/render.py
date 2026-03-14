@@ -196,6 +196,21 @@ def build_template_variables(ctx: RenderContext) -> dict[str, str]:
         art_minimal.html:
             - BG_IMAGE, TITLE, DATE, UPDATE_TIME, STORIES, ART_CREDIT
     """
+    def _position_to_css(position: str) -> str:
+        """Convert semantic position name to CSS absolute positioning."""
+        mapping = {
+            "top-left": "top: 120px; left: 160px;",
+            "top-right": "top: 120px; right: 160px;",
+            "bottom-left": "bottom: 120px; left: 160px;",
+            "bottom-right": "bottom: 120px; right: 160px;",
+            "left-side": "top: 120px; left: 160px;",
+            "right-side": "top: 120px; right: 160px;",
+        }
+        # If it already looks like CSS (contains ":"), pass through
+        if ":" in position and ";" in position:
+            return position
+        return mapping.get(position, "top: 120px; right: 160px;")
+
     # Resolve painting image to file:// URL
     bg_image = ctx.painting.image_path.as_uri()
 
@@ -220,11 +235,16 @@ def build_template_variables(ctx: RenderContext) -> dict[str, str]:
     )
 
     # Add layout-based CSS parameters (for painting_text template)
+    # Convert semantic position ("top-right") to CSS absolute positioning
+    text_position_css = _position_to_css(ctx.layout.text_zone.position)
+    scrim_position_css = ctx.layout.scrim.position_css
+    scrim_size_css = ctx.layout.scrim.size_css if hasattr(ctx.layout.scrim, 'size_css') and ctx.layout.scrim.size_css else "width: 50%; height: 50%;"
+
     variables.update(
         {
-            "SCRIM_POSITION": ctx.layout.scrim.position_css,
+            "SCRIM_POSITION": f"{scrim_position_css} {scrim_size_css}",
             "SCRIM_GRADIENT": ctx.layout.scrim.gradient_css,
-            "TEXT_POSITION": ctx.layout.text_zone.position,
+            "TEXT_POSITION": text_position_css,
             "TEXT_WIDTH": "45%",  # Default max width for text zone
         }
     )
