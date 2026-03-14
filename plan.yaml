@@ -2859,15 +2859,33 @@ phases:
   - id: production.cleanup
     name: Remove proto.py and clean up
     status: pending
-    description: 'Remove src/sfumato/proto.py (prototype code superseded by modular
-      architecture). Remove any remaining references to proto.py in imports or __main__.py.
-      Clean up any unused output files or dead code. Verify all module imports are
-      clean. File: src/sfumato/proto.py (delete). Completion: proto.py deleted; no
-      import errors; all modules load cleanly.'
-    verification: proto.py is deleted; python -c 'import sfumato' succeeds; no references
-      to proto remain in codebase
+    description: "step_type: implementation\nspec_refs:\n  - src/sfumato/proto.py\n\
+      touch_paths:\n  - src/sfumato/proto.py\n  - src/sfumato/__main__.py\n  - src/sfumato/cli.py\n\
+      harness_refs:\n  - import smoke checks\nagent: python-executor\nsimple_feature_exception:\n\
+      \  approved: true\n  conditions_met:\n    - single_symbol_or_tiny_ui\n    -\
+      \ no_cross_module_coordination\n    - no_meaningful_side_effects\n    - obvious_existing_pattern\n\
+      \  pattern_reference: src/sfumato/proto.py\n\nRemove `src/sfumato/proto.py`\
+      \ and any stale references after the production CLI surface is in place.\n\n\
+      Why this qualifies for the simple-feature exception:\n- scope is limited to\
+      \ deleting one obsolete module and clearing stale references\n- no new dependency,\
+      \ persistence, runtime contract, or cross-module feature behavior is introduced\n\
+      - the required pattern is an obvious dead-code removal after replacement by\
+      \ existing modules\n\nFailure-mode checklist:\n- no import path or entrypoint\
+      \ still references `proto.py`\n- deleting `proto.py` does not remove an active\
+      \ runtime path that the new CLI/watch surfaces still need\n- package import\
+      \ smoke checks remain clean after removal\n\nOut-of-scope guardrail:\n- no new\
+      \ runtime behavior or feature additions in this step"
+    verification: '- Main path: import smoke checks prove `proto.py` is removed and
+      the package still loads through the supported entrypoints
+
+      - Failure path: focused search/regression checks prove no stale import or entrypoint
+      reference to `proto.py` remains
+
+      - Proof: include explicit reference search output plus import smoke results'
     refs:
     - src/sfumato/proto.py
+    - src/sfumato/__main__.py
+    - src/sfumato/cli.py
     depends_on:
     - production.cli-full
     agent: python-executor
