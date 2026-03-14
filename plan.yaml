@@ -12,7 +12,7 @@ context: Implementation plan for sfumato.
 phases:
 - id: core
   name: Core Pipeline
-  status: in_progress
+  status: done
   gate: sfumato run --no-upload produces a valid 4K PNG end-to-end
   context: 'Minimal end-to-end: sfumato run produces 4K PNG from painting + news.
     Modules: config, llm, palette, news(refactor), layout_ai(refactor), render(refactor),
@@ -678,7 +678,7 @@ phases:
       wiring.'
   - id: core.gate
     name: 'Gate: Core Pipeline'
-    status: claimed
+    status: done
     description: 'Gate review: Verify core pipeline works end-to-end. `sfumato run
       --no-upload` should produce a valid 4K PNG from a local painting + live news.
       All module interfaces conform to `ARCHITECTURE.md`. No `proto.py` dependencies
@@ -750,6 +750,22 @@ phases:
     agent: gate-reviewer
     claimed_by: gate-reviewer
     claimed_at: '2026-03-14T15:31:44.747618+00:00'
+    done_at: '2026-03-14T15:39:20.281753+00:00'
+    evidence: "## Gate Report\n- verdict: PASS\n- blocker_findings:\n  - none\n- should_fix_findings:\n\
+      \  - ruff warnings: unused imports (F401), f-strings without placeholders (F541),\
+      \ one unused variable (F841)\n  - mypy warnings due to external dependency stubs\n\
+      - suggestions:\n  - optionally run ruff cleanup pass in follow-up\n\ncommands:\n\
+      - `uv run pytest tests/test_orchestrator.py -v` -> 50 passed\n- `uv run pytest\
+      \ tests/test_config.py tests/test_llm.py tests/test_palette.py tests/test_tv.py\
+      \ -v` -> 226 passed\n- `sfumato --help` -> pass\n- `uv run mypy src/sfumato`\
+      \ -> warnings (external import types)\n- `uv run ruff check src/sfumato` ->\
+      \ warnings (23 fixable)\n\ncoverage:\n- orchestrator contract and run_once branch\
+      \ behaviors verified\n- CLI run/preview behavior verified\n- core modules config/llm/palette/tv\
+      \ verified\n- integration wiring checks reported passing\n\nresidual_risks:\n\
+      - prototype `proto.py` references not part of public entrypoint\n- painting\
+      \ pool selection remains deferred by phase scope\n\nMerge note:\n- Gate verification\
+      \ step produced no code diff against main at merge time (NOOP), evidence-only\
+      \ completion."
   - id: core.config.contract
     name: Define config loader contract
     status: done
@@ -1663,7 +1679,7 @@ phases:
       evidence-only completion.'
 - id: intelligence
   name: Intelligence
-  status: locked
+  status: pending
   gate: Semantic matching selects relevant paintings for news batches; sfumato init
     pre-fetches and analyzes seed paintings
   context: 'Semantic art-news matching, seed painting library, news batching queue.
