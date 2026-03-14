@@ -4635,6 +4635,30 @@ phases:
       - Typography/positioning constraints are explicit
 
       - No implementation HTML/CSS beyond placeholder or stub-level contract artifacts'
+  - id: art-facts.template-whisper.test
+    name: Define whisper template smoke tests
+    status: pending
+    description: "step_type: test\nagent: python-executor\nagent_source: default\n\
+      spec_refs:\n  - PROTOTYPING.md#11\ntouch_paths:\n  - tests/test_render.py\n\
+      \  - templates/painting_text.html\n  - templates/magazine.html\n  - templates/portrait.html\n\
+      harness_refs:\n  - tests/test_render.py\n\nDefine and add test coverage for\
+      \ the whisper template contract before implementation.\n\nTest scope only:\n\
+      1. Add or update tests that assert all 3 production templates expose the required\
+      \ WHISPER_* variables.\n2. Add smoke coverage that templates render without\
+      \ syntax errors once whisper placeholders are present.\n3. Add focused checks\
+      \ that the whisper block contract is uniform across painting_text, magazine,\
+      \ and portrait templates.\n4. Do not implement production template rendering\
+      \ behavior beyond minimal fixtures or template smoke harness updates.\n\nPattern:\
+      \ Follow existing render/template test style in tests/test_render.py."
+    verification: '- Template smoke tests exist for whisper placeholders in all 3
+      production templates
+
+      - Required WHISPER_* variable assertions are defined
+
+      - No production template behavior is implemented beyond minimal test harness
+      work'
+    depends_on:
+    - art-facts.template-whisper.contract
 - id: replay
   name: News Replay Queue
   status: pending
