@@ -1679,7 +1679,7 @@ phases:
       evidence-only completion.'
 - id: intelligence
   name: Intelligence
-  status: in_progress
+  status: done
   gate: Semantic matching selects relevant paintings for news batches; sfumato init
     pre-fetches and analyzes seed paintings
   context: 'Semantic art-news matching, seed painting library, news batching queue.
@@ -2172,7 +2172,7 @@ phases:
       - Scope was constrained to init command and orchestrator init behavior only.'
   - id: intelligence.gate
     name: 'Gate: Intelligence'
-    status: claimed
+    status: done
     description: 'Gate review: Verify intelligence features work. sfumato init should
       fetch seed paintings and analyze them. sfumato run should use semantic matching
       to pick a painting that matches the news tone. Layout and embedding caches should
@@ -2191,6 +2191,44 @@ phases:
     agent: gate-reviewer
     claimed_by: gate-reviewer
     claimed_at: '2026-03-14T17:19:41.271467+00:00'
+    done_at: '2026-03-14T17:22:59.090897+00:00'
+    evidence: 'Artifact:
+
+      - PR: gate review by `gate-reviewer` task_id `ses_312a32753ffeibVLZ5rD6udFQe`
+      (verify-only, no code mutations)
+
+
+      Verification:
+
+      - Run: `uv run pytest tests/test_paintings.py tests/test_matcher.py tests/test_state.py
+      tests/test_orchestrator.py -v` -> 128 passed in 6.45s
+
+      - Run: gate reviewer integration/path audit -> confirmed CLI init/run wiring,
+      orchestrator queue/caches usage, and state save points
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#2.2
+
+      - ARCHITECTURE.md#2.3
+
+      - ARCHITECTURE.md#2.6
+
+      - ARCHITECTURE.md#2.10
+
+      - ARCHITECTURE.md#2.12
+
+
+      Files changed:
+
+      - none (verify-only gate step)
+
+
+      Gaps/Notes:
+
+      - Gate reviewer reported no blocker/should_fix findings; only non-blocking suggestions/tech-debt
+      notes.'
   - id: intelligence.paintings.contract
     name: Define paintings module contract
     status: done
@@ -2631,7 +2669,7 @@ phases:
       - Existing untracked `tests/helpers/` content was left untouched.'
 - id: production
   name: Production
-  status: locked
+  status: pending
   gate: sfumato watch starts daemon, handles SIGTERM gracefully, Docker image builds
     and runs
   context: 'Daemon mode, Docker deployment. Modules: scheduler, orchestrator(watch),
