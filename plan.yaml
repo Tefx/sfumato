@@ -2911,7 +2911,7 @@ phases:
       documented flag/exit/help behavior.'
   - id: production.docker
     name: Create Dockerfile and deployment config
-    status: claimed
+    status: done
     description: "step_type: implementation\ntags:\n  - integration\nspec_refs:\n\
       \  - ARCHITECTURE.md#9\n  - ARCHITECTURE.md#2.12\n  - ARCHITECTURE.md#2.13\n\
       touch_paths:\n  - Dockerfile\n  - docker-compose.yml\nharness_refs:\n  - docker\
@@ -2957,6 +2957,60 @@ phases:
     agent: software-architect
     claimed_by: software-architect
     claimed_at: '2026-03-14T18:11:05.829565+00:00'
+    done_at: '2026-03-14T18:22:39.121436+00:00'
+    evidence: 'Artifact:
+
+      - PR: commit 9daf8f3 ([vectl] step-production.docker completed), source worktree
+      commit 823cac8c24c74b98882ba2aa6898b7533b2efec5
+
+
+      Verification:
+
+      - Run: `python3 validate_deployment_contract.py` -> passed
+
+      - Run: `./.venv/bin/pytest tests/test_deployment_contract.py tests/test_config.py`
+      -> 23 passed
+
+      - Run: `docker compose config >/tmp/sfumato-compose-config.out` -> passed
+
+      - Run: `docker build --target runtime -t sfumato:production .` -> passed
+
+      - Run: `docker run --rm -e SFUMATO_CONFIG=/etc/hosts sfumato:production sfumato
+      watch --help` -> passed
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#9
+
+      - DEPLOYMENT_CONTRACT.md
+
+
+      Files changed:
+
+      - Dockerfile
+
+      - docker-compose.yml
+
+      - .dockerignore
+
+      - docker/entrypoint.sh
+
+      - docker/healthcheck.py
+
+      - validate_deployment_contract.py
+
+      - tests/test_deployment_contract.py
+
+      - src/sfumato/config.py
+
+      - src/sfumato/orchestrator.py
+
+
+      Gaps/Notes:
+
+      - Docker runtime and compose deployment are implemented and validated against
+      contract expectations.'
   - id: production.cleanup
     name: Remove proto.py and clean up
     status: pending
