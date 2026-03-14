@@ -355,7 +355,7 @@ phases:
       content.'
   - id: core.render
     name: Refactor render module
-    status: claimed
+    status: done
     description: 'Refactor src/sfumato/render.py per ARCHITECTURE.md section 2.7.
       Implement RenderContext and RenderResult dataclasses. Implement build_template_variables()
       to convert RenderContext into template placeholder dict. Refactor render_to_png()
@@ -378,6 +378,38 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T13:30:46.408552+00:00'
+    done_at: '2026-03-14T13:48:28.309684+00:00'
+    evidence: 'Artifact:
+
+      - Worker commits: f685d7f, 3500b2d (isolated worktree)
+
+      - Main commit: 7df5fd2
+
+
+      Verification:
+
+      - Run: `uv run pytest tests/test_render.py -v` -> 15 passed
+
+      - Run: `uv run python -m py_compile src/sfumato/render.py tests/test_render.py`
+      -> success
+
+      - Evidence confirms 4K viewport (3840x2160), template selection support (`painting_text`,
+      `magazine`, `portrait`, `art_overlay`, `art_minimal`), and sync wrapper
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#2.7
+
+      - src/sfumato/render.py
+
+      - templates/
+
+
+      Gaps/Notes:
+
+      - Divergent local pre-merge `render.py` was preserved in stash before applying
+      step branch content.'
   - id: core.tv
     name: Extend TV module
     status: pending
