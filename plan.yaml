@@ -3003,7 +3003,7 @@ phases:
     agent: python-executor
   - id: production.watch.contract
     name: Define daemon watch contract
-    status: pending
+    status: claimed
     description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
       \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nspec_refs:\n  - ARCHITECTURE.md#2.12\n\
       \  - ARCHITECTURE.md#2.13\ntouch_paths:\n  - src/sfumato/orchestrator.py\n \
@@ -3028,6 +3028,8 @@ phases:
       - Highest-risk failure semantics are explicit for SIGTERM during active work,
       repeated shutdown signals, and fatal startup failure before the loop begins'
     agent: python-senior
+    claimed_by: python-senior
+    claimed_at: '2026-03-14T17:28:50.751684+00:00'
   - id: production.watch.tests
     name: Author daemon watch tests
     status: pending
