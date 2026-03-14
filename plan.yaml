@@ -605,7 +605,7 @@ phases:
       phase plan.'
   - id: core.cli-run
     name: Implement CLI run and preview commands
-    status: claimed
+    status: done
     description: "step_type: implementation\nspec_refs:\n  - ARCHITECTURE.md#2.13\n\
       \  - ARCHITECTURE.md#2.12\n  - README.md\ntouch_paths:\n  - src/sfumato/cli.py\n\
       \  - src/sfumato/__main__.py\nharness_refs:\n  - pytest\n  - Typer CLI invocation\
@@ -635,6 +635,47 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T15:11:20.120690+00:00'
+    done_at: '2026-03-14T15:31:35.961251+00:00'
+    evidence: 'Artifact:
+
+      - Worker commits: 3376b5b (superseded, scope-violating), caaf25d (scope-corrected)
+
+      - Main commit: 8edba71d2c1eb03403587012c3f1bcac58610d98
+
+
+      Verification:
+
+      - Run: `sfumato --help` -> commands include `run`, `preview` only
+
+      - Run: `sfumato run --help` -> includes contracted options (`--config`, `--no-upload`,
+      `--no-news`, `--painting`, `--cli`, `--model`, `--verbose`)
+
+      - Run: `sfumato preview --help` -> includes contracted options (`--config`,
+      `--verbose`)
+
+      - Run: `uv run pytest tests/test_config.py tests/test_orchestrator.py -v` ->
+      63 passed
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#2.13
+
+      - ARCHITECTURE.md#2.12
+
+      - src/sfumato/cli.py
+
+      - src/sfumato/__main__.py
+
+
+      Gaps/Notes:
+
+      - Initial worker output was scope-violating; remediation removed out-of-scope
+      additions (`state.py`, extra commands, unrelated `layout_ai.py` edits) before
+      merge.
+
+      - Final merged scope is limited to `run` and `preview` CLI behavior plus entrypoint
+      wiring.'
   - id: core.gate
     name: 'Gate: Core Pipeline'
     status: pending
