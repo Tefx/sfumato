@@ -12,7 +12,7 @@ context: Implementation plan for sfumato.
 phases:
 - id: core
   name: Core Pipeline
-  status: pending
+  status: in_progress
   gate: sfumato run --no-upload produces a valid 4K PNG end-to-end
   context: 'Minimal end-to-end: sfumato run produces 4K PNG from painting + news.
     Modules: config, llm, palette, news(refactor), layout_ai(refactor), render(refactor),
@@ -332,7 +332,7 @@ phases:
     agent: gate-reviewer
   - id: core.config.contract
     name: Define config loader contract
-    status: pending
+    status: claimed
     description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
       \  - signatures\n  - type_defs\n  - stubs\nspec_refs:\n  - ARCHITECTURE.md#2.1\n\
       touch_paths:\n  - src/sfumato/config.py\nharness_refs:\n  - tests/test_config.py\n\
@@ -363,6 +363,8 @@ phases:
       - Any deferred env override behavior is documented as intentionally out of scope
       rather than left implicit'
     agent: python-senior
+    claimed_by: python-senior
+    claimed_at: '2026-03-14T12:30:34.355745+00:00'
   - id: core.config.tests
     name: Author config loader tests
     status: pending
