@@ -6012,7 +6012,7 @@ phases:
       - No additional gaps reported.'
   - id: polish.docs
     name: Update README and ARCHITECTURE docs
-    status: claimed
+    status: done
     description: "step_type: implementation\nagent: python-executor\ntouch_paths:\n\
       \  - README.md\n  - ARCHITECTURE.md\n\nUpdate documentation to reflect all new\
       \ features:\n\nFile: README.md\n1. Remove any Rijksmuseum references (sources\
@@ -6043,6 +6043,74 @@ phases:
     - polish.default-model
     claimed_by: python-executor
     claimed_at: '2026-03-14T23:30:18.781133+00:00'
+    done_at: '2026-03-14T23:36:43.730571+00:00'
+    evidence: 'Step: polish.docs
+
+      Commit hash(es): 90442cb6113228e368e2269b54a0542b451542f7
+
+      Files changed: README.md, ARCHITECTURE.md
+
+
+      README.md changes:
+
+      - Features section: Added "Whisper text" feature (art facts cycling), "News
+      replay" feature (cyclic replay queue), "Subject avoidance" feature (LLM-identified
+      protected visual zones)
+
+      - Config example: Added replay_expire_days=2 under [news]
+
+      - Config example: Updated default model to gemini-3-flash-preview
+
+      - No Rijksmuseum references found (verified - sources are Met/Wikimedia only)
+
+
+      ARCHITECTURE.md changes:
+
+      - Module layout_ai: Added ZonePosition enum, SubjectZone dataclass, WhisperZone
+      dataclass, ArtFact dataclass
+
+      - Module layout_ai: Added art_facts field to LayoutParams documentation
+
+      - Module state: Added ReplayBatch and ReplayQueue classes, seen_urls tracking,
+      ArtFactRotation
+
+      - Module state: Added replay_queue.json to state directory layout
+
+      - Module config: Added replay_expire_days field to NewsConfig documentation
+
+      - Module news: Added seen_urls deduplication behavior to fetch_feeds documentation
+
+
+      Verification:
+
+      - READMEmentionswhisper text, replay queue, subject avoidance in Features section
+
+      - README config example has replay_expire_days=2 under [news]
+
+      - README default model is gemini-3-flash-preview
+
+      - No Rijksmuseum references remain (only Met and Wikimedia)
+
+      - ARCHITECTURE.md documents whisper_zone, subject_zone in layout_ai module section
+
+      - ARCHITECTURE.md documents art_facts field in LayoutParams
+
+      - ARCHITECTURE.md documents ReplayQueue in state module section
+
+      - ARCHITECTURE.md documents replay_expire_days in config module section
+
+      - ARCHITECTURE.md documents seen_urls deduplication in news module section
+
+
+      All step verification criteria met.
+
+
+      Sibling Search: Verified config.py, state.py, layout_ai.py, orchestrator.py,
+      render.py contain matching implementations for WhisperZone, SubjectZone, ReplayQueue,
+      seen_urls, art_facts. Documentation now correctly reflects implemented features.
+
+
+      Spec link: README.md, ARCHITECTURE.md'
   - id: polish.gate
     name: Polish phase gate review
     status: pending
