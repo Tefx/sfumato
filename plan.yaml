@@ -2767,19 +2767,48 @@ phases:
   - id: production.cli-full
     name: 'Complete CLI: watch + tv subcommands'
     status: pending
-    description: 'Complete src/sfumato/cli.py per ARCHITECTURE.md section 2.13. Add
-      watch command (--config, --cli, --model, --verbose) that calls orchestrator.watch().
-      Add tv subcommand group with status, list, clean subcommands. Each tv subcommand
-      loads config and calls the corresponding tv module function with formatted output.
-      File: src/sfumato/cli.py. Completion: sfumato watch starts daemon; sfumato tv
-      status/list/clean work correctly; all CLI commands have --help text.'
-    verification: sfumato watch starts and can be interrupted; sfumato tv status shows
-      TV info; sfumato tv --help lists subcommands
+    description: "step_type: implementation\ntags:\n  - integration\nspec_refs:\n\
+      \  - ARCHITECTURE.md#2.13\n  - ARCHITECTURE.md#2.12\ntouch_paths:\n  - src/sfumato/cli.py\n\
+      \  - src/sfumato/__main__.py\n  - tests/test_cli.py\nharness_refs:\n  - typer\
+      \ CLI harness\nagent: python-executor\n\nImplement the production CLI surfaces\
+      \ in `src/sfumato/cli.py` per `ARCHITECTURE.md#2.13` and the upstream contract/test\
+      \ steps.\n\nScope:\n- add `sfumato watch` with the contracted options and dispatch\
+      \ to `orchestrator.watch`\n- add `sfumato tv status`, `sfumato tv list`, and\
+      \ `sfumato tv clean`\n- expose the new commands through the real CLI entrypoint\
+      \ and help output\n\nFailure-mode checklist:\n- command registration exposes\
+      \ all production commands in `--help`\n- watch-command option forwarding does\
+      \ not drop config/CLI/model overrides\n- bad-config or downstream runtime failures\
+      \ surface deterministic CLI exit behavior\n- tv subcommands do not accidentally\
+      \ bypass config loading or call the wrong runtime function\n\nState semantics:\n\
+      - CLI dispatch preserves user-supplied option values exactly when forwarding\
+      \ to the runtime surface\n- help output is the authoritative external contract\
+      \ for command visibility\n- backward-compatible behavior preserves existing\
+      \ non-production commands and their options unchanged\n\nOut-of-scope guardrail:\n\
+      - no daemon-loop implementation changes beyond CLI wiring\n- no Docker packaging\
+      \ or cleanup work in this step\n\n## Integration Evidence\n\n**Command or test\
+      \ exercising the full path**:\n```\n<exact CLI command or integration test name>\n\
+      ```\n\n**Actual output**:\n```\n<paste stdout/stderr or test runner output>\n\
+      ```\n\n**Path exercised**: `src/sfumato/__main__.py` -> `src/sfumato/cli.py`\
+      \ -> runtime target"
+    verification: '- Main path: targeted tests prove `sfumato watch` and all `sfumato
+      tv` subcommands are registered, visible in help, and dispatch through the real
+      CLI entrypoint
+
+      - Failure path: focused regressions prove bad-config exits, miswired watch dispatch,
+      and wrong TV-command routing are caught explicitly
+
+      - Proof: command-level evidence must include at least one real CLI invocation
+      path and one failure-path assertion'
     refs:
     - ARCHITECTURE.md#2.13
+    - ARCHITECTURE.md#2.12
     - src/sfumato/cli.py
+    - src/sfumato/__main__.py
+    - tests/test_cli.py
     depends_on:
     - production.watch
+    - production.cli-full.contract
+    - production.cli-full.tests
     agent: python-executor
   - id: production.docker
     name: Create Dockerfile and deployment config
