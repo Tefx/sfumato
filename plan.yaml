@@ -5190,16 +5190,20 @@ phases:
 
       2. ReplayQueue persists and cycles correctly
 
-      3. Orchestrator uses primary queue first, replay as fallback
+      3. Orchestrator wiring follows an explicit contract -> test -> implementation
+      chain
 
-      4. Expiry removes old batches
+      4. Primary queue takes precedence over replay queue
 
-      5. Deduplication prevents redundant LLM calls
+      5. Consumed primary batches transfer into replay
 
-      6. All tests pass
+      6. Replay expiry triggers during news refresh
 
-      '
-    verification: '- All implementation steps completed
+      7. Deduplication skips the LLM path when RSS overlap exceeds 80% and preserves
+      existing batches
+
+      8. All tests pass'
+    verification: '- All implementation and upstream contract/test steps completed
 
       - uv run pytest tests/ passes
 
@@ -5207,8 +5211,16 @@ phases:
 
       - Expiry verified in tests
 
-      '
+      - Contract-first evidence exists for scheduler wiring'
     depends_on:
+    - replay.config
+    - replay.config.contract
+    - replay.config.test
+    - replay.queue
+    - replay.queue.contract
+    - replay.queue.test
+    - replay.scheduler-wire.contract
+    - replay.scheduler-wire.test
     - replay.scheduler-wire
   - id: replay.config.contract
     name: Define replay expiry config contract
