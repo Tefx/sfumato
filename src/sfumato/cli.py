@@ -1,9 +1,38 @@
 """CLI entry point for sfumato.
 
 Implements the CLI contract from ARCHITECTURE.md#2.13:
-- Typer app with run and preview commands
+- Typer app with init, run, watch, preview commands
+- TV management subcommands (status, list, clean)
 - Config loading and error handling
 - User-friendly error messages and exit codes
+
+EXIT CODE SEMANTICS (CONTRACT):
+    0: Success
+    1: General/unexpected error
+    2: Configuration error (invalid config file)
+    3: State initialization error (cannot create/load state)
+    4: Input validation error (invalid arguments)
+    5: File/IO error (missing file, permission denied)
+
+COMMAND BEHAVIOR CONTRACTS:
+    - init: Idempotent, creates config/state dirs if missing
+    - run: Single execution, outputs render path on success
+    - watch: Daemon mode, runs until SIGINT/SIGTERM
+    - preview: Single execution, opens result in system viewer
+    - tv status: Outputs JSON if --json, else human-readable
+    - tv list: Outputs JSON if --json, else table format
+    - tv clean: Outputs count of deleted images
+
+FLAG SEMANTICS (see CLI_FLAG_SEMANTICS constant for details):
+    --config: Path to TOML config file
+    --verbose: Enable verbose output
+    --no-upload: Skip TV upload (local only)
+    --no-news: Pure painting mode
+    --painting: Specific painting file
+    --cli: Override AI CLI backend
+    --model: Override AI model
+    --json: JSON output format
+    --keep: Number of uploads to retain
 """
 
 from __future__ import annotations
@@ -11,9 +40,11 @@ from __future__ import annotations
 import asyncio
 import datetime
 import hashlib
+import signal
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NoReturn
 
 import typer
 
@@ -29,6 +60,45 @@ app = typer.Typer(
     help="Turn Samsung The Frame into a living art + news terminal.",
     no_args_is_help=True,
 )
+
+# Subcommand group: sfumato tv ...
+tv_app = typer.Typer(help="TV management commands.")
+app.add_typer(tv_app, name="tv")
+
+
+# =============================================================================
+# EXIT CODE CONSTANTS (CONTRACT)
+# =============================================================================
+
+EXIT_SUCCESS = 0
+EXIT_GENERAL_ERROR = 1
+EXIT_CONFIG_ERROR = 2
+EXIT_STATE_ERROR = 3
+EXIT_INPUT_ERROR = 4
+EXIT_FILE_ERROR = 5
+
+
+# =============================================================================
+# FLAG SEMANTICS (CONTRACT)
+# =============================================================================
+
+CLI_FLAG_SEMANTICS: dict[str, str] = {
+    "--config": "Path to TOML config file. Searches default locations if not specified.",
+    "--verbose": "Enable verbose output with debug information.",
+    "--no-upload": "Render locally but skip TV upload. Implies local output only.",
+    "--no-news": "Pure painting mode (no news overlay).",
+    "--painting": "Use specific painting file instead of pool selection.",
+    "--cli": "Override AI CLI backend (gemini|codex|claude-code).",
+    "--model": "Override AI model for layout analysis and curation.",
+    "--json": "Output in JSON format for programmatic consumption.",
+    "--keep": "Number of recent uploads to retain on clean.",
+}
+"""Documented flag semantics for CLI commands."""
+
+
+# =============================================================================
+# HELPER FUNCTIONS
+# =============================================================================
 
 
 def _verbose_print(verbose: bool, message: str) -> None:
@@ -48,7 +118,7 @@ def _load_config_or_exit(config_path: Path | None, verbose: bool) -> Any:
         Loaded AppConfig.
 
     Raises:
-        SystemExit: On config load failure with user-friendly message.
+        SystemExit: On config load failure with user-friendly message (exit code 2).
     """
     try:
         config = load_config(config_path)
@@ -57,7 +127,25 @@ def _load_config_or_exit(config_path: Path | None, verbose: bool) -> Any:
         return config
     except ConfigError as e:
         typer.echo(f"Configuration error: {e}", err=True)
-        raise typer.Exit(code=2) from e
+        raise typer.Exit(code=EXIT_CONFIG_ERROR) from e
+
+
+def _output_json(data: dict[str, Any] | list[Any]) -> None:
+    """Output data as JSON to stdout.
+
+    Args:
+        data: Dictionary or list to output as JSON.
+
+    Contract:
+        - Outputs exactly one JSON value to stdout
+        - No trailing newline required (json.dump handles it)
+        - Never includes ANSI color codes
+        - Keys are snake_case for dicts
+    """
+    import json
+
+    json.dump(data, sys.stdout, indent=2, sort_keys=True)
+    typer.echo("")  # Final newline
 
 
 # =============================================================================
@@ -232,17 +320,23 @@ def init(
 ) -> None:
     """Initialize sfumato project: create config, fetch seed paintings, analyze them.
 
-    This command:
-    1. Creates config file if not present (with sensible defaults)
-    2. Creates state directory structure (~/.sfumato/state)
-    3. Fetches seed_size paintings from configured sources
-    4. Analyzes each painting (layout AI + description)
-    5. Computes embeddings for semantic matching
+    BEHAVIOR CONTRACT:
+        - Idempotent: safe to run multiple times
+        - Creates config file if not present (with sensible defaults)
+        - Creates state directory structure under ~/.sfumato/state
+        - Fetches seed_size paintings from configured sources
+        - Analyzes each painting (layout AI + description)
+        - Computes embeddings for semantic matching
+        - Progress printed to stdout
+
+    EXIT CODES:
+        0: Success (or already initialized)
+        1: Unexpected error during initialization
+        2: Configuration error (invalid config file)
+        5: File not found or IO error
 
     This is a potentially long operation (~50 LLM calls for 50 paintings).
-    Progress is printed to stdout.
-
-    Use this for first-time setup before running `sfumato run` or `sfumato watch`.
+    Use for first-time setup before running `sfumato run` or `sfumato watch`.
     """
     # For init, we use default config if no path specified
     # This ensures we have a valid config for creating directories
@@ -272,17 +366,17 @@ def init(
             await init_project(loaded_config)
         except FileNotFoundError as e:
             typer.echo(f"File not found: {e}", err=True)
-            raise typer.Exit(code=5) from e
+            raise typer.Exit(code=EXIT_FILE_ERROR) from e
         except OSError as e:
             typer.echo(f"IO error: {e}", err=True)
-            raise typer.Exit(code=5) from e
+            raise typer.Exit(code=EXIT_FILE_ERROR) from e
         except Exception as e:
             typer.echo(f"Initialization error: {e}", err=True)
             if verbose:
                 import traceback
 
                 typer.echo(traceback.format_exc(), err=True)
-            raise typer.Exit(code=1) from e
+            raise typer.Exit(code=EXIT_GENERAL_ERROR) from e
 
     asyncio.run(_init())
 
@@ -335,15 +429,28 @@ def run(
 ) -> None:
     """Execute a single full pipeline cycle.
 
-    Pipeline:
-    1. Load configuration
-    2. Dequeue next news batch (or on-demand refresh if empty)
-    3. Select painting (specific or from pool)
-    4. Analyze layout with LLM
-    5. Extract color palette
-    6. Render 4K PNG
-    7. Upload to TV (unless --no-upload)
-    8. Mark painting as used
+    BEHAVIOR CONTRACT:
+        - Single execution: one rotation cycle then exit
+        - Outputs render path on success (stdout)
+        - Errors go to stderr with context
+
+    PIPELINE ORDER (ARCHITECTURE.md#2.12):
+        1. Load configuration
+        2. Dequeue next news batch (or on-demand refresh if empty)
+        3. Select painting (specific or from pool)
+        4. Analyze layout with LLM
+        5. Extract color palette
+        6. Render 4K PNG
+        7. Upload to TV (unless --no-upload)
+        8. Mark painting as used
+
+    EXIT CODES:
+        0: Success
+        1: Pipeline error (LLM failure, render failure, etc.)
+        2: Configuration error
+        3: State initialization error
+        4: Input validation error
+        5: File not found or IO error
 
     Use --no-upload for local testing without TV connection.
     Use --painting to test with a specific image file.
@@ -380,7 +487,7 @@ def run(
         state = AppState.load(loaded_config.data_dir)
     except Exception as e:
         typer.echo(f"Failed to initialize state: {e}", err=True)
-        raise typer.Exit(code=3) from e
+        raise typer.Exit(code=EXIT_STATE_ERROR) from e
 
     # Run the pipeline asynchronously
     async def _run_pipeline() -> None:
@@ -415,22 +522,140 @@ def run(
 
         except ValueError as e:
             typer.echo(f"Input error: {e}", err=True)
-            raise typer.Exit(code=4) from e
+            raise typer.Exit(code=EXIT_INPUT_ERROR) from e
         except FileNotFoundError as e:
             typer.echo(f"File not found: {e}", err=True)
-            raise typer.Exit(code=5) from e
+            raise typer.Exit(code=EXIT_FILE_ERROR) from e
         except OSError as e:
             typer.echo(f"IO error: {e}", err=True)
-            raise typer.Exit(code=5) from e
+            raise typer.Exit(code=EXIT_FILE_ERROR) from e
         except Exception as e:
             typer.echo(f"Pipeline error: {e}", err=True)
             if verbose:
                 import traceback
 
                 typer.echo(traceback.format_exc(), err=True)
-            raise typer.Exit(code=1) from e
+            raise typer.Exit(code=EXIT_GENERAL_ERROR) from e
 
     asyncio.run(_run_pipeline())
+
+
+@app.command()
+def watch(
+    config: Path = typer.Option(
+        None,
+        "--config",
+        "-c",
+        help="Config file path (searches default locations if not specified)",
+        exists=False,
+        dir_okay=False,
+    ),
+    cli_override: str = typer.Option(
+        None,
+        "--cli",
+        help="Override AI CLI backend (gemini|codex|claude-code).",
+    ),
+    model_override: str = typer.Option(
+        None,
+        "--model",
+        "-m",
+        help="Override AI model for layout analysis and curation.",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "-v",
+        "--verbose",
+        help="Enable verbose output with action logging.",
+    ),
+) -> None:
+    """Start the daemon (long-running watch mode).
+
+    BEHAVIOR CONTRACT:
+        - Runs indefinitely until SIGINT/SIGTERM
+        - Handles graceful shutdown on interrupt
+        - Respects quiet_hours and active_hours from config
+        - Outputs status messages to stdout (one per action)
+        - Errors go to stderr
+
+    DAEMON LOOP (ARCHITECTURE.md#6):
+        1. Load state from disk
+        2. Expire old news queue entries
+        3. Check scheduler for next action
+        4. Execute action (refresh_news, rotate, backfill)
+        5. Save state to disk
+        6. Sleep until next action
+        7. Repeat from step 3
+
+    SIGNAL HANDLING:
+        - SIGINT (Ctrl+C): Graceful shutdown after current action
+        - SIGTERM: Graceful shutdown after current action
+
+    EXIT CODES:
+        0: Graceful shutdown via signal
+        1: Unexpected error during daemon operation
+        2: Configuration error
+        3: State initialization error
+
+    LOGGING:
+        - Startup: "Starting sfumato daemon..."
+        - Action: "Action: <action_type> at <timestamp>"
+        - Shutdown: "Shutting down..."
+        - Verbose mode: Additional debug information
+    """
+    # STUB IMPLEMENTATION - Full business logic in separate dispatch step
+    # This signature and behavior contract is complete; implementation pending.
+
+    loaded_config = _load_config_or_exit(config, verbose)
+
+    # Apply CLI overrides (stub - these would modify config)
+    if cli_override:
+        _verbose_print(verbose, f"Overriding AI CLI backend to: {cli_override}")
+    if model_override:
+        _verbose_print(verbose, f"Overriding AI model to: {model_override}")
+
+    # Initialize state
+    try:
+        state = AppState.load(loaded_config.data_dir)
+        _verbose_print(verbose, f"State directory: {loaded_config.data_dir}")
+    except Exception as e:
+        typer.echo(f"Failed to initialize state: {e}", err=True)
+        raise typer.Exit(code=EXIT_STATE_ERROR) from e
+
+    # Signal handling state
+    shutdown_requested = False
+
+    def handle_shutdown(signum: int, frame: Any) -> None:
+        """Set shutdown flag for graceful termination."""
+        nonlocal shutdown_requested
+        shutdown_requested = True
+        typer.echo("\nShutdown requested, finishing current action...")
+
+    signal.signal(signal.SIGINT, handle_shutdown)
+    signal.signal(signal.SIGTERM, handle_shutdown)
+
+    typer.echo("Starting sfumato daemon...")
+    typer.echo(f"TV: {loaded_config.tv.ip}:{loaded_config.tv.port}")
+    typer.echo(
+        f"Schedule: rotate every {loaded_config.schedule.rotate_interval_minutes}min"
+    )
+    typer.echo(f"News refresh: every {loaded_config.schedule.news_interval_hours}h")
+    typer.echo("Press Ctrl+C to stop.")
+
+    # STUB: Main daemon loop would be implemented in orchestrator.watch()
+    # For now, output startup info and wait for signal
+    _verbose_print(verbose, "Daemon loop initialized (stub - implementation pending)")
+
+    # Placeholder: wait for shutdown signal
+    while not shutdown_requested:
+        typer.echo("Daemon running... (implementation pending)")
+        typer.echo(
+            "Use 'sfumato run' for single execution until daemon is implemented."
+        )
+        break
+
+    typer.echo("Shutting down...")
+    state.save_all()
+    typer.echo("Goodbye.")
 
 
 @app.command()
@@ -452,12 +677,19 @@ def preview(
 ) -> None:
     """Render and open the result in the system image viewer.
 
-    Equivalent to: sfumato run --no-upload --preview
+    BEHAVIOR CONTRACT:
+        - Equivalent to: sfumato run --no-upload --preview
+        - Single execution with preview enabled
+        - Opens PNG in system default viewer
+        - No TV upload
 
-    This command:
-    1. Runs the full pipeline (news + painting + render)
-    2. Skips TV upload
-    3. Opens the generated PNG in your system's default image viewer
+    EXIT CODES:
+        0: Success
+        1: Pipeline error
+        2: Configuration error
+        3: State initialization error
+        4: Input validation error
+        5: File not found or IO error
 
     Useful for testing layout, colors, and overall appearance
     before pushing to the TV.
@@ -476,7 +708,7 @@ def preview(
         state = AppState.load(loaded_config.data_dir)
     except Exception as e:
         typer.echo(f"Failed to initialize state: {e}", err=True)
-        raise typer.Exit(code=3) from e
+        raise typer.Exit(code=EXIT_STATE_ERROR) from e
 
     async def _run_preview() -> None:
         try:
@@ -499,22 +731,241 @@ def preview(
 
         except ValueError as e:
             typer.echo(f"Input error: {e}", err=True)
-            raise typer.Exit(code=4) from e
+            raise typer.Exit(code=EXIT_INPUT_ERROR) from e
         except FileNotFoundError as e:
             typer.echo(f"File not found: {e}", err=True)
-            raise typer.Exit(code=5) from e
+            raise typer.Exit(code=EXIT_FILE_ERROR) from e
         except OSError as e:
             typer.echo(f"IO error: {e}", err=True)
-            raise typer.Exit(code=5) from e
+            raise typer.Exit(code=EXIT_FILE_ERROR) from e
         except Exception as e:
             typer.echo(f"Pipeline error: {e}", err=True)
             if verbose:
                 import traceback
 
                 typer.echo(traceback.format_exc(), err=True)
-            raise typer.Exit(code=1) from e
+            raise typer.Exit(code=EXIT_GENERAL_ERROR) from e
 
     asyncio.run(_run_preview())
+
+
+# =============================================================================
+# TV SUBCOMMANDS (CONTRACT)
+# =============================================================================
+
+
+@tv_app.command("status")
+def tv_status(
+    config: Path = typer.Option(
+        None,
+        "--config",
+        "-c",
+        help="Config file path (searches default locations if not specified)",
+        exists=False,
+        dir_okay=False,
+    ),
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help="Output in JSON format for programmatic consumption.",
+    ),
+) -> None:
+    """Check TV connection and Art Mode status.
+
+    BEHAVIOR CONTRACT:
+        - Non-throwing: always outputs status, never raises
+        - Human-readable output by default
+        - JSON output with --json flag
+        - Quick check: completes within 10 seconds (timeout boundary)
+
+    OUTPUT FORMAT (human-readable):
+        TV Status:
+          Reachable: yes/no
+          Art Mode: supported/unsupported/active/inactive
+          Uploads: <count>
+
+    OUTPUT FORMAT (JSON):
+        {
+          "reachable": bool,
+          "art_mode_supported": bool,
+          "art_mode_active": bool,
+          "uploaded_count": int,
+          "error": string or null
+        }
+
+    EXIT CODES:
+        0: TV reachable (check output for Art Mode status)
+        1: Unexpected error during status check
+        2: Configuration error
+
+    Note: Exit code 0 does not guarantee Art Mode is active.
+    Check the "art_mode_active" field in output for that.
+    """
+    # STUB IMPLEMENTATION - Full business logic in separate dispatch step
+    # This signature and output contract is complete; implementation pending.
+
+    loaded_config = _load_config_or_exit(config, False)
+
+    # Placeholder output
+    if json_output:
+        _output_json(
+            {
+                "reachable": False,
+                "art_mode_supported": False,
+                "art_mode_active": False,
+                "uploaded_count": 0,
+                "error": "TV status check not implemented (stub)",
+            }
+        )
+    else:
+        typer.echo("TV Status:")
+        typer.echo("  (tv status stub - implementation pending)")
+        typer.echo("  Use 'sfumato run --no-upload' for local testing.")
+
+    # Import tv module for stub reference
+    # from sfumato.tv import check_status, TvStatus
+    # status = check_status(loaded_config.tv)
+    # Then output based on json_output flag
+
+
+@tv_app.command("list")
+def tv_list(
+    config: Path = typer.Option(
+        None,
+        "--config",
+        "-c",
+        help="Config file path (searches default locations if not specified)",
+        exists=False,
+        dir_okay=False,
+    ),
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help="Output in JSON format for programmatic consumption.",
+    ),
+) -> None:
+    """List uploaded images on the TV.
+
+    BEHAVIOR CONTRACT:
+        - Lists all images currently stored in TV's Art Mode
+        - Human-readable table format by default
+        - JSON output with --json flag
+        - Raises TvConnectionError on TV unreachable
+
+    OUTPUT FORMAT (human-readable):
+        Content ID      | File Name  | Uploaded
+        ----------------|------------|----------
+        MY_F0001        | art1.png   | (date if available)
+        MY_F0002        | art2.png   | (date if available)
+
+    OUTPUT FORMAT (JSON):
+        [
+          {"content_id": "MY_F0001", "file_name": "art1.png"},
+          {"content_id": "MY_F0002", "file_name": null}
+        ]
+
+    EXIT CODES:
+        0: Success (list retrieved)
+        1: TV connection error
+        2: Configuration error
+
+    Requires TV to be reachable and paired.
+    """
+    # STUB IMPLEMENTATION - Full business logic in separate dispatch step
+    # This signature and output contract is complete; implementation pending.
+
+    loaded_config = _load_config_or_exit(config, False)
+
+    # Placeholder output
+    if json_output:
+        _output_json([])
+    else:
+        typer.echo("Uploaded Images:")
+        typer.echo("  (tv list stub - implementation pending)")
+        typer.echo("  No images to display.")
+
+    # Import tv module for stub reference
+    # from sfumato.tv import list_uploaded, UploadedImage
+    # images = list_uploaded(loaded_config.tv)
+    # Then output table or json
+
+
+@tv_app.command("clean")
+def tv_clean(
+    config: Path = typer.Option(
+        None,
+        "--config",
+        "-c",
+        help="Config file path (searches default locations if not specified)",
+        exists=False,
+        dir_okay=False,
+    ),
+    keep: int = typer.Option(
+        5,
+        "--keep",
+        "-k",
+        help="Number of most recent uploads to retain.",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "-v",
+        "--verbose",
+        help="Show details of deleted images.",
+    ),
+) -> None:
+    """Remove old uploads from the TV.
+
+    BEHAVIOR CONTRACT:
+        - Removes oldest uploads, keeping most recent `--keep` images
+        - Ordering by TV metadata date (or content_id lexical if unavailable)
+        - Non-throwing for individual delete failures: logs and continues
+        - Outputs count of successfully deleted images
+
+    KEEP-POLICY (ARCHITECTURE.md#2.8):
+        - Retains `--keep` most recent uploads
+        - Uses TV metadata date for ordering when available
+        - Falls back to lexical ascending by content_id
+        - Protected: retained images are NEVER deleted due to failures
+
+    OUTPUT FORMAT (human-readable):
+        Deleted 3 images, keeping 5 most recent.
+
+    OUTPUT FORMAT (verbose):
+        Deleted 3 images:
+          - MY_F0001 (oldest)
+          - MY_F0002
+        Kept 5 images:
+          - MY_F0003
+          - MY_F0004
+          ...
+
+    EXIT CODES:
+        0: Success (cleanup complete)
+        1: TV connection error (on list failure)
+        2: Configuration error
+
+    Note: Individual delete failures are logged but do not cause exit 1.
+    """
+    # STUB IMPLEMENTATION - Full business logic in separate dispatch step
+    # This signature and output contract is complete; implementation pending.
+
+    loaded_config = _load_config_or_exit(config, verbose)
+
+    if keep < 0:
+        typer.echo("Error: --keep must be >= 0", err=True)
+        raise typer.Exit(code=EXIT_INPUT_ERROR)
+
+    # Placeholder output
+    typer.echo(f"Clean TV uploads (stub - implementation pending)")
+    typer.echo(f"Would keep {keep} most recent uploads.")
+
+    if verbose:
+        typer.echo("No images to clean.")
+
+    # Import tv module for stub reference
+    # from sfumato.tv import clean_old_uploads
+    # deleted = clean_old_uploads(loaded_config.tv, keep=keep)
+    # typer.echo(f"Deleted {deleted} images, keeping {keep} most recent.")
 
 
 def main() -> None:
