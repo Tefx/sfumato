@@ -487,7 +487,7 @@ phases:
     agent: python-executor
   - id: core.palette.contract
     name: Define palette extraction contract
-    status: pending
+    status: claimed
     description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
       \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nspec_refs:\n  - ARCHITECTURE.md#2.4\n\
       touch_paths:\n  - src/sfumato/palette.py\nharness_refs:\n  - tests/test_palette.py\n\
@@ -509,6 +509,8 @@ phases:
       - Hex normalization and color ordering guarantees are pinned explicitly, not
       inferred later'
     agent: python-executor
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T12:37:16.229958+00:00'
   - id: core.palette.tests
     name: Author palette extraction tests
     status: pending
