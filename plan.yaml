@@ -3818,7 +3818,7 @@ phases:
       - LiteLLM import handled as optional runtime dependency path.'
   - id: sdk.dockerfile
     name: Dockerfile SDK mode
-    status: pending
+    status: claimed
     description: 'Simplify Dockerfile for SDK backend mode. When using backend=sdk,
       the container does not need Node.js or CLI tools (gemini, codex, claude).
 
@@ -3855,6 +3855,8 @@ phases:
     depends_on:
     - sdk.config-and-deps
     agent: python-executor
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T21:37:23.439655+00:00'
   - id: sdk.gate
     name: SDK phase gate review
     status: pending
