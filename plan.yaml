@@ -4611,6 +4611,30 @@ phases:
       - Production logic remains unimplemented except for minimal test fixtures/mocks'
     depends_on:
     - art-facts.layout-prompt.contract
+  - id: art-facts.template-whisper.contract
+    name: Define whisper template variable contract
+    status: pending
+    description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
+      \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nagent: software-architect\n\
+      agent_source: default\nspec_refs:\n  - PROTOTYPING.md#11\ntouch_paths:\n  -\
+      \ templates/painting_text.html\n  - templates/magazine.html\n  - templates/portrait.html\n\
+      \  - tests/test_render.py\nharness_refs:\n  - tests/test_render.py\n\nDefine\
+      \ the production-template contract for whisper rendering before implementation.\n\
+      \nContract scope only:\n1. Specify the required template variables: WHISPER_POSITION,\
+      \ WHISPER_COLOR, WHISPER_SHADOW, WHISPER_TEXT.\n2. Specify the required DOM/CSS\
+      \ placeholder shape for the whisper block in each production template.\n3. Specify\
+      \ shared typography and positioning constraints that all templates must satisfy.\n\
+      4. Record compatibility expectations with existing template variable style.\n\
+      5. No rendered template logic or completed HTML implementation in this step.\n\
+      \nDeliverables:\n- Shared variable contract for whisper rendering\n- Template-level\
+      \ placeholder contract for all 3 production templates\n- Acceptance notes for\
+      \ syntax compatibility and uniform variable naming"
+    verification: '- Contract defines the whisper variables and placeholder structure
+      for all 3 templates
+
+      - Typography/positioning constraints are explicit
+
+      - No implementation HTML/CSS beyond placeholder or stub-level contract artifacts'
 - id: replay
   name: News Replay Queue
   status: pending
