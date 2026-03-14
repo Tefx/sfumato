@@ -3924,3 +3924,34 @@ phases:
     - tests/test_config.py
     - tests/test_cli.py
     agent: python-executor
+  - id: hardening.llm-cli-commands
+    name: LLM CLI command construction tests
+    status: pending
+    description: "step_type: implementation\ntouch_paths:\n  - src/sfumato/llm.py\n\
+      \  - tests/test_llm.py\nagent: python-executor\n\n## Objective\n\nFix bug #6:\
+      \ gemini/codex CLI commands include unsupported arguments.\n\n## Context\n\n\
+      llm.py already has comments noting which args each backend does NOT support\n\
+      (lines 351, 367), but the code may still be constructing commands with those\
+      \ args.\n\n## Tasks\n\n1. **Audit command construction**: For each backend (gemini,\
+      \ codex, claude-code),\n   trace the command building logic and verify no unsupported\
+      \ flags are passed.\n   - gemini: does NOT support --max-tokens, --temperature,\
+      \ --system, --image\n   - codex: does NOT support --max-tokens, --temperature,\
+      \ --system\n   - claude-code: supports -p, -m, --max-tokens, --output-format\n\
+      \n2. **Fix any violations**: Remove unsupported flags from command construction.\n\
+      \n3. **Add command construction tests**: For each backend, add a test that:\n\
+      \   - Captures the constructed command (mock subprocess, inspect args)\n   -\
+      \ Asserts unsupported flags are NOT present\n   - Asserts required flags ARE\
+      \ present\n   - Tests both invoke_text() and invoke_vision() paths where applicable\n\
+      \nGrep hints:\n  - `grep -n 'cmd.extend\\|cmd.append\\|cmd =' src/sfumato/llm.py`\n\
+      \  - `grep -n 'gemini\\|codex\\|claude' src/sfumato/llm.py`\n\n## Pattern to\
+      \ follow\nExisting tests in test_llm.py mock subprocess. Follow the same pattern\
+      \ but\nadd explicit assertions on the command list contents."
+    verification: '- uv run pytest tests/test_llm.py -v: all pass
+
+      - New tests verify command construction for gemini, codex, claude-code
+
+      - No unsupported flags in any backend''s command list'
+    refs:
+    - src/sfumato/llm.py
+    - tests/test_llm.py
+    agent: python-executor
