@@ -4404,7 +4404,7 @@ phases:
       \ content."
 - id: art-facts
   name: Art Facts + Whisper Text + Subject Avoidance
-  status: pending
+  status: in_progress
   gate: Whisper text renders in all templates without overlap with news text or painting
     subject. Art facts cached in layout cache. Visual verification on 4K output.
   context: Validated in PROTOTYPING.md#11. LLM layout prompt outputs 3 mutually exclusive
@@ -4571,7 +4571,7 @@ phases:
     - art-facts.orchestrator-wire
   - id: art-facts.layout-prompt.contract
     name: Define layout prompt zone and art-fact contract
-    status: pending
+    status: claimed
     description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
       \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nagent: software-architect\n\
       agent_source: default\nspec_refs:\n  - PROTOTYPING.md#11\n  - ARCHITECTURE.md#2.5\n\
@@ -4593,6 +4593,8 @@ phases:
 
       - No implementation logic beyond signatures, type definitions, interfaces, or
       stubs'
+    claimed_by: software-architect
+    claimed_at: '2026-03-14T21:45:19.612530+00:00'
   - id: art-facts.layout-prompt.test
     name: Define layout prompt contract tests
     status: pending
