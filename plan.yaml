@@ -2835,7 +2835,7 @@ phases:
       semantics and bounded backfill behavior as contracted.'
   - id: production.cli-full
     name: 'Complete CLI: watch + tv subcommands'
-    status: pending
+    status: claimed
     description: "step_type: implementation\ntags:\n  - integration\nspec_refs:\n\
       \  - ARCHITECTURE.md#2.13\n  - ARCHITECTURE.md#2.12\ntouch_paths:\n  - src/sfumato/cli.py\n\
       \  - src/sfumato/__main__.py\n  - tests/test_cli.py\nharness_refs:\n  - typer\
@@ -2879,6 +2879,8 @@ phases:
     - production.cli-full.contract
     - production.cli-full.tests
     agent: python-executor
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T18:11:01.854110+00:00'
   - id: production.docker
     name: Create Dockerfile and deployment config
     status: pending
