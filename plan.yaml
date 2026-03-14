@@ -2812,3 +2812,29 @@ phases:
       - Highest-risk failure semantics are explicit for wrap-around hour windows,
       simultaneous due actions, and immediate-vs-sleep timing boundaries'
     agent: python-executor
+  - id: production.scheduler.tests
+    name: Author scheduler tests
+    status: pending
+    description: "step_type: test\nspec_refs:\n  - ARCHITECTURE.md#2.11\ntouch_paths:\n\
+      \  - tests/test_scheduler.py\n  - src/sfumato/scheduler.py\nharness_refs:\n\
+      \  - pytest\nagent: python-executor\n\nAuthor scheduler tests that exercise\
+      \ the `src/sfumato/scheduler.py` contract before implementation.\n\nRequired\
+      \ coverage:\n- active-hours main path, quiet-hours main path, and dual-timer\
+      \ action selection\n- combined `REFRESH_NEWS | ROTATE` when news refresh is\
+      \ due\n- `ROTATE`-only path when news is fresh but rotation is due\n- `BACKFILL`\
+      \ only when pool expansion is needed and no heavier action has precedence\n\
+      - `seconds_until_next_action()` behavior for immediate execution and next wake-up\n\
+      - wrap-around active/quiet hour windows and boundary timestamps\n\nConstraints:\n\
+      - tests may use frozen times and focused fixtures, but no product scheduling\
+      \ logic beyond helpers\n- each listed failure mode needs a named regression\
+      \ test if exact test names are not yet known"
+    verification: '- Main path: targeted tests define expected actions for active,
+      quiet, refresh, rotate, and backfill scenarios
+
+      - Failure path: focused regressions define wrap-around hour boundaries, simultaneous
+      due-action precedence, and zero-second wake-up behavior
+
+      - Proof: one named test exists for each required precedence and timing edge'
+    depends_on:
+    - production.scheduler.contract
+    agent: python-executor
