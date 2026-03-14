@@ -5010,7 +5010,7 @@ phases:
       - Contract-only step; implementation reserved for art-facts.orchestrator-wire.'
   - id: art-facts.orchestrator-wire.test
     name: Define orchestrator art-facts contract tests
-    status: claimed
+    status: done
     description: "step_type: test\nagent: python-executor\nspec_refs:\n  - ARCHITECTURE.md#2.12\n\
       touch_paths:\n  - tests/\n  - src/sfumato/orchestrator.py\n  - src/sfumato/render.py\n\
       harness_refs:\n  - tests/\n\nDefine contract tests for orchestrator-side art-facts\
@@ -5036,6 +5036,26 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T22:47:39.430605+00:00'
+    done_at: '2026-03-14T22:57:54.052625+00:00'
+    evidence: 'Step: art-facts.orchestrator-wire.test
+
+      Commit hash(es): 0c76df4; merged as [main 3b74eaa]
+
+      Files changed: tests/test_orchestrator.py
+
+      Verification:
+
+      - uv run pytest tests/test_orchestrator.py -v -> all pass in subagent run
+
+      - Added contract test coverage for whisper_fact_index propagation, rotation
+      ownership semantics, art_facts flow into render context, and related protocol
+      surfaces
+
+      Spec link: ARCHITECTURE.md#2.12
+
+      Gaps/Notes:
+
+      - Test-only step; runtime wiring implementation deferred to art-facts.orchestrator-wire.'
 - id: replay
   name: News Replay Queue
   status: in_progress
