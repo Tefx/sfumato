@@ -381,6 +381,37 @@ def build_template_variables(ctx: RenderContext) -> dict[str, str]:
             ctx.stories, ctx.layout.colors
         )
 
+    # === WHISPER VARIABLE POPULATION (minimal fixture) ===
+    # Populate WHISPER_* variables for the whisper template contract.
+    # These are derived from layout analysis and caller-provided index.
+
+    # WHISPER_POSITION: CSS positioning derived from whisper_zone.position
+    whisper_zone = ctx.layout.whisper_zone
+    whisper_position_css = _position_to_css(whisper_zone.position)
+    # Add max-width constraint from whisper_zone.max_width_percent
+    whisper_max_width = f"max-width: {whisper_zone.max_width_percent}%;"
+    variables["WHISPER_POSITION"] = f"{whisper_position_css} {whisper_max_width}"
+
+    # WHISPER_COLOR: subordinate text color from text_dim
+    variables["WHISPER_COLOR"] = ctx.layout.colors.text_dim
+
+    # WHISPER_SHADOW: readability shadow (same as text_shadow)
+    variables["WHISPER_SHADOW"] = text_shadow
+
+    # WHISPER_TEXT: selected art-fact or empty (caller controls via whisper_fact_index)
+    if ctx.whisper_fact_index is not None and ctx.layout.art_facts:
+        # Zero-based index into art_facts list
+        if 0 <= ctx.whisper_fact_index < len(ctx.layout.art_facts):
+            variables["WHISPER_TEXT"] = ctx.layout.art_facts[
+                ctx.whisper_fact_index
+            ].text
+        else:
+            # Index out of range: use empty to satisfy contract
+            variables["WHISPER_TEXT"] = ""
+    else:
+        # whisper disabled or no art facts
+        variables["WHISPER_TEXT"] = ""
+
     return variables
 
 
