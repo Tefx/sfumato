@@ -5959,7 +5959,7 @@ phases:
       - Read-only gate run; no code mutations.'
 - id: polish
   name: 'Polish: Default Model + Documentation'
-  status: in_progress
+  status: done
   gate: Default model is gemini-3-flash-preview. README and ARCHITECTURE.md reflect
     all new features (whisper text, replay queue, subject avoidance).
   context: 'Final cleanup phase: update default model and documentation to match implemented
@@ -6113,7 +6113,7 @@ phases:
       Spec link: README.md, ARCHITECTURE.md'
   - id: polish.gate
     name: Polish phase gate review
-    status: claimed
+    status: done
     description: 'As an INDEPENDENT REVIEWER (gate-reviewer), assess whether the polish
       phase
 
@@ -6145,3 +6145,38 @@ phases:
     - polish.docs
     claimed_by: gate-reviewer
     claimed_at: '2026-03-14T23:37:24.967027+00:00'
+    done_at: '2026-03-14T23:38:43.221608+00:00'
+    evidence: 'Step: polish.gate
+
+      Commit hash(es): none (read-only gate review)
+
+      Files changed: []
+
+      Gate decision: PASS
+
+      Verification:
+
+      - uv run pytest tests/test_config.py -v -> 26/26 passed
+
+      - Verified AiConfig/default config use gemini-3-flash-preview
+
+      - Verified README/ARCHITECTURE document whisper text, replay, subject avoidance,
+      and replay_expire_days
+
+      - Verified no Rijksmuseum references remain in docs
+
+      - git status --porcelain -> clean
+
+      Findings:
+
+      - none
+
+      Rationale:
+
+      - Polish acceptance criteria satisfied for defaults and documentation alignment
+
+      Spec link: README.md, ARCHITECTURE.md
+
+      Gaps/Notes:
+
+      - No blockers or should-fix items.'
