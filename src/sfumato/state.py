@@ -122,6 +122,9 @@ class LayoutCacheEntryJson(TypedDict):
     painting_artist: str
     painting_description: str
     text_zone: dict[str, str]
+    subject_zone: dict[str, str]
+    whisper_zone: dict[str, object]
+    art_facts: list[str]
     colors: dict[str, str]
     scrim: dict[str, str]
     recommended_stories: int
@@ -222,6 +225,17 @@ def _to_layout_json(layout: LayoutParams) -> LayoutCacheEntryJson:
             "position": layout.text_zone.position,
             "reason": layout.text_zone.reason,
         },
+        "subject_zone": {
+            "position": layout.subject_zone.position,
+            "reason": layout.subject_zone.reason,
+        },
+        "whisper_zone": {
+            "position": layout.whisper_zone.position,
+            "reason": layout.whisper_zone.reason,
+            "max_width_percent": layout.whisper_zone.max_width_percent,
+            "readability_notes": layout.whisper_zone.readability_notes,
+        },
+        "art_facts": [fact.text for fact in layout.art_facts],
         "colors": {
             "text_primary": layout.colors.text_primary,
             "text_secondary": layout.colors.text_secondary,
@@ -245,19 +259,31 @@ def _to_layout_json(layout: LayoutParams) -> LayoutCacheEntryJson:
 
 def _from_layout_json(payload: dict[str, object]) -> LayoutParams:
     from sfumato.layout_ai import (
+        ArtFact,
         LayoutColors,
         LayoutParams,
         PortraitLayout,
         ScrimParams,
+        SubjectZone,
         TextZone,
+        WhisperZone,
     )
 
     text_zone_raw = payload.get("text_zone")
+    subject_zone_raw = payload.get("subject_zone")
+    whisper_zone_raw = payload.get("whisper_zone")
+    art_facts_raw = payload.get("art_facts")
     colors_raw = payload.get("colors")
     scrim_raw = payload.get("scrim")
 
     if not isinstance(text_zone_raw, dict):
         raise ValueError("Layout payload missing text_zone")
+    if subject_zone_raw is not None and not isinstance(subject_zone_raw, dict):
+        raise ValueError("Layout payload has invalid subject_zone")
+    if whisper_zone_raw is not None and not isinstance(whisper_zone_raw, dict):
+        raise ValueError("Layout payload has invalid whisper_zone")
+    if art_facts_raw is not None and not isinstance(art_facts_raw, list):
+        raise ValueError("Layout payload has invalid art_facts")
     if not isinstance(colors_raw, dict):
         raise ValueError("Layout payload missing colors")
     if not isinstance(scrim_raw, dict):
@@ -272,8 +298,43 @@ def _from_layout_json(payload: dict[str, object]) -> LayoutParams:
             ),
             left_panel_color=str(portrait_payload.get("left_panel_color", "#000000")),
             right_panel_color=str(portrait_payload.get("right_panel_color", "#000000")),
-            info_side=str(portrait_payload.get("info_side", "left")),
+            info_side="left"
+            if str(portrait_payload.get("info_side", "left"))
+            not in {"left", "right", "both"}
+            else str(portrait_payload.get("info_side", "left")),
         )
+
+    subject_zone_payload = (
+        subject_zone_raw if isinstance(subject_zone_raw, dict) else {}
+    )
+    whisper_zone_payload = (
+        whisper_zone_raw if isinstance(whisper_zone_raw, dict) else {}
+    )
+    art_facts_payload = art_facts_raw if isinstance(art_facts_raw, list) else []
+
+    subject_position = str(subject_zone_payload.get("position", "bottom-left"))
+    if subject_position not in {
+        "top-left",
+        "top-right",
+        "bottom-left",
+        "bottom-right",
+        "left-side",
+        "right-side",
+    }:
+        subject_position = "bottom-left"
+
+    whisper_position = str(whisper_zone_payload.get("position", "left-side"))
+    if whisper_position not in {
+        "top-left",
+        "top-right",
+        "bottom-left",
+        "bottom-right",
+        "left-side",
+        "right-side",
+    }:
+        whisper_position = "left-side"
+
+    art_facts = [ArtFact(text=str(item)) for item in art_facts_payload if str(item)]
 
     return LayoutParams(
         orientation=str(payload.get("orientation", "landscape")),
@@ -284,6 +345,19 @@ def _from_layout_json(payload: dict[str, object]) -> LayoutParams:
             position=str(text_zone_raw.get("position", "top-right")),
             reason=str(text_zone_raw.get("reason", "")),
         ),
+        subject_zone=SubjectZone(
+            position=subject_position,
+            reason=str(subject_zone_payload.get("reason", "")),
+        ),
+        whisper_zone=WhisperZone(
+            position=whisper_position,
+            reason=str(whisper_zone_payload.get("reason", "")),
+            max_width_percent=_coerce_int(
+                whisper_zone_payload.get("max_width_percent"), default=18
+            ),
+            readability_notes=str(whisper_zone_payload.get("readability_notes", "")),
+        ),
+        art_facts=art_facts,
         colors=LayoutColors(
             text_primary=str(colors_raw.get("text_primary", "#ffffff")),
             text_secondary=str(colors_raw.get("text_secondary", "#dddddd")),
@@ -662,37 +736,289 @@ class ReplayQueue:
         *,
         dedup_policy: ReplayDedupPolicy = ReplayDedupPolicy(),
     ) -> None:
-        raise NotImplementedError("ReplayQueue contract only; implementation pending")
+        self._state_dir = resolve_state_dir(state_dir)
+        self._path = self._state_dir / REPLAY_QUEUE_JSON
+        threshold = min(max(dedup_policy.overlap_ratio_threshold, 0.0), 1.0)
+        self._dedup_policy = ReplayDedupPolicy(
+            overlap_ratio_threshold=threshold,
+            overlap_ratio_formula=dedup_policy.overlap_ratio_formula,
+            threshold_behavior=dedup_policy.threshold_behavior,
+            identity_priority=dedup_policy.identity_priority,
+        )
+        self._batches: list[ReplayBatch] = []
+        self._next_index = 0
+        self._seen_urls: set[str] = set()
 
     @property
     def size(self) -> int:
         """Return the number of replay batches currently tracked."""
-        raise NotImplementedError("ReplayQueue contract only; implementation pending")
+        return len(self._batches)
 
     @property
     def next_index(self) -> int:
         """Return the zero-based index that the next ``next()`` call will yield."""
-        raise NotImplementedError("ReplayQueue contract only; implementation pending")
+        if not self._batches:
+            return 0
+        return self._next_index % len(self._batches)
 
     def next(self) -> ReplayBatch | None:
         """Return the next replay batch and advance cyclic cursor semantics."""
-        raise NotImplementedError("ReplayQueue contract only; implementation pending")
+        if not self._batches:
+            self._next_index = 0
+            return None
+
+        idx = self.next_index
+        batch = self._batches[idx]
+        replayed = ReplayBatch(
+            stories=batch.stories,
+            tone_description=batch.tone_description,
+            source_enqueued_at=batch.source_enqueued_at,
+            transferred_at=batch.transferred_at,
+            replay_count=batch.replay_count + 1,
+            last_replayed_at=datetime.now().astimezone(),
+        )
+        self._batches[idx] = replayed
+        self._next_index = (idx + 1) % len(self._batches)
+        return replayed
 
     def expire(self, expire_days: int) -> int:
         """Drop replay batches older than ``expire_days`` and rebase ``next_index``."""
-        raise NotImplementedError("ReplayQueue contract only; implementation pending")
+        if expire_days < 0:
+            raise ValueError("expire_days must be >= 0")
+
+        if not self._batches:
+            self._next_index = 0
+            return 0
+
+        cutoff = datetime.now().astimezone() - timedelta(days=expire_days)
+        old_batches = self._batches
+        old_size = len(old_batches)
+        old_next = self.next_index
+
+        kept: list[ReplayBatch] = []
+        old_to_new: dict[int, int] = {}
+        removed = 0
+        for old_idx, batch in enumerate(old_batches):
+            if batch.source_enqueued_at < cutoff:
+                removed += 1
+                continue
+            old_to_new[old_idx] = len(kept)
+            kept.append(batch)
+
+        if removed == 0:
+            return 0
+
+        if not kept:
+            self._batches = []
+            self._next_index = 0
+            self._seen_urls.clear()
+            return removed
+
+        rebased_next: int | None = old_to_new.get(old_next)
+        if rebased_next is None:
+            for offset in range(1, old_size + 1):
+                candidate_old = (old_next + offset) % old_size
+                mapped = old_to_new.get(candidate_old)
+                if mapped is not None:
+                    rebased_next = mapped
+                    break
+        if rebased_next is None:
+            rebased_next = 0
+
+        self._batches = kept
+        self._next_index = rebased_next
+        self._rebuild_seen_urls()
+        return removed
 
     def transfer_from_news_queue(self, batch: QueuedBatch) -> ReplayTransferResult:
         """Append a ``QueuedBatch`` from ``NewsQueue`` if dedup policy permits."""
-        raise NotImplementedError("ReplayQueue contract only; implementation pending")
+        if not batch.stories:
+            return ReplayTransferResult(
+                accepted=False,
+                reason="rejected-empty-batch",
+                overlap_ratio=0.0,
+                matched_batch_index=None,
+            )
+
+        candidate_ids = self._story_identities(batch.stories)
+        highest_overlap = 0.0
+        highest_idx: int | None = None
+
+        for idx, existing in enumerate(self._batches):
+            existing_ids = self._story_identities(existing.stories)
+            overlap_ratio = self._compute_overlap_ratio(candidate_ids, existing_ids)
+            if overlap_ratio > highest_overlap:
+                highest_overlap = overlap_ratio
+                highest_idx = idx
+
+        if (
+            highest_idx is not None
+            and highest_overlap >= self._dedup_policy.overlap_ratio_threshold
+        ):
+            return ReplayTransferResult(
+                accepted=False,
+                reason="rejected-duplicate-overlap",
+                overlap_ratio=highest_overlap,
+                matched_batch_index=highest_idx,
+            )
+
+        replay_batch = ReplayBatch(
+            stories=list(batch.stories),
+            tone_description=batch.tone_description,
+            source_enqueued_at=batch.enqueued_at,
+            transferred_at=datetime.now().astimezone(),
+        )
+        self._batches.append(replay_batch)
+        for story in batch.stories:
+            normalized = self._normalized_url(story.url)
+            if normalized:
+                self._seen_urls.add(normalized)
+
+        return ReplayTransferResult(
+            accepted=True,
+            reason="accepted",
+            overlap_ratio=highest_overlap,
+            matched_batch_index=None,
+        )
 
     def persist(self) -> None:
         """Persist replay queue snapshot to ``replay_queue.json``."""
-        raise NotImplementedError("ReplayQueue contract only; implementation pending")
+        payload: ReplayQueueFileJson = {
+            "version": 1,
+            "next_index": self.next_index,
+            "overlap_ratio_threshold": self._dedup_policy.overlap_ratio_threshold,
+            "batches": [
+                {
+                    "stories": [_to_story_json(story) for story in batch.stories],
+                    "tone_description": batch.tone_description,
+                    "source_enqueued_at": batch.source_enqueued_at.isoformat(),
+                    "transferred_at": batch.transferred_at.isoformat(),
+                    "last_replayed_at": (
+                        batch.last_replayed_at.isoformat()
+                        if batch.last_replayed_at is not None
+                        else None
+                    ),
+                    "replay_count": batch.replay_count,
+                }
+                for batch in self._batches
+            ],
+        }
+        _atomic_write_text(self._path, json.dumps(payload, ensure_ascii=False))
 
     def load(self) -> None:
         """Load replay queue snapshot from ``replay_queue.json`` if present."""
-        raise NotImplementedError("ReplayQueue contract only; implementation pending")
+        if not self._path.exists():
+            self._batches = []
+            self._next_index = 0
+            self._seen_urls.clear()
+            return
+
+        try:
+            payload = json.loads(self._path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return
+
+        if not isinstance(payload, dict):
+            return
+
+        batches_raw = payload.get("batches")
+        if not isinstance(batches_raw, list):
+            return
+
+        loaded_batches: list[ReplayBatch] = []
+        for item in batches_raw:
+            if not isinstance(item, dict):
+                continue
+
+            stories_raw = item.get("stories")
+            source_enqueued_raw = item.get("source_enqueued_at")
+            transferred_raw = item.get("transferred_at")
+            if (
+                not isinstance(stories_raw, list)
+                or not isinstance(source_enqueued_raw, str)
+                or not isinstance(transferred_raw, str)
+            ):
+                continue
+
+            try:
+                stories = [
+                    _from_story_json(story_payload)
+                    for story_payload in stories_raw
+                    if isinstance(story_payload, dict)
+                ]
+                last_replayed_raw = item.get("last_replayed_at")
+                last_replayed_at = (
+                    datetime.fromisoformat(last_replayed_raw)
+                    if isinstance(last_replayed_raw, str)
+                    else None
+                )
+
+                loaded_batches.append(
+                    ReplayBatch(
+                        stories=stories,
+                        tone_description=str(item.get("tone_description", "")),
+                        source_enqueued_at=datetime.fromisoformat(source_enqueued_raw),
+                        transferred_at=datetime.fromisoformat(transferred_raw),
+                        replay_count=_coerce_int(item.get("replay_count"), default=0),
+                        last_replayed_at=last_replayed_at,
+                    )
+                )
+            except (TypeError, ValueError):
+                continue
+
+        threshold_raw = payload.get("overlap_ratio_threshold")
+        threshold = self._dedup_policy.overlap_ratio_threshold
+        if isinstance(threshold_raw, float | int):
+            threshold = float(threshold_raw)
+        threshold = min(max(threshold, 0.0), 1.0)
+        self._dedup_policy = ReplayDedupPolicy(
+            overlap_ratio_threshold=threshold,
+            overlap_ratio_formula=self._dedup_policy.overlap_ratio_formula,
+            threshold_behavior=self._dedup_policy.threshold_behavior,
+            identity_priority=self._dedup_policy.identity_priority,
+        )
+
+        next_index = _coerce_int(payload.get("next_index"), default=0)
+        if not loaded_batches:
+            next_index = 0
+        elif next_index < 0 or next_index >= len(loaded_batches):
+            next_index = 0
+
+        self._batches = loaded_batches
+        self._next_index = next_index
+        self._rebuild_seen_urls()
+
+    def _story_identities(self, stories: list[Story]) -> set[str]:
+        identities: set[str] = set()
+        for story in stories:
+            normalized_url = self._normalized_url(story.url)
+            if normalized_url:
+                identities.add(normalized_url)
+            elif story.headline:
+                identities.add(story.headline.strip())
+        return identities
+
+    def _normalized_url(self, value: str) -> str:
+        return value.strip()
+
+    def _compute_overlap_ratio(
+        self,
+        candidate_ids: set[str],
+        existing_ids: set[str],
+    ) -> float:
+        denominator = min(len(candidate_ids), len(existing_ids))
+        if denominator == 0:
+            return 0.0
+        return len(candidate_ids & existing_ids) / denominator
+
+    def _rebuild_seen_urls(self) -> None:
+        seen_urls: set[str] = set()
+        for replay_batch in self._batches:
+            for story in replay_batch.stories:
+                normalized_url = self._normalized_url(story.url)
+                if normalized_url:
+                    seen_urls.add(normalized_url)
+        self._seen_urls = seen_urls
 
 
 class UsedPaintings:

@@ -13,7 +13,6 @@ current ``NotImplementedError`` stubs by skipping those paths until dispatch.
 from __future__ import annotations
 
 import json
-import ast
 import inspect
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
@@ -23,7 +22,15 @@ from typing import TypeVar, get_type_hints
 import numpy as np
 import pytest
 
-from sfumato.layout_ai import LayoutColors, LayoutParams, ScrimParams, TextZone
+from sfumato.layout_ai import (
+    ArtFact,
+    LayoutColors,
+    LayoutParams,
+    ScrimParams,
+    SubjectZone,
+    TextZone,
+    WhisperZone,
+)
 from sfumato.news import CurationResult, Story
 from sfumato.state import (
     EMBEDDING_CACHE_NPZ,
@@ -35,6 +42,7 @@ from sfumato.state import (
     EmbeddingCache,
     LayoutCache,
     NewsQueue,
+    QueuedBatch,
     UsedPaintings,
     ReplayBatch,
     ReplayDedupPolicy,
@@ -87,6 +95,14 @@ def _layout_params(seed: str) -> LayoutParams:
         painting_artist=f"artist-{seed}",
         painting_description=f"description-{seed}",
         text_zone=TextZone(position="top-right", reason="quiet corner"),
+        subject_zone=SubjectZone(position="bottom-left", reason="subject mass"),
+        whisper_zone=WhisperZone(
+            position="left-side",
+            reason="small factual strip",
+            max_width_percent=18,
+            readability_notes="high contrast edge",
+        ),
+        art_facts=[ArtFact(text=f"fact-{seed}")],
         colors=LayoutColors(
             text_primary="#ffffff",
             text_secondary="#dddddd",
@@ -369,9 +385,22 @@ class TestUsedPaintingsContract:
 
 
 class TestReplayQueueContract:
-    """Replay queue remains a contract-only surface in this milestone."""
+    """Replay queue runtime behavior and persistence contracts."""
 
-    # --- Interface/Method Presence and Signatures ---
+    def _queued_batch(
+        self,
+        indices: list[int],
+        *,
+        enqueued_at: datetime | None = None,
+        tone: str = "replay-tone",
+    ) -> QueuedBatch:
+        if enqueued_at is None:
+            enqueued_at = datetime.now(timezone.utc)
+        return QueuedBatch(
+            stories=[_story(index, published_at=enqueued_at) for index in indices],
+            tone_description=tone,
+            enqueued_at=enqueued_at,
+        )
 
     def test_replay_queue_exports_artifact_and_contract_types(self) -> None:
         assert REPLAY_QUEUE_JSON == "replay_queue.json"
@@ -404,246 +433,232 @@ class TestReplayQueueContract:
         assert annotations["overlap_ratio_threshold"] is float
         assert "batches" in annotations
 
-    def test_replay_queue_public_signatures_match_contract(self) -> None:
-        assert tuple(inspect.signature(ReplayQueue.__init__).parameters) == (
-            "self",
-            "state_dir",
-            "dedup_policy",
-        )
-        assert tuple(inspect.signature(ReplayQueue.next).parameters) == ("self",)
-        assert tuple(inspect.signature(ReplayQueue.expire).parameters) == (
-            "self",
-            "expire_days",
-        )
-        assert tuple(
-            inspect.signature(ReplayQueue.transfer_from_news_queue).parameters
-        ) == ("self", "batch")
-        assert tuple(inspect.signature(ReplayQueue.persist).parameters) == ("self",)
-        assert tuple(inspect.signature(ReplayQueue.load).parameters) == ("self",)
-
-    def test_replay_queue_methods_are_stub_only_not_runtime_logic(self) -> None:
-        source = inspect.getsource(ReplayQueue)
-        replay_class = ast.parse(source).body[0]
-
-        assert isinstance(replay_class, ast.ClassDef)
-
-        stubbed_methods = {
-            "__init__",
-            "size",
-            "next_index",
-            "next",
-            "expire",
-            "transfer_from_news_queue",
-            "persist",
-            "load",
-        }
-
-        for node in replay_class.body:
-            if isinstance(node, ast.FunctionDef) and node.name in stubbed_methods:
-                body = [
-                    stmt
-                    for stmt in node.body
-                    if not (
-                        isinstance(stmt, ast.Expr)
-                        and isinstance(stmt.value, ast.Constant)
-                        and isinstance(stmt.value.value, str)
-                    )
-                ]
-                assert len(body) == 1
-                assert isinstance(body[0], ast.Raise)
-                assert isinstance(body[0].exc, ast.Call)
-                assert isinstance(body[0].exc.func, ast.Name)
-                assert body[0].exc.func.id == "NotImplementedError"
-
-    def test_replay_batch_fields_preserve_source_story_order_contract(self) -> None:
-        """Contract: ReplayBatch.stories must preserve original QueuedBatch story order."""
-        fields = ReplayBatch.__dataclass_fields__
-        assert "stories" in fields
-        # Story order preservation is enforced by implementation, not by type system
-        # This test confirms the field exists; implementation tests verify ordering
-
-    def test_replay_batch_counter_semantics_contract(self) -> None:
-        """Contract: replay_count starts at 0, increments only after successful next()."""
-        fields = ReplayBatch.__dataclass_fields__
-        assert "replay_count" in fields
-        # Default value should be 0 per dataclass definition
-        assert fields["replay_count"].default == 0
-
-    def test_replay_batch_timestamp_semantics_contract(self) -> None:
-        """Contract: last_replayed_at is None until first next(), then set per yield."""
-        fields = ReplayBatch.__dataclass_fields__
-        assert "last_replayed_at" in fields
-        assert fields["last_replayed_at"].default is None
-
-    # --- Cycling/Index Semantics Expectations ---
-
-    def test_replay_queue_next_returns_batch_at_cursor_then_advances_modulo_size(
-        self,
+    def test_replay_queue_next_round_robins_without_destructive_pop(
+        self, tmp_path: Path
     ) -> None:
-        """Contract: next() returns batch at next_index, then advances cursor modulo size."""
-        # This test defines expected behavior; implementation comes later
-        # Verify method exists and has correct signature
-        sig = inspect.signature(ReplayQueue.next)
-        assert list(sig.parameters.keys()) == ["self"]
-        # Return type should be ReplayBatch | None (verified by type hints)
-        hints = get_type_hints(ReplayQueue.next)
-        # Union types may appear differently across Python versions, just check key names
-        assert "return" in hints
+        queue = ReplayQueue(tmp_path)
 
-    def test_replay_queue_next_does_not_remove_entries_cyclic_not_fifo(self) -> None:
-        """Contract: Unlike NewsQueue.dequeue, ReplayQueue.next does not remove entries."""
-        # Verify method signature accepts no removal parameters
-        sig = inspect.signature(ReplayQueue.next)
-        assert len(sig.parameters) == 1  # Only self
-        # Implementation will verify cycling behavior without removal
+        assert queue.transfer_from_news_queue(self._queued_batch([0, 1])).accepted
+        assert queue.transfer_from_news_queue(self._queued_batch([2, 3])).accepted
+        assert queue.size == 2
+        assert queue.next_index == 0
 
-    def test_replay_queue_empty_next_returns_none_and_cursor_remains_zero(self) -> None:
-        """Contract: Empty queue.next() returns None, next_index stays 0."""
-        # This is a behavioral contract; implementation tests verify it
-        # Method signature confirms return type
-        hints = get_type_hints(ReplayQueue.next)
-        assert "return" in hints
+        first = queue.next()
+        second = queue.next()
+        third = queue.next()
 
-    def test_replay_queue_size_property_exists_and_returns_count(self) -> None:
-        """Contract: size property returns number of replay batches."""
-        sig = inspect.signature(ReplayQueue.size.fget)  # type: ignore
-        assert list(sig.parameters.keys()) == ["self"]
+        assert first is not None
+        assert second is not None
+        assert third is not None
+        assert first.stories[0].url == "https://example.com/0"
+        assert second.stories[0].url == "https://example.com/2"
+        assert third.stories[0].url == "https://example.com/0"
+        assert first.replay_count == 1
+        assert second.replay_count == 1
+        assert third.replay_count == 2
+        assert third.last_replayed_at is not None
+        assert queue.size == 2
+        assert queue.next_index == 1
 
-    def test_replay_queue_next_index_property_exists_and_returns_cursor(self) -> None:
-        """Contract: next_index returns zero-based cursor for next next() call."""
-        sig = inspect.signature(ReplayQueue.next_index.fget)  # type: ignore
-        assert list(sig.parameters.keys()) == ["self"]
+    def test_replay_queue_next_on_empty_returns_none_and_keeps_cursor_zero(
+        self, tmp_path: Path
+    ) -> None:
+        queue = ReplayQueue(tmp_path)
 
-    def test_replay_queue_cursor_invariant_when_non_empty(self) -> None:
-        """Contract: When batches is non-empty, 0 <= next_index < len(batches)."""
-        # This invariant is enforced by implementation
-        # TypedDict contract defines next_index range
-        annotations = get_type_hints(ReplayQueueFileJson)
-        assert annotations["next_index"] is int
+        assert queue.next() is None
+        assert queue.size == 0
+        assert queue.next_index == 0
 
-    # --- Persistence Contract Expectations ---
+    def test_replay_queue_expire_uses_source_enqueued_at_and_rebases_cursor(
+        self, tmp_path: Path
+    ) -> None:
+        queue = ReplayQueue(tmp_path)
+        old_time = datetime.now(timezone.utc) - timedelta(days=14)
+        fresh_time = datetime.now(timezone.utc)
 
-    def test_replay_queue_persist_writes_full_snapshot(self) -> None:
-        """Contract: persist() writes complete ReplayQueueFileJson with all fields."""
-        sig = inspect.signature(ReplayQueue.persist)
-        assert list(sig.parameters.keys()) == ["self"]
-        # ReplayQueueFileJson structure is verified separately
+        assert queue.transfer_from_news_queue(
+            self._queued_batch([10], enqueued_at=old_time)
+        ).accepted
+        assert queue.transfer_from_news_queue(
+            self._queued_batch([20], enqueued_at=fresh_time)
+        ).accepted
 
-    def test_replay_queue_load_missing_file_produces_empty_queue(self) -> None:
-        """Contract: load() when file missing => default-empty queue, next_index=0."""
-        sig = inspect.signature(ReplayQueue.load)
-        assert list(sig.parameters.keys()) == ["self"]
+        first = queue.next()
+        assert first is not None
+        assert first.stories[0].url == "https://example.com/10"
+        assert queue.next_index == 1
 
-    def test_replay_queue_load_replaces_in_memory_state_with_disk(self) -> None:
-        """Contract: load() replaces current state; no merging with prior state."""
-        # Behavioral contract verified by implementation tests
-        # Method signature confirms no parameters influence merge behavior
-        sig = inspect.signature(ReplayQueue.load)
-        assert len(sig.parameters) == 1  # Only self
+        removed = queue.expire(7)
+        assert removed == 1
+        assert queue.size == 1
+        assert queue.next_index == 0
 
-    def test_replay_queue_persist_overwrite_semantics(self) -> None:
-        """Contract: persist() overwrites entire file; no partial updates."""
-        # ReplayQueueFileJson has no append/patch fields
-        annotations = get_type_hints(ReplayQueueFileJson)
-        # All fields are complete snapshots: version, next_index, overlap_ratio_threshold, batches
-        expected_fields = {
-            "version",
-            "next_index",
-            "overlap_ratio_threshold",
-            "batches",
+        remaining = queue.next()
+        assert remaining is not None
+        assert remaining.stories[0].url == "https://example.com/20"
+
+    def test_replay_queue_persist_and_load_round_trip_keeps_index_and_threshold(
+        self, tmp_path: Path
+    ) -> None:
+        queue = ReplayQueue(
+            tmp_path,
+            dedup_policy=ReplayDedupPolicy(overlap_ratio_threshold=0.3),
+        )
+        assert queue.transfer_from_news_queue(self._queued_batch([1, 2])).accepted
+        assert queue.transfer_from_news_queue(self._queued_batch([3, 4])).accepted
+
+        first = queue.next()
+        assert first is not None
+        assert queue.next_index == 1
+
+        queue.persist()
+        payload = _read_json(tmp_path / REPLAY_QUEUE_JSON)
+        assert payload["next_index"] == 1
+        assert payload["overlap_ratio_threshold"] == pytest.approx(0.3)
+
+        reloaded = ReplayQueue(
+            tmp_path,
+            dedup_policy=ReplayDedupPolicy(overlap_ratio_threshold=0.9),
+        )
+        reloaded.load()
+
+        assert reloaded.size == 2
+        assert reloaded.next_index == 1
+        assert reloaded._dedup_policy.overlap_ratio_threshold == pytest.approx(0.3)
+
+        next_batch = reloaded.next()
+        assert next_batch is not None
+        assert next_batch.stories[0].url == "https://example.com/3"
+
+    def test_replay_queue_load_missing_file_resets_to_default_empty_state(
+        self, tmp_path: Path
+    ) -> None:
+        queue = ReplayQueue(tmp_path)
+        assert queue.transfer_from_news_queue(self._queued_batch([99])).accepted
+
+        queue.load()
+        assert queue.size == 0
+        assert queue.next_index == 0
+        assert queue._seen_urls == set()
+
+    def test_replay_queue_load_stale_index_resets_cursor_to_zero(
+        self, tmp_path: Path
+    ) -> None:
+        now = datetime.now(timezone.utc)
+        payload = {
+            "version": 1,
+            "next_index": 17,
+            "overlap_ratio_threshold": 0.5,
+            "batches": [
+                {
+                    "stories": [
+                        {
+                            "headline": "h",
+                            "summary": "s",
+                            "source": "src",
+                            "category": "cat",
+                            "url": "https://example.com/stale",
+                            "published_at": now.isoformat(),
+                            "featured": False,
+                        }
+                    ],
+                    "tone_description": "tone",
+                    "source_enqueued_at": now.isoformat(),
+                    "transferred_at": now.isoformat(),
+                    "last_replayed_at": None,
+                    "replay_count": 0,
+                }
+            ],
         }
-        actual_fields = set(annotations.keys())
-        assert actual_fields == expected_fields
+        (tmp_path / REPLAY_QUEUE_JSON).write_text(json.dumps(payload), encoding="utf-8")
 
-    # --- Dedup Overlap-Threshold Expectation Contract ---
+        queue = ReplayQueue(tmp_path)
+        queue.load()
 
-    def test_replay_dedup_policy_threshold_normalized_to_01_range(self) -> None:
-        """Contract: overlap_ratio_threshold normalized to [0.0, 1.0]."""
-        policy = ReplayDedupPolicy()
-        assert 0.0 <= policy.overlap_ratio_threshold <= 1.0
+        assert queue.size == 1
+        assert queue.next_index == 0
 
-    def test_replay_dedup_policy_formula_matches_spec(self) -> None:
-        """Contract: overlap_ratio = shared_story_count / min(candidate_size, existing_size)."""
-        policy = ReplayDedupPolicy()
-        assert policy.overlap_ratio_formula == (
-            "shared_story_count / min(candidate_size, existing_size)"
+    def test_replay_queue_persist_empty_overwrites_stale_file_content(
+        self, tmp_path: Path
+    ) -> None:
+        stale_payload = {
+            "version": 1,
+            "next_index": 1,
+            "overlap_ratio_threshold": 0.5,
+            "batches": [
+                {
+                    "stories": [],
+                    "tone_description": "stale",
+                    "source_enqueued_at": "2026-01-01T00:00:00+00:00",
+                    "transferred_at": "2026-01-01T00:00:00+00:00",
+                    "last_replayed_at": None,
+                    "replay_count": 0,
+                }
+            ],
+        }
+        (tmp_path / REPLAY_QUEUE_JSON).write_text(
+            json.dumps(stale_payload), encoding="utf-8"
         )
 
-    def test_replay_dedup_policy_threshold_behavior_rejects_overlap(self) -> None:
-        """Contract: Transfer rejected when overlap_ratio >= threshold."""
-        policy = ReplayDedupPolicy()
-        assert policy.threshold_behavior == (
-            "reject-when-overlap-ratio-meets-or-exceeds-threshold"
+        queue = ReplayQueue(tmp_path)
+        queue.persist()
+
+        payload = _read_json(tmp_path / REPLAY_QUEUE_JSON)
+        assert payload["batches"] == []
+        assert payload["next_index"] == 0
+
+    def test_replay_queue_transfer_rejects_empty_batch_without_side_effects(
+        self, tmp_path: Path
+    ) -> None:
+        queue = ReplayQueue(tmp_path)
+
+        result = queue.transfer_from_news_queue(self._queued_batch([], tone="empty"))
+
+        assert not result.accepted
+        assert result.reason == "rejected-empty-batch"
+        assert result.overlap_ratio == pytest.approx(0.0)
+        assert result.matched_batch_index is None
+        assert queue.size == 0
+        assert queue.next_index == 0
+
+    def test_replay_queue_transfer_rejects_when_overlap_meets_threshold(
+        self, tmp_path: Path
+    ) -> None:
+        queue = ReplayQueue(
+            tmp_path,
+            dedup_policy=ReplayDedupPolicy(overlap_ratio_threshold=0.5),
         )
+        assert queue.transfer_from_news_queue(self._queued_batch([1, 2])).accepted
 
-    def test_replay_dedup_policy_identity_priority_url_then_headline(self) -> None:
-        """Contract: Story identity priority tuple defines dedup lookup order."""
-        policy = ReplayDedupPolicy()
-        assert policy.identity_priority == ("url", "headline")
+        result = queue.transfer_from_news_queue(self._queued_batch([2, 3]))
 
-    def test_replay_transfer_result_accepted_field_contract(self) -> None:
-        """Contract: accepted=True means transfer succeeded into queue."""
-        fields = ReplayTransferResult.__dataclass_fields__
-        assert "accepted" in fields
-        # dataclass field.type may be string or type depending on Python version
-        accepted_type = fields["accepted"].type
-        assert accepted_type == bool or accepted_type == "bool"
+        assert not result.accepted
+        assert result.reason == "rejected-duplicate-overlap"
+        assert result.overlap_ratio == pytest.approx(0.5)
+        assert result.matched_batch_index == 0
+        assert queue.size == 1
+        assert queue.next_index == 0
 
-    def test_replay_transfer_result_reason_values_are_limited(self) -> None:
-        """Contract: reason field has three possible values per spec."""
-        # Verify the Literal type annotation has expected values
-        fields = ReplayTransferResult.__dataclass_fields__
-        assert "reason" in fields
-        # Implementation tests verify actual values match contract
-        # Type hint is Literal["accepted", "rejected-empty-batch", "rejected-duplicate-overlap"]
+    def test_replay_queue_transfer_accepts_when_overlap_below_threshold_and_tracks_seen_urls(
+        self, tmp_path: Path
+    ) -> None:
+        queue = ReplayQueue(
+            tmp_path,
+            dedup_policy=ReplayDedupPolicy(overlap_ratio_threshold=0.75),
+        )
+        assert queue.transfer_from_news_queue(self._queued_batch([1, 2])).accepted
 
-    def test_replay_transfer_result_overlap_ratio_field_type(self) -> None:
-        """Contract: overlap_ratio is a float in [0.0, 1.0] after compute."""
-        fields = ReplayTransferResult.__dataclass_fields__
-        assert "overlap_ratio" in fields
-        # dataclass field.type may be string or type depending on Python version
-        overlap_type = fields["overlap_ratio"].type
-        assert overlap_type == float or overlap_type == "float"
+        result = queue.transfer_from_news_queue(self._queued_batch([2, 3]))
 
-    def test_replay_transfer_result_matched_batch_index_nullable(self) -> None:
-        """Contract: matched_batch_index is None on accept, int index on reject."""
-        fields = ReplayTransferResult.__dataclass_fields__
-        assert "matched_batch_index" in fields
-        # Type is int | None
-
-    def test_replay_queue_transfer_accepts_on_passed_dedup(self) -> None:
-        """Contract: transfer_from_news_queue returns accepted=True when overlap below threshold."""
-        sig = inspect.signature(ReplayQueue.transfer_from_news_queue)
-        assert list(sig.parameters.keys()) == ["self", "batch"]
-        hints = get_type_hints(ReplayQueue.transfer_from_news_queue)
-        assert "return" in hints
-        assert hints["return"] is ReplayTransferResult
-
-    def test_replay_queue_transfer_rejects_empty_batch(self) -> None:
-        """Contract: Transfer result reason includes 'rejected-empty-batch'."""
-        # ReplayTransferResult.reason is Literal with "rejected-empty-batch"
-        # Implementation tests verify the actual behavior
-        pass
-
-    def test_replay_queue_transfer_preserves_source_order_on_accept(self) -> None:
-        """Contract: Accepted transfer preserves QueuedBatch story ordering."""
-        # Behavioral contract; ReplayBatch.stories is list[Story] with same order
-        fields = ReplayBatch.__dataclass_fields__
-        assert "stories" in fields
-        # Type annotation confirms list order is preserved
-
-    def test_replay_queue_transfer_reject_does_not_modify_queue(self) -> None:
-        """Contract: Rejected transfer leaves queue order and next_index unchanged."""
-        # Behavioral contract verified by implementation tests
-        # Method signature confirms no side effects on rejection
-        pass
-
-    def test_replay_queue_expire_rebases_cursor_after_removal(self) -> None:
-        """Contract: expire() must rebase next_index after batch removal to maintain invariant."""
-        # When batches at index < next_index are removed, cursor must be adjusted
-        # Implementation tests verify the rebase logic
-        sig = inspect.signature(ReplayQueue.expire)
-        assert "expire_days" in sig.parameters
+        assert result.accepted
+        assert result.reason == "accepted"
+        assert result.overlap_ratio == pytest.approx(0.5)
+        assert queue.size == 2
+        assert queue._seen_urls == {
+            "https://example.com/1",
+            "https://example.com/2",
+            "https://example.com/3",
+        }
 
 
 class TestLayoutCacheContract:
