@@ -1166,7 +1166,7 @@ phases:
       applying step branch content.'
   - id: core.pipeline.contract
     name: Define orchestrator.run_once contract
-    status: claimed
+    status: done
     description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
       \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nspec_refs:\n  - ARCHITECTURE.md#2.12\n\
       \  - ARCHITECTURE.md#2.13\n  - README.md\ntouch_paths:\n  - src/sfumato/orchestrator.py\n\
@@ -1207,6 +1207,36 @@ phases:
     agent: python-senior
     claimed_by: python-senior
     claimed_at: '2026-03-14T14:20:08.918865+00:00'
+    done_at: '2026-03-14T14:24:56.587790+00:00'
+    evidence: 'Artifact:
+
+      - Worker commits: fd8a225, 21b86e4
+
+      - Main commit: 698911e0f135f8ce54cc5836384e65ff414b06a1
+
+
+      Verification:
+
+      - Run: `uv run pytest -v tests/test_orchestrator.py` -> 7 passed, 0 failed
+
+      - Named contract tests passed for RunOptions defaults, stage ordering, and contract-only
+      stub boundary
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#2.12
+
+      - ARCHITECTURE.md#2.13
+
+      - README.md
+
+      - src/sfumato/orchestrator.py
+
+
+      Gaps/Notes:
+
+      - Contract-only step intentionally leaves `run_once` unimplemented (`NotImplementedError`).'
   - id: core.pipeline.tests
     name: Author orchestrator.run_once tests
     status: pending
