@@ -523,7 +523,7 @@ phases:
       subprocess invocation implementation deferred.'
   - id: core.llm.tests
     name: Author LLM invocation tests
-    status: pending
+    status: claimed
     description: "step_type: test\nspec_refs:\n  - ARCHITECTURE.md#2.9\ntouch_paths:\n\
       \  - tests/test_llm.py\n  - src/sfumato/llm.py\nharness_refs:\n  - pytest\n\
       \  - subprocess mocking boundary\nagent: python-executor\n\nAdd contract-driven\
@@ -548,6 +548,8 @@ phases:
     depends_on:
     - core.llm.contract
     agent: python-executor
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T12:51:47.272316+00:00'
   - id: core.palette.contract
     name: Define palette extraction contract
     status: done
