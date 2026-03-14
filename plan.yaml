@@ -2218,7 +2218,7 @@ phases:
       no orchestrator wiring performed.'
   - id: intelligence.matcher.tests
     name: Author matcher module tests
-    status: claimed
+    status: done
     description: 'step_type: test
 
       Author acceptance-defining tests for `src/sfumato/matcher.py` before implementation
@@ -2261,6 +2261,42 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T16:29:27.922483+00:00'
+    done_at: '2026-03-14T16:36:50.589362+00:00'
+    evidence: 'Artifact:
+
+      - PR: commit 60aac22 ([vectl] step-intelligence.matcher.tests completed), source
+      worktree commit 5d21eafc6a320eca237ded879ec1dcfd7cf1b5f8
+
+
+      Verification:
+
+      - Run: `python3 -c "import ast; ast.parse(open(''tests/conftest.py'').read())"`
+      -> valid Python syntax
+
+      - Run: `python3 -c "import ast; ast.parse(open(''tests/test_matcher.py'').read())"`
+      -> valid Python syntax
+
+      - Run: `python3 -c "import ast; ast.parse(open(''src/sfumato/matcher.py'').read())"`
+      -> valid Python syntax
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#2.6
+
+      - PROTOTYPING.md#semantic-art-news-matching
+
+
+      Files changed:
+
+      - tests/conftest.py
+
+      - tests/test_matcher.py
+
+
+      Gaps/Notes:
+
+      - Test-only step: no matcher implementation logic added in this step.'
   - id: intelligence.state.contract
     name: Define state module contract
     status: claimed
