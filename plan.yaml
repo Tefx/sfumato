@@ -631,7 +631,7 @@ phases:
     - src/sfumato/cli.py
     - src/sfumato/__main__.py
     depends_on:
-    - core.pipeline.verify
+    - core.core-pipeline-verify-retest-full-suite
     agent: python-executor
   - id: core.gate
     name: 'Gate: Core Pipeline'
