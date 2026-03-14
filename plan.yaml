@@ -4243,7 +4243,7 @@ phases:
       - Real state.py classes used; tmpdir-based fixtures avoid cross-test pollution.'
   - id: hardening.gate
     name: Hardening gate review
-    status: pending
+    status: claimed
     description: "As an INDEPENDENT REVIEWER (gate-reviewer), assess whether the hardening\
       \ phase\nmeets the quality bar for proceeding.\n\nreview_depth: THOROUGH\nreview_depth_rationale:\
       \ |\n  - Phase fixes 12 bugs found in production E2E testing\n  - Touches 6+\
@@ -4277,3 +4277,5 @@ phases:
     - hardening.paintings-edge-cases
     - hardening.integration-tests
     agent: gate-reviewer
+    claimed_by: gate-reviewer
+    claimed_at: '2026-03-14T21:14:36.433971+00:00'
