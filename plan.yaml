@@ -607,7 +607,7 @@ phases:
       algorithm implementation remains deferred.'
   - id: core.palette.tests
     name: Author palette extraction tests
-    status: pending
+    status: claimed
     description: "step_type: test\nspec_refs:\n  - ARCHITECTURE.md#2.4\ntouch_paths:\n\
       \  - tests/test_palette.py\n  - src/sfumato/palette.py\nharness_refs:\n  - pytest\n\
       \  - image fixtures\nagent: python-executor\n\nAdd contract-driven tests for\
@@ -630,6 +630,8 @@ phases:
     depends_on:
     - core.palette.contract
     agent: python-executor
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T12:51:50.542953+00:00'
 - id: intelligence
   name: Intelligence
   status: locked
