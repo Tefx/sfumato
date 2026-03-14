@@ -1841,20 +1841,83 @@ phases:
   - id: intelligence.state
     name: Implement state module
     status: pending
-    description: 'Implement src/sfumato/state.py per ARCHITECTURE.md section 2.10.
-      Implement NewsQueue (FIFO, enqueue/dequeue/peek/expire/save/load), UsedPaintings
-      (set with mark/reset/save/load), LayoutCache (dict with get/put/has/save/load),
-      EmbeddingCache (numpy npz with get/put/has/save/load), and AppState aggregate
-      root. State persisted to ~/.sfumato/state/ as JSON (+ .npz for embeddings).
-      File: src/sfumato/state.py (new). Completion: all 4 state classes persist and
-      reload correctly; AppState.load() creates defaults for missing files.'
-    verification: NewsQueue enqueue/dequeue round-trips correctly; state files persist
-      to disk and reload; EmbeddingCache stores/retrieves numpy arrays
+    description: 'step_type: implementation
+
+      Implement `src/sfumato/state.py` per `ARCHITECTURE.md#2.10` after contract and
+      tests define persistence semantics.
+
+
+      Scope:
+
+      - implement `NewsQueue` (FIFO, enqueue/dequeue/peek/expire/save/load)
+
+      - implement `UsedPaintings` (mark/reset/save/load)
+
+      - implement `LayoutCache` (get/put/has/save/load)
+
+      - implement `EmbeddingCache` (`.npz` get/put/has/save/load)
+
+      - implement `AppState.load()` / `save_all()` aggregate behavior
+
+
+      Failure-mode checklist:
+
+      - relative vs absolute path behavior is explicit and consistent for all persisted
+      state files
+
+      - missing-file fallback behavior and legacy-layout fallback behavior are implemented
+      per contract
+
+      - explicit clear / null overwrite semantics are preserved; save/load must not
+      silently rehydrate cleared state
+
+      - stale-definition vs new-state precedence is deterministic when in-memory state
+      and on-disk state disagree
+
+      - partial-write / CAS-conflict behavior is handled per the contract, including
+      the highest-risk interrupted-write path where applicable
+
+
+      State semantics:
+
+      - last-writer-wins applies only where the contract explicitly allows persisted
+      snapshots to replace older in-memory state
+
+      - persisted queues, used-painting marks, layout entries, and embedding vectors
+      that are not explicitly cleared must be preserved exactly across save/load
+
+      - backward-compatible legacy behavior means missing files still yield defaults
+      and legacy on-disk layouts are either upgraded or safely ignored per contract,
+      without crashing startup
+
+
+      Out-of-scope guardrail:
+
+      - downstream orchestrator call-site wiring is not part of this step
+
+      - if full CAS-style conflict prevention is deferred, this step must keep the
+      chosen atomic-write or best-effort persistence behavior explicit rather than
+      implying stronger guarantees
+
+
+      Refs: `ARCHITECTURE.md#2.10`, `src/sfumato/state.py`, `src/sfumato/orchestrator.py`'
+    verification: '- Main path: targeted state tests prove all four stores and `AppState`
+      save/load round-trip correctly
+
+      - Failure path: focused regressions prove path resolution, missing-file/legacy
+      fallback, explicit clear/null overwrite, stale-vs-new precedence, and partial-write/CAS-conflict
+      behavior per contract
+
+      - Proof: no untested persistence rule remains for the state surfaces defined
+      in the contract'
     refs:
     - ARCHITECTURE.md#2.10
     - src/sfumato/state.py
-    - ARCHITECTURE.md
-    agent: python-executor
+    - src/sfumato/orchestrator.py
+    depends_on:
+    - intelligence.state.contract
+    - intelligence.state.tests
+    agent: python-senior
   - id: intelligence.news-queue
     name: Wire news queue and time-window into orchestrator
     status: pending
