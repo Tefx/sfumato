@@ -2218,7 +2218,7 @@ phases:
       no orchestrator wiring performed.'
   - id: intelligence.matcher.tests
     name: Author matcher module tests
-    status: pending
+    status: claimed
     description: 'step_type: test
 
       Author acceptance-defining tests for `src/sfumato/matcher.py` before implementation
@@ -2259,6 +2259,8 @@ phases:
     depends_on:
     - intelligence.matcher.contract
     agent: python-executor
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T16:29:27.922483+00:00'
   - id: intelligence.state.contract
     name: Define state module contract
     status: pending
