@@ -839,50 +839,470 @@ class TestConveniencePath:
 
 
 class TestStubSignatures:
-    """Contract tests for function stub signatures."""
+    """Contract tests for function stub signatures (now implemented)."""
 
     def test_check_status_signature_exists(self) -> None:
-        """check_status function exists with correct signature."""
+        """check_status function exists and is callable."""
         assert callable(check_status)
-        with pytest.raises(NotImplementedError, match="Contract stub"):
-            check_status(object())  # type: ignore
 
     def test_upload_image_signature_exists(self) -> None:
-        """upload_image function exists with correct signature."""
+        """upload_image function exists and is callable."""
         assert callable(upload_image)
-        with pytest.raises(NotImplementedError, match="Contract stub"):
-            upload_image(object(), None)  # type: ignore
 
     def test_set_displayed_signature_exists(self) -> None:
-        """set_displayed function exists with correct signature."""
+        """set_displayed function exists and is callable."""
         assert callable(set_displayed)
-        with pytest.raises(NotImplementedError, match="Contract stub"):
-            set_displayed(object(), "MY_F0001")  # type: ignore
 
     def test_list_uploaded_signature_exists(self) -> None:
-        """list_uploaded function exists with correct signature."""
+        """list_uploaded function exists and is callable."""
         assert callable(list_uploaded)
-        with pytest.raises(NotImplementedError, match="Contract stub"):
-            list_uploaded(object())  # type: ignore
 
     def test_delete_uploaded_signature_exists(self) -> None:
-        """delete_uploaded function exists with correct signature."""
+        """delete_uploaded function exists and is callable."""
         assert callable(delete_uploaded)
-        with pytest.raises(NotImplementedError, match="Contract stub"):
-            delete_uploaded(object(), "MY_F0001")  # type: ignore
 
     def test_clean_old_uploads_signature_exists(self) -> None:
-        """clean_old_uploads function exists with correct signature."""
+        """clean_old_uploads function exists and is callable."""
         assert callable(clean_old_uploads)
-        with pytest.raises(NotImplementedError, match="Contract stub"):
-            clean_old_uploads(object(), 5)  # type: ignore
 
     def test_is_available_for_push_signature_exists(self) -> None:
-        """is_available_for_push function exists with correct signature."""
+        """is_available_for_push function exists and is callable."""
         assert callable(is_available_for_push)
-        # is_available_for_push calls check_status internally (stub)
-        with pytest.raises(NotImplementedError, match="Contract stub"):
-            is_available_for_push(object())  # type: ignore
+
+
+# =============================================================================
+# CONTRACT: IMPLEMENTATION TESTS (with samsungtvws mocks)
+# =============================================================================
+
+
+class TestImplementation:
+    """Implementation tests with mocked samsungtvws seam."""
+
+    def test_check_status_success_with_mock(self) -> None:
+        """
+        Implementation: check_status returns success TvStatus with mocked TV.
+
+        Mocks samsungtvws SamsungTVWS.art() and validates:
+        - art().supported() called for art_mode_supported
+        - art().get_artmode() called for art_mode_active
+        - art().available() called for uploaded_count
+        """
+        from sfumato.config import TvConfig
+        from unittest.mock import MagicMock
+
+        tv_config = TvConfig(ip="192.168.1.100", port=8002)
+
+        # Mock samsungtvws
+        with patch("sfumato.tv.SamsungTVWS") as mock_tv_class:
+            mock_tv = MagicMock()
+            mock_art = MagicMock()
+
+            # Configure mock responses
+            mock_art.supported.return_value = True
+            mock_art.get_artmode.return_value = "on"
+            mock_art.available.return_value = [
+                {"content_id": "MY_F0001"},
+                {"content_id": "MY_F0002"},
+                {"content_id": "MY_F0003"},
+            ]
+
+            mock_tv.art.return_value = mock_art
+            mock_tv_class.return_value = mock_tv
+
+            # Call check_status
+            status = check_status(tv_config)
+
+            # Validate success response
+            assert status.reachable is True
+            assert status.art_mode_supported is True
+            assert status.art_mode_active is True
+            assert status.uploaded_count == 3
+            assert status.error is None
+
+            # Validate API calls
+            mock_art.supported.assert_called_once()
+            mock_art.get_artmode.assert_called_once()
+            mock_art.available.assert_called_once()
+
+    def test_check_status_art_not_supported_with_mock(self) -> None:
+        """
+        Implementation: check_status handles TV without Art Mode support.
+
+        Returns reachable=True but art_mode_supported=False.
+        """
+        from sfumato.config import TvConfig
+        from unittest.mock import MagicMock
+
+        tv_config = TvConfig(ip="192.168.1.100", port=8002)
+
+        with patch("sfumato.tv.SamsungTVWS") as mock_tv_class:
+            mock_tv = MagicMock()
+            mock_art = MagicMock()
+
+            # Configure mock: Art Mode not supported
+            mock_art.supported.return_value = False
+
+            mock_tv.art.return_value = mock_art
+            mock_tv_class.return_value = mock_tv
+
+            status = check_status(tv_config)
+
+            assert status.reachable is True
+            assert status.art_mode_supported is False
+            assert status.art_mode_active is False
+            assert status.uploaded_count == 0
+
+    def test_check_status_art_mode_off_with_mock(self) -> None:
+        """
+        Implementation: check_status handles TV in standby/regular mode.
+
+        Returns reachable=True, art_mode_supported=True, art_mode_active=False.
+        """
+        from sfumato.config import TvConfig
+        from unittest.mock import MagicMock
+
+        tv_config = TvConfig(ip="192.168.1.100", port=8002)
+
+        with patch("sfumato.tv.SamsungTVWS") as mock_tv_class:
+            mock_tv = MagicMock()
+            mock_art = MagicMock()
+
+            # Configure mock: Art Mode supported but off
+            mock_art.supported.return_value = True
+            mock_art.get_artmode.return_value = "off"
+
+            mock_tv.art.return_value = mock_art
+            mock_tv_class.return_value = mock_tv
+
+            status = check_status(tv_config)
+
+            assert status.reachable is True
+            assert status.art_mode_supported is True
+            assert status.art_mode_active is False
+
+    def test_check_status_connection_refused_non_throwing(self) -> None:
+        """
+        Non-throwing: check_status absorbs ConnectionRefusedError.
+
+        Returns TvStatus(reachable=False, error="Connection refused").
+        """
+        from sfumato.config import TvConfig
+
+        tv_config = TvConfig(ip="192.168.1.100", port=8002)
+
+        with patch("sfumato.tv.SamsungTVWS") as mock_tv_class:
+            mock_tv_class.side_effect = ConnectionRefusedError("Connection refused")
+
+            status = check_status(tv_config)
+
+            assert status.reachable is False
+            assert (
+                "Connection refused" in status.error
+                or "connection" in status.error.lower()
+            )
+
+    def test_check_status_timeout_non_throwing(self) -> None:
+        """
+        Non-throwing: check_status absorbs timeout errors.
+
+        Returns TvStatus(reachable=False, error="timeout...").
+        """
+        from sfumato.config import TvConfig
+
+        tv_config = TvConfig(ip="192.168.1.100", port=8002)
+
+        with patch("sfumato.tv.SamsungTVWS") as mock_tv_class:
+            mock_tv_class.side_effect = TimeoutError("Timeout")
+
+            status = check_status(tv_config)
+
+            assert status.reachable is False
+            assert status.error is not None
+            assert "timeout" in status.error.lower()
+
+    def test_upload_image_success_returns_content_id(self, tmp_path: Path) -> None:
+        """
+        Implementation: upload_image returns content_id from TV.
+
+        Validates art().upload() is called with correct parameters.
+        """
+        from sfumato.config import TvConfig
+        from unittest.mock import MagicMock
+
+        tv_config = TvConfig(ip="192.168.1.100", port=8002)
+
+        # Create a test PNG file
+        test_image = tmp_path / "test.png"
+        test_image.write_bytes(b"fake png data")
+
+        with patch("sfumato.tv.SamsungTVWS") as mock_tv_class:
+            mock_tv = MagicMock()
+            mock_art = MagicMock()
+
+            # Configure mock: upload returns content_id
+            mock_art.upload.return_value = "MY_F0042"
+            mock_tv.art.return_value = mock_art
+            mock_tv_class.return_value = mock_tv
+
+            content_id = upload_image(tv_config, test_image)
+
+            assert content_id == "MY_F0042"
+            mock_art.upload.assert_called_once_with(
+                b"fake png data", file_type="PNG", matte="none"
+            )
+
+    def test_upload_image_connection_error(self, tmp_path: Path) -> None:
+        """upload_image raises TvConnectionError on connection failure."""
+        from sfumato.config import TvConfig
+
+        tv_config = TvConfig(ip="192.168.1.100", port=8002)
+        test_image = tmp_path / "test.png"
+        test_image.write_bytes(b"data")
+
+        with patch("sfumato.tv.SamsungTVWS") as mock_tv_class:
+            mock_tv_class.side_effect = ConnectionRefusedError("refused")
+
+            with pytest.raises(TvConnectionError):
+                upload_image(tv_config, test_image)
+
+    def test_upload_image_upload_error(self, tmp_path: Path) -> None:
+        """upload_image raises TvUploadError on upload failure after connection."""
+        from sfumato.config import TvConfig
+        from unittest.mock import MagicMock
+
+        tv_config = TvConfig(ip="192.168.1.100", port=8002)
+        test_image = tmp_path / "test.png"
+        test_image.write_bytes(b"data")
+
+        with patch("sfumato.tv.SamsungTVWS") as mock_tv_class:
+            mock_tv = MagicMock()
+            mock_art = MagicMock()
+
+            # Connection succeeds but upload fails
+            mock_art.upload.side_effect = Exception("Upload rejected: invalid format")
+            mock_tv.art.return_value = mock_art
+            mock_tv_class.return_value = mock_tv
+
+            with pytest.raises(TvUploadError):
+                upload_image(tv_config, test_image)
+
+    def test_list_uploaded_success(self) -> None:
+        """Implementation: list_uploaded returns list of UploadedImage."""
+        from sfumato.config import TvConfig
+        from unittest.mock import MagicMock
+
+        tv_config = TvConfig(ip="192.168.1.100", port=8002)
+
+        with patch("sfumato.tv.SamsungTVWS") as mock_tv_class:
+            mock_tv = MagicMock()
+            mock_art = MagicMock()
+
+            # Configure mock: available returns list
+            mock_art.available.return_value = [
+                {"content_id": "MY_F0001", "name": "art1.png"},
+                {"content_id": "MY_F0002", "name": None},
+                {"content_id": "MY_F0003"},
+            ]
+            mock_tv.art.return_value = mock_art
+            mock_tv_class.return_value = mock_tv
+
+            images = list_uploaded(tv_config)
+
+            assert len(images) == 3
+            assert images[0].content_id == "MY_F0001"
+            assert images[0].file_name == "art1.png"
+            assert images[1].content_id == "MY_F0002"
+            assert images[1].file_name is None
+
+    def test_delete_uploaded_success(self) -> None:
+        """Implementation: delete_uploaded calls art().delete()."""
+        from sfumato.config import TvConfig
+        from unittest.mock import MagicMock
+
+        tv_config = TvConfig(ip="192.168.1.100", port=8002)
+
+        with patch("sfumato.tv.SamsungTVWS") as mock_tv_class:
+            mock_tv = MagicMock()
+            mock_art = MagicMock()
+
+            mock_art.delete.return_value = None
+            mock_tv.art.return_value = mock_art
+            mock_tv_class.return_value = mock_tv
+
+            # Should not raise
+            delete_uploaded(tv_config, "MY_F0001")
+
+            mock_art.delete.assert_called_once_with("MY_F0001")
+
+    def test_clean_old_uploads_keeps_newest(self) -> None:
+        """
+        Implementation: clean_old_uploads preserves newest images.
+
+        Validates ordering and deletion.
+        """
+        from sfumato.config import TvConfig
+        from unittest.mock import MagicMock
+
+        tv_config = TvConfig(ip="192.168.1.100", port=8002)
+
+        with patch("sfumato.tv.SamsungTVWS") as mock_tv_class:
+            mock_tv = MagicMock()
+            mock_art = MagicMock()
+
+            # Configure mock: 5 images with dates
+            mock_art.available.return_value = [
+                {"content_id": "MY_F0001", "date": "2026:03:14 10:00:00"},
+                {"content_id": "MY_F0002", "date": "2026:03:14 12:00:00"},
+                {"content_id": "MY_F0003", "date": "2026:03:14 15:00:00"},
+                {"content_id": "MY_F0004", "date": "2026:03:14 17:00:00"},
+                {"content_id": "MY_F0005", "date": "2026:03:14 19:00:00"},
+            ]
+            mock_tv.art.return_value = mock_art
+            mock_tv_class.return_value = mock_tv
+
+            # Keep newest 3: MY_F0003, MY_F0004, MY_F0005
+            # Delete oldest 2: MY_F0001, MY_F0002
+            deleted = clean_old_uploads(tv_config, keep=3)
+
+            assert deleted == 2
+            # Verify delete was called for oldest (not for newest)
+            assert mock_art.delete.call_count == 2
+
+    def test_clean_old_uploads_fallback_to_lexical(self) -> None:
+        """
+        Implementation: clean_old_uploads uses lexical order when no dates.
+
+        MY_F0001 < MY_F0002 in lexical sort.
+        Keep=2 means keep MY_F0002, MY_F0003 (highest lexical).
+        """
+        from sfumato.config import TvConfig
+        from unittest.mock import MagicMock
+
+        tv_config = TvConfig(ip="192.168.1.100", port=8002)
+
+        with patch("sfumato.tv.SamsungTVWS") as mock_tv_class:
+            mock_tv = MagicMock()
+            mock_art = MagicMock()
+
+            # Configure mock: 3 images without dates
+            mock_art.available.return_value = [
+                {"content_id": "MY_F0002"},
+                {"content_id": "MY_F0001"},
+                {"content_id": "MY_F0003"},
+            ]
+            mock_tv.art.return_value = mock_art
+            mock_tv_class.return_value = mock_tv
+
+            # Keep 2 newest by lexical = MY_F0002, MY_F0003
+            # Delete MY_F0001
+            deleted = clean_old_uploads(tv_config, keep=2)
+
+            assert deleted == 1
+
+    def test_clean_old_uploads_skips_delete_failures(self) -> None:
+        """
+        DELETE-FAILURE CONTRACT: logs warnings, returns confirmed count.
+
+        Validates that failures don't raise, and count reflects successes only.
+        """
+        from sfumato.config import TvConfig
+        from unittest.mock import MagicMock
+
+        tv_config = TvConfig(ip="192.168.1.100", port=8002)
+
+        with patch("sfumato.tv.SamsungTVWS") as mock_tv_class:
+            mock_tv = MagicMock()
+            mock_art = MagicMock()
+
+            # Configure mock: 5 images
+            mock_art.available.return_value = [
+                {"content_id": "MY_F0001"},
+                {"content_id": "MY_F0002"},
+                {"content_id": "MY_F0003"},
+                {"content_id": "MY_F0004"},
+                {"content_id": "MY_F0005"},
+            ]
+
+            # First two deletes succeed, next fails, rest succeed
+            delete_results = [None, None, Exception("delete failed"), None, None]
+            mock_art.delete.side_effect = delete_results
+            mock_tv.art.return_value = mock_art
+            mock_tv_class.return_value = mock_tv
+
+            # Keep 2, delete 3
+            deleted = clean_old_uploads(tv_config, keep=2)
+
+            # Only successful deletions counted
+            assert deleted == 2
+
+    def test_set_displayed_success(self) -> None:
+        """Implementation: set_displayed calls art().select_image()."""
+        from sfumato.config import TvConfig
+        from unittest.mock import MagicMock
+
+        tv_config = TvConfig(ip="192.168.1.100", port=8002)
+
+        with patch("sfumato.tv.SamsungTVWS") as mock_tv_class:
+            mock_tv = MagicMock()
+            mock_art = MagicMock()
+
+            mock_art.select_image.return_value = None
+            mock_tv.art.return_value = mock_art
+            mock_tv_class.return_value = mock_tv
+
+            # Should not raise
+            set_displayed(tv_config, "MY_F0042")
+
+            mock_art.select_image.assert_called_once_with("MY_F0042", show=True)
+
+    def test_is_available_for_push_true(self) -> None:
+        """is_available_for_push returns True when reachable and art_mode_active."""
+        from sfumato.config import TvConfig
+        from unittest.mock import MagicMock
+
+        tv_config = TvConfig(ip="192.168.1.100", port=8002)
+
+        with patch("sfumato.tv.SamsungTVWS") as mock_tv_class:
+            mock_tv = MagicMock()
+            mock_art = MagicMock()
+
+            mock_art.supported.return_value = True
+            mock_art.get_artmode.return_value = "on"
+            mock_art.available.return_value = []
+            mock_tv.art.return_value = mock_art
+            mock_tv_class.return_value = mock_tv
+
+            assert is_available_for_push(tv_config) is True
+
+    def test_is_available_for_push_false_unreachable(self) -> None:
+        """is_available_for_push returns False when unreachable."""
+        from sfumato.config import TvConfig
+
+        tv_config = TvConfig(ip="192.168.1.100", port=8002)
+
+        with patch("sfumato.tv.SamsungTVWS") as mock_tv_class:
+            mock_tv_class.side_effect = ConnectionRefusedError("refused")
+
+            assert is_available_for_push(tv_config) is False
+
+    def test_is_available_for_push_false_art_mode_off(self) -> None:
+        """is_available_for_push returns False when art_mode_active is False."""
+        from sfumato.config import TvConfig
+        from unittest.mock import MagicMock
+
+        tv_config = TvConfig(ip="192.168.1.100", port=8002)
+
+        with patch("sfumato.tv.SamsungTVWS") as mock_tv_class:
+            mock_tv = MagicMock()
+            mock_art = MagicMock()
+
+            mock_art.supported.return_value = True
+            mock_art.get_artmode.return_value = "off"
+            mock_art.available.return_value = []
+            mock_tv.art.return_value = mock_art
+            mock_tv_class.return_value = mock_tv
+
+            assert is_available_for_push(tv_config) is False
 
 
 # =============================================================================
