@@ -4805,8 +4805,8 @@ phases:
 
       - Pre-existing fixture mismatches outside whisper-focused selection were reported
       by subagent as out-of-scope for this test-only step.'
-  - id: art-facts.art-facts-render-whisper-contract
-    name: art-facts.render-whisper.contract
+  - id: art-facts.render-whisper.contract
+    name: Define render whisper contract
     status: pending
     description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
       \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nagent_source: default\n\
@@ -4822,13 +4822,17 @@ phases:
       \ existing non-whisper render variables and `build_template_variables()` public\
       \ shape.\n\nContract purity:\n- Allowed: signatures, dataclass field declaration,\
       \ behavioral notes, stubs/docstrings.\n- Forbidden: finished render logic or\
-      \ template variable population implementation.\n"
+      \ template variable population implementation."
     verification: '- Contract artifact defines `RenderContext.whisper_fact_index`
       and `WHISPER_*` variable mapping without shipping business logic
 
       - Rotation boundary behavior is specified clearly enough for tests to target
 
       - No unrelated render behavior is changed'
+    refs:
+    - ARCHITECTURE.md#2.7
+    - src/sfumato/render.py
+    - tests/test_render.py
     depends_on:
     - art-facts.layout-prompt
     - art-facts.template-whisper
