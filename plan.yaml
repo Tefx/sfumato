@@ -906,7 +906,7 @@ phases:
       time, so no additional merge commit was created.'
   - id: core.tv.contract
     name: Define TV control contract
-    status: claimed
+    status: done
     description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
       \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nspec_refs:\n  - ARCHITECTURE.md#2.8\n\
       \  - PROTOTYPING.md#1\ntouch_paths:\n  - src/sfumato/tv.py\n  - tests/test_tv.py\n\
@@ -944,6 +944,37 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T13:30:41.300441+00:00'
+    done_at: '2026-03-14T13:46:03.118090+00:00'
+    evidence: 'Artifact:
+
+      - Worker commit: 253968d
+
+      - Main commit: a1b5b1f2fce1fab1822d5e67458a111d16ed00c2
+
+
+      Verification:
+
+      - Run: `uv run pytest tests/test_tv.py -v` -> 18 passed
+
+      - Run: `python3 -m py_compile src/sfumato/tv.py tests/test_tv.py` -> success
+
+      - Contract defines `TvStatus`, `UploadedImage`, `TvError`, `TvConnectionError`,
+      `TvUploadError`; pins non-throwing boundaries and 10-second timeout semantics
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#2.8
+
+      - PROTOTYPING.md#1
+
+      - src/sfumato/tv.py
+
+
+      Gaps/Notes:
+
+      - Divergent local pre-merge `tv.py`/`test_tv.py` artifacts were preserved in
+      stash before applying step branch content.'
   - id: core.tv.tests
     name: Author TV control tests
     status: pending
