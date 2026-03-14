@@ -4082,3 +4082,39 @@ phases:
     - hardening.paintings-edge-cases
     - hardening.llm-cli-commands
     agent: python-senior
+  - id: hardening.gate
+    name: Hardening gate review
+    status: pending
+    description: "As an INDEPENDENT REVIEWER (gate-reviewer), assess whether the hardening\
+      \ phase\nmeets the quality bar for proceeding.\n\nreview_depth: THOROUGH\nreview_depth_rationale:\
+      \ |\n  - Phase fixes 12 bugs found in production E2E testing\n  - Touches 6+\
+      \ modules across the codebase\n  - Integration tests are new and must prove\
+      \ wiring correctness\n  - Protocol conformance is a cross-cutting concern\n\n\
+      ## Review Criteria\n\n1. **All 12 bugs addressed**: Each bug from the hardening\
+      \ bug list has a fix AND a test\n2. **Protocol conformance**: pyright reports\
+      \ zero Protocol errors across codebase\n3. **Integration coverage**: tests/test_integration.py\
+      \ exercises run_once E2E\n4. **No regressions**: All 671+ existing tests still\
+      \ pass\n5. **Mock boundary**: Integration tests mock only LLM, everything else\
+      \ is real\n6. **Batch logic**: Verify batch_size produces 3-4 story batches,\
+      \ not oversized\n7. **recommended_stories**: Verify it actually limits rendered\
+      \ output\n\n## Gate will reject\n- Generic \"tests pass\" without specific evidence\
+      \ per bug\n- Integration tests that still use cli.py mock classes instead of\
+      \ real state.py\n- Protocol fixes that don't include conformance tests\n- Missing\
+      \ pyright verification"
+    verification: '- All hardening steps completed with specific evidence
+
+      - uv run pytest: ALL tests pass (671 existing + new)
+
+      - pyright src/sfumato/: zero Protocol-related errors
+
+      - Integration tests prove run_once E2E with real state
+
+      - Each of the 12 bugs has a corresponding regression test'
+    depends_on:
+    - hardening.protocol-alignment
+    - hardening.config-init-fixes
+    - hardening.llm-cli-commands
+    - hardening.orchestrator-batch
+    - hardening.paintings-edge-cases
+    - hardening.integration-tests
+    agent: gate-reviewer
