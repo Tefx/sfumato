@@ -4617,7 +4617,7 @@ phases:
       step.'
   - id: art-facts.layout-prompt.test
     name: Define layout prompt contract tests
-    status: pending
+    status: claimed
     description: "step_type: test\nagent: python-executor\nagent_source: default\n\
       spec_refs:\n  - PROTOTYPING.md#11\n  - ARCHITECTURE.md#2.5\ntouch_paths:\n \
       \ - tests/test_layout_ai.py\n  - tests/test_integration.py\nharness_refs:\n\
@@ -4637,6 +4637,8 @@ phases:
       - Production logic remains unimplemented except for minimal test fixtures/mocks'
     depends_on:
     - art-facts.layout-prompt.contract
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T21:52:37.118072+00:00'
   - id: art-facts.template-whisper.contract
     name: Define whisper template variable contract
     status: done
