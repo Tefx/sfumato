@@ -5970,7 +5970,7 @@ phases:
   steps:
   - id: polish.default-model
     name: Update default model to gemini-3-flash-preview
-    status: claimed
+    status: done
     description: "step_type: implementation\nagent: python-executor\ntouch_paths:\n\
       \  - src/sfumato/config.py\n\nChange default model in two places:\n\nFile: src/sfumato/config.py\n\
       1. AiConfig dataclass: change model default from \"gemini-3.1-pro-preview\"\n\
@@ -5990,6 +5990,26 @@ phases:
     - src/sfumato/config.py
     claimed_by: python-executor
     claimed_at: '2026-03-14T23:28:31.039344+00:00'
+    done_at: '2026-03-14T23:30:02.151932+00:00'
+    evidence: 'Step: polish.default-model
+
+      Commit hash(es): 466e0e5e84ffd49a08aad03dc367ac143876a03f; merged as [main 631d636]
+
+      Files changed: src/sfumato/config.py
+
+      Verification:
+
+      - AiConfig().model == gemini-3-flash-preview
+
+      - generate_default_config output contains gemini-3-flash-preview
+
+      - uv run pytest tests/test_config.py -v -> 26 passed
+
+      Spec link: src/sfumato/config.py
+
+      Gaps/Notes:
+
+      - No additional gaps reported.'
   - id: polish.docs
     name: Update README and ARCHITECTURE docs
     status: pending
