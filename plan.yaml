@@ -678,7 +678,7 @@ phases:
       wiring.'
   - id: core.gate
     name: 'Gate: Core Pipeline'
-    status: pending
+    status: claimed
     description: 'Gate review: Verify core pipeline works end-to-end. `sfumato run
       --no-upload` should produce a valid 4K PNG from a local painting + live news.
       All module interfaces conform to `ARCHITECTURE.md`. No `proto.py` dependencies
@@ -748,6 +748,8 @@ phases:
     - core.core-pipeline-verify-retest-full-suite
     - core.cli-run
     agent: gate-reviewer
+    claimed_by: gate-reviewer
+    claimed_at: '2026-03-14T15:31:44.747618+00:00'
   - id: core.config.contract
     name: Define config loader contract
     status: done
