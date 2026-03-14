@@ -3038,7 +3038,7 @@ phases:
     agent: python-executor
   - id: production.watch.contract
     name: Define daemon watch contract
-    status: claimed
+    status: done
     description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
       \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nspec_refs:\n  - ARCHITECTURE.md#2.12\n\
       \  - ARCHITECTURE.md#2.13\ntouch_paths:\n  - src/sfumato/orchestrator.py\n \
@@ -3065,6 +3065,38 @@ phases:
     agent: python-senior
     claimed_by: python-senior
     claimed_at: '2026-03-14T17:28:50.751684+00:00'
+    done_at: '2026-03-14T17:40:07.448691+00:00'
+    evidence: 'Artifact:
+
+      - PR: commit b2213c6 ([vectl] step-production.watch.contract completed), source
+      worktree commit c4001902fe36223e6b2122dceecae8d762de5985
+
+
+      Verification:
+
+      - Run: `uv run pytest tests/test_orchestrator.py -k "watch_loop_stage_order_is_contracted_and_stable
+      or watch_scheduler_action_mapping_and_order_are_explicit or watch_shutdown_and_state_save_guarantees_are_pinned
+      or backfill_contract_constants_are_pinned or watch_error_propagation_boundaries_are_explicit
+      or run_backfill_is_contract_stub_only or watch_is_contract_stub_only" -q` ->
+      7 passed
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#2.12
+
+
+      Files changed:
+
+      - src/sfumato/orchestrator.py
+
+      - tests/test_orchestrator.py
+
+
+      Gaps/Notes:
+
+      - Contract step constrained to watch/run_backfill API and behavioral contract
+      surface; no full daemon-loop implementation shipped in this step.'
   - id: production.watch.tests
     name: Author daemon watch tests
     status: pending
