@@ -404,7 +404,7 @@ phases:
       file updates.'
   - id: core.config.tests
     name: Author config loader tests
-    status: pending
+    status: claimed
     description: "step_type: test\nspec_refs:\n  - ARCHITECTURE.md#2.1\ntouch_paths:\n\
       \  - tests/test_config.py\n  - src/sfumato/config.py\nharness_refs:\n  - pytest\n\
       agent: python-executor\n\nAdd contract-driven tests for `load_config()` and\
@@ -430,6 +430,8 @@ phases:
     depends_on:
     - core.config.contract
     agent: python-executor
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T12:37:26.103689+00:00'
   - id: core.llm.contract
     name: Define LLM invocation contract
     status: claimed
