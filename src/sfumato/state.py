@@ -11,8 +11,11 @@ runtime side effects.
 
 from __future__ import annotations
 
+import json
+import os
+import tempfile
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, TypedDict
 
@@ -78,6 +81,17 @@ class LayoutCacheEntryJson(TypedDict):
     - ``None`` values are explicit and must overwrite previous persisted values.
     """
 
+    orientation: str
+    painting_title: str
+    painting_artist: str
+    painting_description: str
+    text_zone: dict[str, str]
+    colors: dict[str, str]
+    scrim: dict[str, str]
+    recommended_stories: int
+    template_hint: str
+    portrait_layout: dict[str, object] | None
+
 
 class LayoutCacheFileJson(TypedDict):
     """Versioned JSON schema boundary for layout cache persistence."""
@@ -123,6 +137,162 @@ class StateLoadPolicy:
 LOAD_POLICY = StateLoadPolicy()
 
 
+def _to_story_json(story: Story) -> StoryJson:
+    return {
+        "headline": story.headline,
+        "summary": story.summary,
+        "source": story.source,
+        "category": story.category,
+        "url": story.url,
+        "published_at": story.published_at.isoformat(),
+        "featured": story.featured,
+    }
+
+
+def _from_story_json(payload: dict[str, object]) -> Story:
+    from sfumato.news import Story
+
+    published_raw = payload.get("published_at")
+    if not isinstance(published_raw, str):
+        raise ValueError("Story payload missing published_at")
+
+    return Story(
+        headline=str(payload.get("headline", "")),
+        summary=str(payload.get("summary", "")),
+        source=str(payload.get("source", "")),
+        category=str(payload.get("category", "")),
+        url=str(payload.get("url", "")),
+        published_at=datetime.fromisoformat(published_raw),
+        featured=bool(payload.get("featured", False)),
+    )
+
+
+def _to_layout_json(layout: LayoutParams) -> LayoutCacheEntryJson:
+    portrait_layout: dict[str, object] | None = None
+    if layout.portrait_layout is not None:
+        portrait_layout = {
+            "painting_width_percent": layout.portrait_layout.painting_width_percent,
+            "left_panel_color": layout.portrait_layout.left_panel_color,
+            "right_panel_color": layout.portrait_layout.right_panel_color,
+            "info_side": layout.portrait_layout.info_side,
+        }
+
+    return {
+        "orientation": layout.orientation,
+        "painting_title": layout.painting_title,
+        "painting_artist": layout.painting_artist,
+        "painting_description": layout.painting_description,
+        "text_zone": {
+            "position": layout.text_zone.position,
+            "reason": layout.text_zone.reason,
+        },
+        "colors": {
+            "text_primary": layout.colors.text_primary,
+            "text_secondary": layout.colors.text_secondary,
+            "text_dim": layout.colors.text_dim,
+            "text_shadow": layout.colors.text_shadow,
+            "scrim_color": layout.colors.scrim_color,
+            "panel_bg": layout.colors.panel_bg,
+            "border": layout.colors.border,
+            "accent": layout.colors.accent,
+        },
+        "scrim": {
+            "position_css": layout.scrim.position_css,
+            "size_css": layout.scrim.size_css,
+            "gradient_css": layout.scrim.gradient_css,
+        },
+        "recommended_stories": layout.recommended_stories,
+        "template_hint": layout.template_hint,
+        "portrait_layout": portrait_layout,
+    }
+
+
+def _from_layout_json(payload: dict[str, object]) -> LayoutParams:
+    from sfumato.layout_ai import (
+        LayoutColors,
+        LayoutParams,
+        PortraitLayout,
+        ScrimParams,
+        TextZone,
+    )
+
+    text_zone_raw = payload.get("text_zone")
+    colors_raw = payload.get("colors")
+    scrim_raw = payload.get("scrim")
+
+    if not isinstance(text_zone_raw, dict):
+        raise ValueError("Layout payload missing text_zone")
+    if not isinstance(colors_raw, dict):
+        raise ValueError("Layout payload missing colors")
+    if not isinstance(scrim_raw, dict):
+        raise ValueError("Layout payload missing scrim")
+
+    portrait_payload = payload.get("portrait_layout")
+    portrait_layout: PortraitLayout | None = None
+    if isinstance(portrait_payload, dict):
+        portrait_layout = PortraitLayout(
+            painting_width_percent=int(
+                portrait_payload.get("painting_width_percent", 50)
+            ),
+            left_panel_color=str(portrait_payload.get("left_panel_color", "#000000")),
+            right_panel_color=str(portrait_payload.get("right_panel_color", "#000000")),
+            info_side=str(portrait_payload.get("info_side", "left")),
+        )
+
+    return LayoutParams(
+        orientation=str(payload.get("orientation", "landscape")),
+        painting_title=str(payload.get("painting_title", "")),
+        painting_artist=str(payload.get("painting_artist", "")),
+        painting_description=str(payload.get("painting_description", "")),
+        text_zone=TextZone(
+            position=str(text_zone_raw.get("position", "top-right")),
+            reason=str(text_zone_raw.get("reason", "")),
+        ),
+        colors=LayoutColors(
+            text_primary=str(colors_raw.get("text_primary", "#ffffff")),
+            text_secondary=str(colors_raw.get("text_secondary", "#dddddd")),
+            text_dim=str(colors_raw.get("text_dim", "#999999")),
+            text_shadow=str(colors_raw.get("text_shadow", "0 1px 2px rgba(0,0,0,0.5)")),
+            scrim_color=str(colors_raw.get("scrim_color", "rgba(0,0,0,0.35)")),
+            panel_bg=str(colors_raw.get("panel_bg", "#111111")),
+            border=str(colors_raw.get("border", "#222222")),
+            accent=str(colors_raw.get("accent", "#ff7a3d")),
+        ),
+        scrim=ScrimParams(
+            position_css=str(scrim_raw.get("position_css", "")),
+            size_css=str(scrim_raw.get("size_css", "")),
+            gradient_css=str(scrim_raw.get("gradient_css", "")),
+        ),
+        recommended_stories=_coerce_int(payload.get("recommended_stories"), default=3),
+        template_hint=str(payload.get("template_hint", "painting_text")),
+        portrait_layout=portrait_layout,
+    )
+
+
+def _atomic_write_text(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        dir=path.parent,
+        delete=False,
+    ) as temp_file:
+        temp_file.write(content)
+        temp_name = temp_file.name
+    os.replace(temp_name, path)
+
+
+def _coerce_int(value: object, *, default: int) -> int:
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return default
+    return default
+
+
 def resolve_state_dir(
     state_dir: Path | str | None,
     *,
@@ -147,11 +317,28 @@ def resolve_state_dir(
         Absolute path to the state directory.
 
     Raises:
-        NotImplementedError: This module currently defines contract only.
+        ValueError: If ``state_dir`` is an unsupported type.
     """
-    raise NotImplementedError(
-        "Contract-only stub: path resolution implementation pending."
-    )
+    base_cwd = cwd.resolve() if cwd is not None else Path.cwd().resolve()
+    base_home = home.resolve() if home is not None else Path.home().resolve()
+
+    if state_dir is None:
+        candidate = base_home / ".sfumato" / "state"
+    elif isinstance(state_dir, Path):
+        candidate = state_dir
+    elif isinstance(state_dir, str):
+        if state_dir.startswith("~"):
+            candidate = (
+                base_home / state_dir[2:] if state_dir.startswith("~/") else base_home
+            )
+        else:
+            candidate = Path(state_dir)
+    else:
+        raise ValueError(f"Unsupported state_dir type: {type(state_dir)!r}")
+
+    if not candidate.is_absolute():
+        candidate = base_cwd / candidate
+    return candidate.resolve()
 
 
 @dataclass
@@ -191,11 +378,11 @@ class NewsQueue:
                 ``resolve_state_dir``.
 
         Raises:
-            NotImplementedError: This module currently defines contract only.
+            ValueError: If ``state_dir`` cannot be resolved.
         """
-        raise NotImplementedError(
-            "Contract-only stub: NewsQueue.__init__ not implemented."
-        )
+        self._state_dir = resolve_state_dir(state_dir)
+        self._path = self._state_dir / NEWS_QUEUE_JSON
+        self._batches: list[QueuedBatch] = []
 
     def enqueue(self, result: CurationResult, batch_size: int) -> int:
         """Split curation result into batches and append to queue.
@@ -204,48 +391,74 @@ class NewsQueue:
             Number of batches enqueued.
 
         Raises:
-            NotImplementedError: This module currently defines contract only.
+            ValueError: If ``batch_size`` is less than 1.
         """
-        raise NotImplementedError(
-            "Contract-only stub: NewsQueue.enqueue not implemented."
-        )
+        if batch_size < 1:
+            raise ValueError("batch_size must be at least 1")
+
+        if not result.stories:
+            return 0
+
+        enqueued = 0
+        for idx in range(0, len(result.stories), batch_size):
+            self._batches.append(
+                QueuedBatch(
+                    stories=result.stories[idx : idx + batch_size],
+                    tone_description=result.tone_description,
+                    enqueued_at=datetime.now().astimezone(),
+                )
+            )
+            enqueued += 1
+        return enqueued
 
     def dequeue(self) -> QueuedBatch | None:
         """Remove and return the next batch.
 
         Raises:
-            NotImplementedError: This module currently defines contract only.
+            Nothing.
         """
-        raise NotImplementedError(
-            "Contract-only stub: NewsQueue.dequeue not implemented."
-        )
+        if not self._batches:
+            return None
+        return self._batches.pop(0)
 
     def peek(self) -> QueuedBatch | None:
         """Return the next batch without removal.
 
         Raises:
-            NotImplementedError: This module currently defines contract only.
+            Nothing.
         """
-        raise NotImplementedError("Contract-only stub: NewsQueue.peek not implemented.")
+        if not self._batches:
+            return None
+        return self._batches[0]
 
     def expire(self, expire_days: int) -> int:
         """Drop batches older than ``expire_days`` and return removed count.
 
         Raises:
-            NotImplementedError: This module currently defines contract only.
+            ValueError: If ``expire_days`` is negative.
         """
-        raise NotImplementedError(
-            "Contract-only stub: NewsQueue.expire not implemented."
-        )
+        if expire_days < 0:
+            raise ValueError("expire_days must be >= 0")
+
+        cutoff = datetime.now().astimezone() - timedelta(days=expire_days)
+        kept: list[QueuedBatch] = []
+        removed = 0
+        for batch in self._batches:
+            if batch.enqueued_at < cutoff:
+                removed += 1
+            else:
+                kept.append(batch)
+        self._batches = kept
+        return removed
 
     @property
     def size(self) -> int:
         """Return current batch count.
 
         Raises:
-            NotImplementedError: This module currently defines contract only.
+            Nothing.
         """
-        raise NotImplementedError("Contract-only stub: NewsQueue.size not implemented.")
+        return len(self._batches)
 
     def save(self) -> None:
         """Persist queue snapshot to JSON boundary.
@@ -255,9 +468,20 @@ class NewsQueue:
         - Empty in-memory queue overwrites persisted queue to empty.
 
         Raises:
-            NotImplementedError: This module currently defines contract only.
+            OSError: If file write fails.
         """
-        raise NotImplementedError("Contract-only stub: NewsQueue.save not implemented.")
+        payload: NewsQueueFileJson = {
+            "version": 1,
+            "batches": [
+                {
+                    "stories": [_to_story_json(story) for story in batch.stories],
+                    "tone_description": batch.tone_description,
+                    "enqueued_at": batch.enqueued_at.isoformat(),
+                }
+                for batch in self._batches
+            ],
+        }
+        _atomic_write_text(self._path, json.dumps(payload, ensure_ascii=False))
 
     def load(self) -> None:
         """Load queue snapshot from disk according to ``LOAD_POLICY``.
@@ -268,9 +492,50 @@ class NewsQueue:
         - Corrupt/partial content => keep last complete valid snapshot behavior.
 
         Raises:
-            NotImplementedError: This module currently defines contract only.
+            Nothing.
         """
-        raise NotImplementedError("Contract-only stub: NewsQueue.load not implemented.")
+        if not self._path.exists():
+            self._batches = []
+            return
+
+        try:
+            raw_text = self._path.read_text(encoding="utf-8")
+            payload = json.loads(raw_text)
+        except (OSError, json.JSONDecodeError):
+            return
+
+        if not isinstance(payload, dict):
+            return
+
+        batches_raw = payload.get("batches")
+        if not isinstance(batches_raw, list):
+            return
+
+        loaded: list[QueuedBatch] = []
+        for item in batches_raw:
+            if not isinstance(item, dict):
+                continue
+            stories_raw = item.get("stories")
+            enqueued_raw = item.get("enqueued_at")
+            if not isinstance(stories_raw, list) or not isinstance(enqueued_raw, str):
+                continue
+            try:
+                stories = [
+                    _from_story_json(story_payload)
+                    for story_payload in stories_raw
+                    if isinstance(story_payload, dict)
+                ]
+                loaded.append(
+                    QueuedBatch(
+                        stories=stories,
+                        tone_description=str(item.get("tone_description", "")),
+                        enqueued_at=datetime.fromisoformat(enqueued_raw),
+                    )
+                )
+            except (TypeError, ValueError):
+                continue
+
+        self._batches = loaded
 
 
 class UsedPaintings:
@@ -286,72 +551,84 @@ class UsedPaintings:
         """Initialize used-paintings tracker with state directory contract.
 
         Raises:
-            NotImplementedError: This module currently defines contract only.
+            ValueError: If ``state_dir`` cannot be resolved.
         """
-        raise NotImplementedError(
-            "Contract-only stub: UsedPaintings.__init__ not implemented."
-        )
+        self._state_dir = resolve_state_dir(state_dir)
+        self._path = self._state_dir / USED_PAINTINGS_JSON
+        self._content_hashes: set[str] = set()
 
     def mark_used(self, content_hash: str) -> None:
         """Mark a painting hash as used.
 
         Raises:
-            NotImplementedError: This module currently defines contract only.
+            Nothing.
         """
-        raise NotImplementedError(
-            "Contract-only stub: UsedPaintings.mark_used not implemented."
-        )
+        self._content_hashes.add(content_hash)
 
     def is_used(self, content_hash: str) -> bool:
         """Return whether ``content_hash`` is in the used set.
 
         Raises:
-            NotImplementedError: This module currently defines contract only.
+            Nothing.
         """
-        raise NotImplementedError(
-            "Contract-only stub: UsedPaintings.is_used not implemented."
-        )
+        return content_hash in self._content_hashes
 
     def reset(self) -> None:
         """Clear in-memory used-hash set.
 
         Raises:
-            NotImplementedError: This module currently defines contract only.
+            Nothing.
         """
-        raise NotImplementedError(
-            "Contract-only stub: UsedPaintings.reset not implemented."
-        )
+        self._content_hashes.clear()
 
     @property
     def count(self) -> int:
         """Return number of tracked used hashes.
 
         Raises:
-            NotImplementedError: This module currently defines contract only.
+            Nothing.
         """
-        raise NotImplementedError(
-            "Contract-only stub: UsedPaintings.count not implemented."
-        )
+        return len(self._content_hashes)
 
     def save(self) -> None:
         """Persist used-hash snapshot to JSON boundary.
 
         Raises:
-            NotImplementedError: This module currently defines contract only.
+            OSError: If file write fails.
         """
-        raise NotImplementedError(
-            "Contract-only stub: UsedPaintings.save not implemented."
-        )
+        payload: UsedPaintingsFileJson = {
+            "version": 1,
+            "content_hashes": sorted(self._content_hashes),
+        }
+        _atomic_write_text(self._path, json.dumps(payload, ensure_ascii=False))
 
     def load(self) -> None:
         """Load used-hash snapshot from disk according to ``LOAD_POLICY``.
 
         Raises:
-            NotImplementedError: This module currently defines contract only.
+            Nothing.
         """
-        raise NotImplementedError(
-            "Contract-only stub: UsedPaintings.load not implemented."
-        )
+        if not self._path.exists():
+            self._content_hashes = set()
+            return
+
+        try:
+            payload = json.loads(self._path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return
+
+        if not isinstance(payload, dict):
+            return
+
+        hashes_raw = payload.get("content_hashes")
+        if not isinstance(hashes_raw, list):
+            legacy_hashes_raw = payload.get("hashes")
+            if isinstance(legacy_hashes_raw, list):
+                hashes_raw = legacy_hashes_raw
+            else:
+                return
+
+        self._content_hashes = {str(item) for item in hashes_raw}
 
 
 class LayoutCache:
@@ -367,72 +644,91 @@ class LayoutCache:
         """Initialize layout cache with state directory contract.
 
         Raises:
-            NotImplementedError: This module currently defines contract only.
+            ValueError: If ``state_dir`` cannot be resolved.
         """
-        raise NotImplementedError(
-            "Contract-only stub: LayoutCache.__init__ not implemented."
-        )
+        self._state_dir = resolve_state_dir(state_dir)
+        self._path = self._state_dir / LAYOUT_CACHE_JSON
+        self._layouts: dict[str, LayoutParams] = {}
 
     def get(self, content_hash: str) -> LayoutParams | None:
         """Return cached layout parameters for ``content_hash`` if present.
 
         Raises:
-            NotImplementedError: This module currently defines contract only.
+            Nothing.
         """
-        raise NotImplementedError(
-            "Contract-only stub: LayoutCache.get not implemented."
-        )
+        return self._layouts.get(content_hash)
 
     def put(self, content_hash: str, layout: LayoutParams) -> None:
         """Insert/replace cached ``LayoutParams`` for ``content_hash``.
 
         Raises:
-            NotImplementedError: This module currently defines contract only.
+            Nothing.
         """
-        raise NotImplementedError(
-            "Contract-only stub: LayoutCache.put not implemented."
-        )
+        self._layouts[content_hash] = layout
 
     def has(self, content_hash: str) -> bool:
         """Return whether ``content_hash`` exists in cache.
 
         Raises:
-            NotImplementedError: This module currently defines contract only.
+            Nothing.
         """
-        raise NotImplementedError(
-            "Contract-only stub: LayoutCache.has not implemented."
-        )
+        return content_hash in self._layouts
 
     @property
     def size(self) -> int:
         """Return number of cached layout entries.
 
         Raises:
-            NotImplementedError: This module currently defines contract only.
+            Nothing.
         """
-        raise NotImplementedError(
-            "Contract-only stub: LayoutCache.size not implemented."
-        )
+        return len(self._layouts)
 
     def save(self) -> None:
         """Persist layout cache snapshot to JSON boundary.
 
         Raises:
-            NotImplementedError: This module currently defines contract only.
+            OSError: If file write fails.
         """
-        raise NotImplementedError(
-            "Contract-only stub: LayoutCache.save not implemented."
-        )
+        payload: LayoutCacheFileJson = {
+            "version": 1,
+            "layouts": {
+                key: _to_layout_json(layout) for key, layout in self._layouts.items()
+            },
+        }
+        _atomic_write_text(self._path, json.dumps(payload, ensure_ascii=False))
 
     def load(self) -> None:
         """Load layout cache snapshot with missing-file and legacy fallback.
 
         Raises:
-            NotImplementedError: This module currently defines contract only.
+            Nothing.
         """
-        raise NotImplementedError(
-            "Contract-only stub: LayoutCache.load not implemented."
-        )
+        if not self._path.exists():
+            self._layouts = {}
+            return
+
+        try:
+            payload = json.loads(self._path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return
+
+        if not isinstance(payload, dict):
+            return
+
+        layouts_raw = payload.get("layouts")
+        if not isinstance(layouts_raw, dict):
+            return
+
+        loaded: dict[str, LayoutParams] = {}
+        for key, value in layouts_raw.items():
+            if not isinstance(key, str) or not isinstance(value, dict):
+                continue
+            try:
+                loaded[key] = _from_layout_json(value)
+            except (TypeError, ValueError):
+                continue
+
+        self._layouts = loaded
 
 
 class EmbeddingCache:
@@ -450,72 +746,92 @@ class EmbeddingCache:
         """Initialize embedding cache with state directory contract.
 
         Raises:
-            NotImplementedError: This module currently defines contract only.
+            ValueError: If ``state_dir`` cannot be resolved.
         """
-        raise NotImplementedError(
-            "Contract-only stub: EmbeddingCache.__init__ not implemented."
-        )
+        self._state_dir = resolve_state_dir(state_dir)
+        self._path = self._state_dir / EMBEDDING_CACHE_NPZ
+        self._embeddings: dict[str, np.ndarray] = {}
 
     def get(self, key: str) -> np.ndarray | None:
         """Return embedding vector by key.
 
         Raises:
-            NotImplementedError: This module currently defines contract only.
+            Nothing.
         """
-        raise NotImplementedError(
-            "Contract-only stub: EmbeddingCache.get not implemented."
-        )
+        return self._embeddings.get(key)
 
     def put(self, key: str, vector: np.ndarray) -> None:
         """Insert or replace embedding vector for key.
 
         Raises:
-            NotImplementedError: This module currently defines contract only.
+            ValueError: If vector is not 1-dimensional.
         """
-        raise NotImplementedError(
-            "Contract-only stub: EmbeddingCache.put not implemented."
-        )
+        if vector.ndim != 1:
+            raise ValueError("Embedding vectors must be 1-dimensional")
+        self._embeddings[key] = vector
 
     def has(self, key: str) -> bool:
         """Return whether ``key`` exists in cache.
 
         Raises:
-            NotImplementedError: This module currently defines contract only.
+            Nothing.
         """
-        raise NotImplementedError(
-            "Contract-only stub: EmbeddingCache.has not implemented."
-        )
+        return key in self._embeddings
 
     @property
     def size(self) -> int:
         """Return number of cached embedding vectors.
 
         Raises:
-            NotImplementedError: This module currently defines contract only.
+            Nothing.
         """
-        raise NotImplementedError(
-            "Contract-only stub: EmbeddingCache.size not implemented."
-        )
+        return len(self._embeddings)
 
     def save(self) -> None:
         """Persist embedding cache snapshot to NPZ boundary.
 
         Raises:
-            NotImplementedError: This module currently defines contract only.
+            OSError: If file write fails.
         """
-        raise NotImplementedError(
-            "Contract-only stub: EmbeddingCache.save not implemented."
-        )
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            suffix=".npz",
+            dir=self._path.parent,
+            delete=False,
+        ) as temp_file:
+            temp_name = temp_file.name
+
+        try:
+            np.savez(temp_name, **self._embeddings)
+            os.replace(temp_name, self._path)
+        finally:
+            try:
+                Path(temp_name).unlink(missing_ok=True)
+            except OSError:
+                pass
 
     def load(self) -> None:
         """Load embedding cache snapshot with fallback behavior.
 
         Raises:
-            NotImplementedError: This module currently defines contract only.
+            Nothing.
         """
-        raise NotImplementedError(
-            "Contract-only stub: EmbeddingCache.load not implemented."
-        )
+        if not self._path.exists():
+            self._embeddings = {}
+            return
+
+        try:
+            with np.load(self._path, allow_pickle=False) as archive:
+                loaded: dict[str, np.ndarray] = {}
+                for key in archive.files:
+                    vec = archive[key]
+                    if isinstance(vec, np.ndarray) and vec.ndim == 1:
+                        loaded[key] = vec
+        except (OSError, ValueError):
+            return
+
+        self._embeddings = loaded
 
 
 @dataclass
@@ -549,9 +865,26 @@ class AppState:
           compatibility by not raising during daemon startup.
 
         Raises:
-            NotImplementedError: This module currently defines contract only.
+            Nothing.
         """
-        raise NotImplementedError("Contract-only stub: AppState.load not implemented.")
+        resolved = resolve_state_dir(state_dir)
+
+        news_queue = NewsQueue(resolved)
+        used_paintings = UsedPaintings(resolved)
+        layout_cache = LayoutCache(resolved)
+        embedding_cache = EmbeddingCache(resolved)
+
+        news_queue.load()
+        used_paintings.load()
+        layout_cache.load()
+        embedding_cache.load()
+
+        return cls(
+            news_queue=news_queue,
+            used_paintings=used_paintings,
+            layout_cache=layout_cache,
+            embedding_cache=embedding_cache,
+        )
 
     def save_all(self) -> None:
         """Persist all state components in a single logical save flow.
@@ -562,11 +895,12 @@ class AppState:
           complete valid snapshot semantics over raising startup-fatal errors.
 
         Raises:
-            NotImplementedError: This module currently defines contract only.
+            OSError: If any component save fails.
         """
-        raise NotImplementedError(
-            "Contract-only stub: AppState.save_all not implemented."
-        )
+        self.news_queue.save()
+        self.used_paintings.save()
+        self.layout_cache.save()
+        self.embedding_cache.save()
 
 
 __all__ = [
