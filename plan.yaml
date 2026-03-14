@@ -1926,6 +1926,41 @@ phases:
     depends_on:
     - intelligence.paintings.contract
     agent: python-executor
+  - id: intelligence.matcher.contract
+    name: Define matcher module contract
+    status: pending
+    description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
+      \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nspec_refs:\n  - ARCHITECTURE.md#2.6\n\
+      \  - PROTOTYPING.md#semantic-art-news-matching\ntouch_paths:\n  - src/sfumato/matcher.py\n\
+      harness_refs:\n  - tests/test_matcher.py\nagent: python-executor\n\nDefine the\
+      \ acceptance contract for `src/sfumato/matcher.py` before implementation.\n\n\
+      Contract scope:\n- Pin `EmbeddingResult` fields and `compute_embedding()`, `cosine_similarity()`,\
+      \ and `select_painting()` signatures exactly as described in `ARCHITECTURE.md#2.6`.\n\
+      - Pin embedding-result semantics explicitly: `compute_embedding()` returns the\
+      \ original text, a float32 numpy vector, and the model identifier produced by\
+      \ the configured backend.\n- Pin cosine-similarity edge semantics explicitly:\
+      \ returned scores stay in `[-1, 1]`; zero-vector input handling is defined explicitly\
+      \ instead of left to numpy warnings or NaN propagation.\n- Pin selection precedence\
+      \ explicitly: `strategy=\"random\"` bypasses semantic scoring and returns a\
+      \ random painting with score `0.0`; `strategy=\"semantic\"` computes/loads a\
+      \ tone embedding and chooses the highest valid similarity score.\n- Pin fallback\
+      \ semantics explicitly: missing painting embeddings, empty painting lists, or\
+      \ embedding-compute failures must state whether they raise `MatcherError` or\
+      \ fall back, so workers do not invent behavior.\n- Pin cache-key surface explicitly:\
+      \ the contract names which keys come from painting `content_hash` values and\
+      \ which come from the news-tone hash path.\n\nNon-goals:\n- No live embedding\
+      \ calls.\n- No completed similarity/selection logic.\n- No orchestrator wiring\
+      \ in this step."
+    verification: '- Contract artifact states embedding result shape, zero-vector
+      semantics, semantic-vs-random precedence, and missing-embedding/error behavior
+      explicitly
+
+      - `src/sfumato/matcher.py` exposes signatures/stubs only; no completed matching/business
+      logic ships in this step
+
+      - Any fallback/degradation behavior is written explicitly rather than inferred
+      by implementers'
+    agent: python-executor
 - id: production
   name: Production
   status: locked
