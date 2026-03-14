@@ -3741,7 +3741,7 @@ phases:
       - No additional sibling changes required for this config/dependency-only step.'
   - id: sdk.llm-sdk-backend
     name: LLM SDK backend implementation
-    status: pending
+    status: claimed
     description: "Add SDK backend to llm.py using litellm library. Existing CLI code\
       \ stays untouched.\n\nFile: src/sfumato/llm.py\n\n1. Add routing logic to invoke_text(),\
       \ invoke_vision(), compute_embedding():\n   - Check ai_config.backend: if \"\
@@ -3786,6 +3786,8 @@ phases:
     depends_on:
     - sdk.config-and-deps
     agent: python-executor
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T21:29:26.086153+00:00'
   - id: sdk.dockerfile
     name: Dockerfile SDK mode
     status: pending
