@@ -5103,6 +5103,39 @@ phases:
 
       - Runtime parsing implementation for replay_expire_days remains for replay.config
       implementation step.'
+  - id: replay.define-replayqueue-contract
+    name: Define ReplayQueue contract
+    status: pending
+    description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
+      \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nagent_source: default\n\
+      spec_refs:\n  - ARCHITECTURE.md#2.10\ntouch_paths:\n  - src/sfumato/state.py\n\
+      \  - tests/test_state.py\n\nDefine the ReplayQueue contract and persistence\
+      \ semantics without implementation logic.\n\nContract scope:\n- Declare the\
+      \ `ReplayQueue` public interface in `src/sfumato/state.py` alongside `NewsQueue`.\n\
+      - Specify required operations and signatures: persist/load, `next()`, `expire(days)`,\
+      \ and seen-URL dedup state access needed by orchestrator.\n- Specify ownership\
+      \ boundary: `state` remains storage/lifecycle owner; orchestrator decides when\
+      \ a dequeued batch is transferred into replay.\n- Specify persistence layout\
+      \ for replay batches and dedup state under the state directory.\n- Specify overlap-ratio\
+      \ contract for dedup support (`seen_urls` / current RSS URLs, threshold >80%).\n\
+      \nState strata:\n- intent: consumed news batches should remain replayable until\
+      \ expiry\n- resolved contract: replay cycles deterministically over persisted\
+      \ batches\n- mutable runtime state: current replay index, persisted batches,\
+      \ seen URL set\n- transport/session: none\n\nProvenance contract:\n- `enqueued_at`\
+      \ remains the expiry source of truth for replay batches.\n- Replay iteration\
+      \ order is stable across save/load.\n\nContract purity:\n- Allowed: signatures,\
+      \ schemas, dataclass/interface notes, stub methods.\n- Forbidden: queue mutation\
+      \ logic, persistence implementation, orchestrator wiring.\n"
+    verification: '- Contract defines ReplayQueue interface, persistence artifacts,
+      and dedup threshold semantics without runnable business logic
+
+      - Ownership boundary between state and orchestrator is explicit
+
+      - Replay index and expiry source-of-truth semantics are specified clearly enough
+      for tests'
+    depends_on:
+    - replay.config
+    agent: software-architect
 - id: polish
   name: 'Polish: Default Model + Documentation'
   status: locked
