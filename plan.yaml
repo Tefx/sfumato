@@ -5699,6 +5699,79 @@ phases:
     depends_on:
     - replay.gate
     agent: python-senior
+  - id: replay.retest-app-state-replay-integration
+    name: retest-app-state-replay-integration
+    status: pending
+    description: "As an INDEPENDENT TESTER (`gate-reviewer`), re-test the replay blocker\
+      \ family from a fresh perspective after `replay.replay-fix-app-state-replay-integration`.\n\
+      \nstep_type: verification\nspec_refs:\n  - ARCHITECTURE.md#2.10\n  - ARCHITECTURE.md#2.12\n\
+      touch_paths:\n  - src/sfumato/state.py\n  - src/sfumato/orchestrator.py\n  -\
+      \ tests/test_state.py\n  - tests/test_orchestrator.py\nharness_refs:\n  - tests/test_state.py\n\
+      \  - tests/test_orchestrator.py\n\nYOUR GOAL IS TO FIND REMAINING PROBLEMS,\
+      \ not to confirm it works.\n\nRetest ALL replay blockers from the gate finding:\n\
+      - `AppState` exposes a real `replay_queue`\n- `AppState.load()` constructs and\
+      \ loads it\n- `AppState.save_all()` persists it\n- production orchestrator access\
+      \ no longer resolves replay to `None`\n\nIndependence Level: L1\n\nIf evidence\
+      \ is mock-only or covers only one blocker, mark the retest incomplete."
+    verification: '- Execute focused state + orchestrator regressions covering all
+      four blocker bullets
+
+      - Require explicit evidence for both main path and failure path (missing replay
+      file or stale replay snapshot overwrite)
+
+      - Verification succeeds by either finding issues or producing complete evidence;
+      vague "tests pass" is insufficient'
+    evidence_template: '## Replay Retest Evidence
+
+
+      **Tester**: gate-reviewer
+
+      **Scope**: replay AppState integration blockers
+
+
+      **Commands executed**:
+
+      ```
+
+      uv run pytest tests/test_state.py tests/test_orchestrator.py -k "replay or AppState"
+      -v
+
+      ```
+
+
+      **Blocker coverage**:
+
+      - [ ] AppState field present
+
+      - [ ] AppState.load wires ReplayQueue
+
+      - [ ] AppState.save_all persists ReplayQueue
+
+      - [ ] Production `_get_replay_queue(state)` returns live queue
+
+
+      **Failure-path evidence**:
+
+      - missing replay file fallback observed
+
+      - stale replay snapshot overwrite / empty save observed
+
+
+      **Actual output**:
+
+      ```
+
+      <paste command output>
+
+      ```
+
+
+      **Verdict**:
+
+      - PASS | ISSUES_FOUND | INCOMPLETE'
+    depends_on:
+    - replay.replay-fix-app-state-replay-integration
+    agent: gate-reviewer
 - id: polish
   name: 'Polish: Default Model + Documentation'
   status: locked
