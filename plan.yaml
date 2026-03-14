@@ -4837,6 +4837,27 @@ phases:
     - art-facts.layout-prompt
     - art-facts.template-whisper
     agent: software-architect
+  - id: art-facts.define-render-whisper-contract-tests
+    name: Define render whisper contract tests
+    status: pending
+    description: "step_type: test\nagent_source: default\nspec_refs:\n  - ARCHITECTURE.md#2.7\n\
+      touch_paths:\n  - tests/test_render.py\n  - src/sfumato/render.py\n\nDefine\
+      \ contract tests for whisper variable population in `build_template_variables()`.\n\
+      \nTest scope:\n- Assert `WHISPER_POSITION`, `WHISPER_COLOR`, and `WHISPER_SHADOW`\
+      \ map directly from `LayoutParams.whisper_zone`\n- Assert `WHISPER_TEXT` selects\
+      \ the expected art fact for `whisper_fact_index=0` and for a non-zero rotation\
+      \ index\n- Assert `RenderContext` defaults remain backward-compatible when whisper\
+      \ rotation is not specified explicitly\n- Keep test helpers minimal; do not\
+      \ add product implementation logic in tests\n"
+    verification: '- `tests/test_render.py` names focused contract cases for whisper
+      variable mapping and rotation index selection
+
+      - Test expectations are deterministic and implementation-independent
+
+      - No production render logic is added in this step'
+    depends_on:
+    - art-facts.render-whisper.contract
+    agent: python-executor
 - id: replay
   name: News Replay Queue
   status: in_progress
