@@ -318,23 +318,61 @@ phases:
   - id: core.tv
     name: Extend TV module
     status: pending
-    description: 'Extend src/sfumato/tv.py per ARCHITECTURE.md section 2.8. Implement
-      full interface: TvStatus, UploadedImage dataclasses. Implement check_status()
-      (non-throwing, 10s timeout), upload_image(), set_displayed(), list_uploaded(),
-      delete_uploaded(), clean_old_uploads(), is_available_for_push(). Add TvError/TvConnectionError/TvUploadError
-      exception hierarchy. Use samsungtvws library. File: src/sfumato/tv.py (extend
-      existing ~95 LOC). Completion: all public functions match arch spec; error handling
-      is non-throwing where specified.'
-    verification: check_status() returns TvStatus without throwing; upload_image()
-      returns content_id; clean_old_uploads() respects keep parameter; error classes
-      defined
+    description: "step_type: implementation\nspec_refs:\n  - ARCHITECTURE.md#2.8\n\
+      \  - PROTOTYPING.md#1\ntouch_paths:\n  - src/sfumato/tv.py\n  - tests/test_tv.py\n\
+      harness_refs:\n  - pytest\n  - samsungtvws art-mode seam doubles\nagent: python-executor\n\
+      \nImplement `src/sfumato/tv.py` per `ARCHITECTURE.md#2.8`, `PROTOTYPING.md#1`,\
+      \ and the upstream contract/test steps.\n\nScope:\n- Replace the prototype helpers\
+      \ with the contracted public dataclasses, exception hierarchy, and samsungtvws-backed\
+      \ functions: `check_status()`, `upload_image()`, `set_displayed()`, `list_uploaded()`,\
+      \ `delete_uploaded()`, `clean_old_uploads()`, and `is_available_for_push()`.\n\
+      - Use the validated Art Mode calls from the prototype (`supported()`, `available()`,\
+      \ `get_artmode()`, `select_image()`, `upload()`) while avoiding known hanging\
+      \ APIs such as `set_artmode(True)` and `get_thumbnail()`.\n- Keep network/setup\
+      \ errors categorized consistently for downstream CLI/orchestrator callers.\n\
+      \nFailure-mode checklist:\n- `check_status()` never throws on connection refusal,\
+      \ websocket setup failure, art-mode probe failure, or timeout exhaustion; it\
+      \ returns `TvStatus(reachable=False, error=...)` instead.\n- The status path\
+      \ enforces the contracted 10-second timeout boundary so `sfumato tv status`\
+      \ and pipeline preflight cannot hang indefinitely.\n- `upload_image()` maps\
+      \ unreachable/setup failures to `TvConnectionError` and upload-path failures\
+      \ after connection/art setup to `TvUploadError`.\n- `clean_old_uploads(tv_config,\
+      \ keep)` preserves the retained newest `keep` uploads, logs/skips individual\
+      \ delete failures, and returns only the number of confirmed deletions.\n- `is_available_for_push()`\
+      \ remains non-throwing and derives its answer only from contracted `check_status()`\
+      \ semantics.\n\nState semantics:\n- `check_status()` is the single truth source\
+      \ for availability; downstream callers must not re-derive availability from\
+      \ raw samsungtvws exceptions.\n- Last-writer-wins does not apply; upload/display\
+      \ operations act on explicit `content_id` values and cleanup preserves the retained\
+      \ set exactly.\n- Backward-compatible behavior means status/cleanup helpers\
+      \ stay non-throwing even when individual websocket calls fail.\n\nOut-of-scope\
+      \ guardrail:\n- No orchestration or CLI formatting logic in this step.\n- No\
+      \ attempt to wake the TV or force Art Mode via hanging APIs.\n- No live hardware-only\
+      \ validation requirement; implementation acceptance is contract/test-driven\
+      \ inside this step.\n\nKnown risks:\n- First-device pairing prompts can appear\
+      \ on the TV; surface these as contracted reachability/error states instead of\
+      \ uncaught exceptions.\n- The prototype showed TV metadata may be incomplete;\
+      \ keep-policy ordering must follow the contract fallback, not ad hoc list order.\n"
+    verification: '- Main path: focused regressions in `tests/test_tv.py` prove reachable
+      status reporting, successful upload content-id extraction, display selection,
+      and keep-policy cleanup on a stable samsungtvws seam double
+
+      - Highest-risk failure path: focused regressions prove `check_status()` timeout/non-throwing
+      behavior and connection/upload error mapping surface the contracted result/error
+      types without hangs
+
+      - Cleanup failure path: tests show individual delete failures are logged/skipped
+      while the retained set and deletion count semantics stay intact
+
+      - Proof names the exact tv status timeout/error-mapping and cleanup keep-policy
+      regressions; generic `pytest` success is insufficient'
     refs:
     - ARCHITECTURE.md#2.8
+    - PROTOTYPING.md#1
     - src/sfumato/tv.py
-    - PROTOTYPING.md
-    - ARCHITECTURE.md
+    - tests/test_tv.py
     depends_on:
-    - core.config
+    - core.tv.tests
     agent: python-executor
   - id: core.pipeline
     name: Implement orchestrator.run_once
