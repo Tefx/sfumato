@@ -176,7 +176,7 @@ phases:
       integration occurs in later steps.'
   - id: core.palette
     name: Implement palette extraction
-    status: claimed
+    status: done
     description: "step_type: implementation\nspec_refs:\n  - ARCHITECTURE.md#2.4\n\
       touch_paths:\n  - src/sfumato/palette.py\n  - tests/test_palette.py\nharness_refs:\n\
       \  - pytest\n  - image fixtures\nagent: python-executor\n\nImplement `src/sfumato/palette.py`\
@@ -212,6 +212,39 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T13:08:32.220766+00:00'
+    done_at: '2026-03-14T13:16:20.958723+00:00'
+    evidence: 'Artifact:
+
+      - Worker commit: f574bc6 (isolated worktree)
+
+      - Main commit: a34c3191ae708f4721c9b466dc00b3901ad0eaef
+
+
+      Verification:
+
+      - Run: `uv run pytest tests/test_palette.py` -> 50 passed
+
+      - Run: `uv run pytest tests/` -> 148 passed
+
+      - Run: `python -c "from sfumato.palette import extract_palette"` -> import OK
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#2.4
+
+      - src/sfumato/palette.py
+
+      - tests/test_palette.py
+
+
+      Gaps/Notes:
+
+      - Implementation includes deterministic edge handling (tiny/monochrome/invalid
+      image) and BT.709 luminance classification.
+
+      - Color normalization reported as canonical lowercase hex strings in worker
+      evidence.'
   - id: core.news
     name: Refactor news module
     status: pending
