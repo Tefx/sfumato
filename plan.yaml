@@ -4562,6 +4562,30 @@ phases:
       '
     depends_on:
     - art-facts.orchestrator-wire
+  - id: art-facts.layout-prompt.contract
+    name: Define layout prompt zone and art-fact contract
+    status: pending
+    description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
+      \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nagent: software-architect\n\
+      agent_source: default\nspec_refs:\n  - PROTOTYPING.md#11\n  - ARCHITECTURE.md#2.5\n\
+      touch_paths:\n  - src/sfumato/layout_ai.py\n  - tests/test_layout_ai.py\nharness_refs:\n\
+      \  - tests/test_layout_ai.py\n\nDefine the acceptance contract for layout analysis\
+      \ before implementation.\n\nContract scope only:\n1. Specify the exact LayoutParams\
+      \ additions for subject_zone, whisper_zone, and art_facts.\n2. Specify the structured\
+      \ LLM output shape for the 10-item JSON response.\n3. Specify overlap invariants:\
+      \ news_zone, subject_zone, and whisper_zone are mutually exclusive.\n4. Specify\
+      \ whisper-zone requirements for width/readability without introducing implementation\
+      \ logic.\n5. Record any required dataclass or schema stubs only; no runtime\
+      \ business logic.\n\nDeliverables:\n- Explicit field/type contract for new layout\
+      \ outputs\n- Acceptance notes for overlap validation and art_facts cardinality\n\
+      - Stub-level contract updates only; no completed layout-analysis behavior"
+    verification: '- Contract artifacts define field names, types, and invariants
+      for subject_zone, whisper_zone, and art_facts
+
+      - LLM response contract enumerates all 10 requested items
+
+      - No implementation logic beyond signatures, type definitions, interfaces, or
+      stubs'
 - id: replay
   name: News Replay Queue
   status: pending
