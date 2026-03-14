@@ -401,6 +401,30 @@ phases:
     depends_on:
     - core.llm.contract
     agent: python-executor
+  - id: core.palette.contract
+    name: Define palette extraction contract
+    status: pending
+    description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
+      \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nspec_refs:\n  - ARCHITECTURE.md#2.4\n\
+      touch_paths:\n  - src/sfumato/palette.py\nharness_refs:\n  - tests/test_palette.py\n\
+      agent: python-executor\n\nDefine the contract for `src/sfumato/palette.py` before\
+      \ implementation.\n\nContract scope:\n- Pin `PaletteColors` fields and output\
+      \ invariants.\n- Pin hex normalization guarantee for all returned colors: canonical\
+      \ `#RRGGBB` format with exactly six hex digits.\n- Pin behavior for tiny or\
+      \ low-variance images so the implementation does not improvise duplicate/empty\
+      \ palette handling.\n- Pin failure behavior for unreadable or invalid image\
+      \ input and for images that cannot yield a valid cluster set.\n- Pin expectations\
+      \ for `dominant`, `secondary`, `accent`, `background`, `is_dark`, and ordered\
+      \ `colors` outputs.\n\nNon-goals:\n- No working clustering algorithm in this\
+      \ step.\n- No finished image IO beyond signatures/stubs."
+    verification: '- Contract artifact explicitly defines successful output invariants
+      and invalid-image / tiny-image edge behavior
+
+      - `PaletteColors` signatures/stubs exist without completed clustering logic
+
+      - Hex normalization and color ordering guarantees are pinned explicitly, not
+      inferred later'
+    agent: python-executor
 - id: intelligence
   name: Intelligence
   status: locked
