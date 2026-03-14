@@ -159,6 +159,7 @@ async def fetch_paintings(
     count: int,
     cache_dir: Path,
     exclude_ids: set[str] | None = None,
+    rijksmuseum_api_key: str | None = None,
 ) -> list[PaintingInfo]:
     """Fetch `count` paintings from the specified sources.
 
@@ -247,7 +248,12 @@ async def fetch_paintings(
             continue
 
         try:
-            paintings.extend(await fetcher(count, resolved_cache_dir, exclude_ids))
+            if source == ArtSource.RIJKSMUSEUM.value:
+                paintings.extend(
+                    await fetcher(count, resolved_cache_dir, exclude_ids, api_key=rijksmuseum_api_key)
+                )
+            else:
+                paintings.extend(await fetcher(count, resolved_cache_dir, exclude_ids))
         except SourceAuthError as exc:
             auth_errors.append(exc)
             logger.warning("Skipping source '%s' due to missing auth: %s", source, exc)
@@ -271,54 +277,28 @@ async def fetch_from_rijksmuseum(
     count: int,
     cache_dir: Path,
     exclude_ids: set[str] | None = None,
+    api_key: str | None = None,
 ) -> list[PaintingInfo]:
     """Fetch paintings from Rijksmuseum API.
 
-    Requires RIJKSMUSEUM_API_KEY env var.
-    Filters for paintings only (type=painting), high resolution available.
+    API key can be passed directly, set in config.toml [api_keys] section,
+    or via RIJKSMUSEUM_API_KEY env var.
 
     Args:
         count: Number of paintings to fetch.
         cache_dir: Base cache directory for downloads.
         exclude_ids: Set of source_id values to skip (PRE-DOWNLOAD filter).
+        api_key: Rijksmuseum API key. Falls back to RIJKSMUSEUM_API_KEY env var.
 
     Returns:
         List of PaintingInfo objects for successfully downloaded paintings.
 
     Raises:
-        SourceAuthError: If RIJKSMUSEUM_API_KEY env var is not set.
-            This is a FAIL scenario for THIS source - but aggregate fetch_paintings
-            handles it gracefully by skipping this source.
-
-    Contract:
-        AUTH REQUIREMENT:
-        - Requires RIJKSMUSEUM_API_KEY environment variable
-        - If missing, raise SourceAuthError (callers should skip this source)
-
-        API FILTERING:
-        - Only fetches objects where artObject.hasImage is true
-        - Only fetches objects where artObject.objectTypes includes "painting"
-        - Prefers high-resolution images when available
-
-        EXCLUDE_ID FILTERING:
-        - exclude_ids is checked BEFORE making API calls
-        - Format: "rijksmuseum:{objectNumber}" e.g. "rijksmuseum:SK-A-3262"
-
-        CACHE BEHAVIOR:
-        - Downloads to cache_dir/rijksmuseum/{objectNumber}.jpg
-        - Writes metadata sidecar to cache_dir/rijksmuseum/{objectNumber}.json
-        - Skips if file already exists and content_hash matches
-
-    Example:
-        >>> import os
-        >>> os.environ["RIJKSMUSEUM_API_KEY"] = "your-key"
-        >>> paintings = await fetch_from_rijksmuseum(count=5, cache_dir=Path("~/.sfumato/paintings"))
-        >>> len(paintings)
-        5
+        SourceAuthError: If no API key is available from any source.
     """
-    api_key = os.getenv("RIJKSMUSEUM_API_KEY")
+    api_key = api_key or os.getenv("RIJKSMUSEUM_API_KEY")
     if not api_key:
-        raise SourceAuthError("RIJKSMUSEUM_API_KEY env var is not set")
+        raise SourceAuthError("RIJKSMUSEUM_API_KEY not set in config or env var")
 
     candidates = await _discover_rijksmuseum_candidates(count=count, api_key=api_key)
     return await _download_candidates(

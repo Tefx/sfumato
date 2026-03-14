@@ -94,6 +94,17 @@ class AiConfig:
 
 
 @dataclass(frozen=True)
+class ApiKeysConfig:
+    """API keys for external services.
+
+    Keys can be set in config.toml or via environment variables.
+    Env vars take precedence over config values.
+    """
+
+    rijksmuseum: str = ""
+
+
+@dataclass(frozen=True)
 class AppConfig:
     """Top-level application configuration contract."""
 
@@ -102,6 +113,7 @@ class AppConfig:
     news: NewsConfig = field(default_factory=NewsConfig)
     paintings: PaintingsConfig = field(default_factory=PaintingsConfig)
     ai: AiConfig = field(default_factory=AiConfig)
+    api_keys: ApiKeysConfig = field(default_factory=ApiKeysConfig)
     data_dir: Path = Path("~/.sfumato")
 
     def __post_init__(self) -> None:
@@ -210,6 +222,12 @@ match_strategy = "semantic"
 [ai]
 cli = "gemini"
 model = "gemini-3.1-pro-preview"
+
+[api_keys]
+# rijksmuseum = "your-api-key-here"
+# Get a free key at https://www.rijksmuseum.nl/en/register
+# (account settings → advanced → API key)
+# Env var RIJKSMUSEUM_API_KEY also works and takes precedence.
 """
 
 
@@ -423,12 +441,21 @@ def _build_app_config(data: dict[str, Any], source_path: Path) -> AppConfig:
         )
     )
 
+    api_keys_data = _expect_table(data, "api_keys", source_path)
+    # Config value, then env var override
+    rijks_key = _expect_str_or_default(
+        api_keys_data, "rijksmuseum", "", source_path, "api_keys"
+    )
+    rijks_key = os.environ.get("RIJKSMUSEUM_API_KEY", rijks_key)
+    api_keys = ApiKeysConfig(rijksmuseum=rijks_key)
+
     config = AppConfig(
         tv=tv,
         schedule=schedule,
         news=news,
         paintings=paintings,
         ai=ai,
+        api_keys=api_keys,
         data_dir=data_dir,
     )
     return _normalize_paths(config, base_dir=source_path.parent)
@@ -572,6 +599,7 @@ def _normalize_paths(config: AppConfig, base_dir: Path) -> AppConfig:
             sources=list(config.paintings.sources),
             match_strategy=config.paintings.match_strategy,
         ),
+        api_keys=config.api_keys,
         ai=config.ai,
         data_dir=resolved_data_dir,
     )
@@ -599,6 +627,7 @@ def _apply_env_overrides(config: AppConfig) -> AppConfig:
             sources=list(config.paintings.sources),
             match_strategy=config.paintings.match_strategy,
         ),
+        api_keys=config.api_keys,
         ai=config.ai,
         data_dir=resolved_data_dir,
     )

@@ -310,6 +310,11 @@ def init(
         exists=False,
         dir_okay=False,
     ),
+    non_interactive: bool = typer.Option(
+        False,
+        "--non-interactive",
+        help="Skip interactive prompts, use defaults.",
+    ),
     verbose: bool = typer.Option(
         False,
         "-v",
@@ -317,44 +322,94 @@ def init(
         help="Enable verbose output.",
     ),
 ) -> None:
-    """Initialize sfumato project: create config, fetch seed paintings, analyze them.
+    """Initialize sfumato: interactive setup, fetch seed paintings, analyze them.
 
-    BEHAVIOR CONTRACT:
-        - Idempotent: safe to run multiple times
-        - Creates config file if not present (with sensible defaults)
-        - Creates state directory structure under ~/.sfumato/state
-        - Fetches seed_size paintings from configured sources
-        - Analyzes each painting (layout AI + description)
-        - Computes embeddings for semantic matching
-        - Progress printed to stdout
-
-    EXIT CODES:
-        0: Success (or already initialized)
-        1: Unexpected error during initialization
-        2: Configuration error (invalid config file)
-        5: File not found or IO error
-
-    This is a potentially long operation (~50 LLM calls for 50 paintings).
-    Use for first-time setup before running `sfumato run` or `sfumato watch`.
+    On first run, walks you through configuration interactively.
+    Safe to run multiple times (idempotent).
     """
-    # For init, we use default config if no path specified
-    # This ensures we have a valid config for creating directories
+    from sfumato.config import AppConfig, ConfigError, generate_default_config
+
     if config is None:
         config = Path.home() / ".config" / "sfumato" / "config.toml"
 
-    # Init is special: if config doesn't exist yet, use defaults and create it.
-    # Don't go through _load_config_or_exit which errors on missing files.
-    from sfumato.config import AppConfig, ConfigError
+    config_path = config.expanduser()
 
-    if config.expanduser().exists():
+    if config_path.exists():
+        # Config exists, load it
         try:
             loaded_config = _load_config_or_exit(config, verbose)
         except (SystemExit, ConfigError):
             loaded_config = AppConfig()
             _verbose_print(verbose, "Config exists but failed to load, using defaults")
     else:
-        loaded_config = AppConfig()
-        _verbose_print(verbose, f"Config not found at {config}, will create during init")
+        # First time — interactive setup
+        if non_interactive:
+            loaded_config = AppConfig()
+            typer.echo("Using default configuration (non-interactive mode)")
+        else:
+            typer.echo("\nWelcome to sfumato! Let's set things up.\n")
+
+            tv_ip = typer.prompt("  TV IP address", default="", show_default=False)
+            if not tv_ip:
+                typer.echo("    (skipped — set later in config.toml)")
+                tv_ip = ""
+
+            cli_choice = typer.prompt(
+                "  AI CLI (gemini/codex/claude-code)", default="gemini"
+            )
+            model_choice = typer.prompt(
+                "  AI Model", default="gemini-3.1-pro-preview"
+            )
+            rijks_key = typer.prompt(
+                "  Rijksmuseum API key (get free at rijksmuseum.nl/en/register)",
+                default="",
+                show_default=False,
+            )
+            if not rijks_key:
+                typer.echo("    (skipped — Met + Wikimedia will be used)")
+
+            language = typer.prompt("  Display language", default="zh")
+
+            # Build config with user's choices
+            from sfumato.config import (
+                TvConfig, AiConfig, ApiKeysConfig, NewsConfig,
+            )
+            loaded_config = AppConfig(
+                tv=TvConfig(ip=tv_ip) if tv_ip else TvConfig(ip=""),
+                ai=AiConfig(cli=cli_choice, model=model_choice),
+                api_keys=ApiKeysConfig(rijksmuseum=rijks_key),
+                news=NewsConfig(language=language),
+            )
+
+            # Write config file
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            # Generate TOML with user's values
+            config_content = generate_default_config()
+            # Patch in user values
+            if tv_ip:
+                config_content = config_content.replace(
+                    'ip = "192.168.1.100"', f'ip = "{tv_ip}"'
+                )
+            config_content = config_content.replace(
+                'cli = "gemini"', f'cli = "{cli_choice}"'
+            )
+            config_content = config_content.replace(
+                'model = "gemini-3.1-pro-preview"', f'model = "{model_choice}"'
+            )
+            if rijks_key:
+                config_content = config_content.replace(
+                    '# rijksmuseum = "your-api-key-here"',
+                    f'rijksmuseum = "{rijks_key}"',
+                )
+            config_content = config_content.replace(
+                'language = "zh"', f'language = "{language}"'
+            )
+            config_path.write_text(config_content)
+            typer.echo(f"\n  ✓ Config saved to {config_path}")
+            typer.echo(f"    (edit anytime: {config_path})\n")
+
+            # Reload the config we just wrote
+            loaded_config = _load_config_or_exit(config, verbose)
 
     # Initialize state directory
     state_dir = loaded_config.data_dir / "state"

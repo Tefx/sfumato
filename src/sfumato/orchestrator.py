@@ -537,6 +537,7 @@ async def run_backfill(
             count=deficit,
             cache_dir=config.paintings.cache_dir,
             exclude_ids=existing_hashes,
+            rijksmuseum_api_key=config.api_keys.rijksmuseum or None,
         )
     except Exception as e:
         logger.warning("All painting sources failed during backfill: %s", e)
@@ -868,6 +869,7 @@ async def init_project(config: AppConfig) -> None:
         count=config.paintings.seed_size,
         cache_dir=config.paintings.cache_dir,
         exclude_ids=None,  # No exclusions for initial fetch
+        rijksmuseum_api_key=config.api_keys.rijksmuseum or None,
     )
 
     if not paintings:
