@@ -3668,7 +3668,7 @@ phases:
       in downstream production.docker step.'
 - id: sdk
   name: LiteLLM SDK Backend
-  status: pending
+  status: in_progress
   gate: backend=sdk produces valid LlmResponse via litellm.completion() and litellm.embedding();
     backend=cli remains unchanged; Docker image builds without CLI tools
   context: 'Add litellm SDK backend as alternative to CLI subprocess calls. Enables
@@ -3680,7 +3680,7 @@ phases:
   steps:
   - id: sdk.config-and-deps
     name: Config extension + litellm dependency
-    status: pending
+    status: claimed
     description: "Add SDK backend support to AiConfig and project dependencies.\n\n\
       File: src/sfumato/config.py\n- Add `backend: str = \"cli\"` field to AiConfig\
       \ (valid values: \"cli\" | \"sdk\")\n- Add `sdk_provider: str = \"openrouter\"\
@@ -3711,6 +3711,8 @@ phases:
     - src/sfumato/config.py
     - pyproject.toml
     agent: python-executor
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T21:27:13.078470+00:00'
   - id: sdk.llm-sdk-backend
     name: LLM SDK backend implementation
     status: pending
