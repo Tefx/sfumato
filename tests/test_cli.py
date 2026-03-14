@@ -28,6 +28,11 @@ if TYPE_CHECKING:
 
 # Import CLI app for testing
 from sfumato.cli import (
+    AppState,
+    _EmbeddingCache,
+    _LayoutCache,
+    _NewsQueue,
+    _UsedPaintings,
     app,
     CLI_FLAG_SEMANTICS,
     EXIT_SUCCESS,
@@ -45,6 +50,23 @@ from sfumato.cli import (
     tv_clean,
     _output_json,
 )
+from sfumato.orchestrator import (
+    EmbeddingCacheProtocol,
+    LayoutCacheProtocol,
+    NewsQueueProtocol,
+    UsedPaintingsProtocol,
+)
+from sfumato.state import EmbeddingCache, LayoutCache, NewsQueue, UsedPaintings
+
+
+def _protocol_method_names(protocol_cls: type[object]) -> set[str]:
+    names: set[str] = set()
+    for name, value in protocol_cls.__dict__.items():
+        if name.startswith("_"):
+            continue
+        if isinstance(value, property) or callable(value):
+            names.add(name)
+    return names
 
 
 # =============================================================================
@@ -102,6 +124,46 @@ class TestExitCodeSemantics:
             EXIT_FILE_ERROR,
         ]:
             assert isinstance(code, int)
+
+
+class TestProtocolConformance:
+    """Contract tests for protocol method completeness across implementations."""
+
+    @pytest.mark.parametrize(
+        ("protocol", "state_impl", "cli_impl"),
+        [
+            (NewsQueueProtocol, NewsQueue, _NewsQueue),
+            (UsedPaintingsProtocol, UsedPaintings, _UsedPaintings),
+            (LayoutCacheProtocol, LayoutCache, _LayoutCache),
+            (EmbeddingCacheProtocol, EmbeddingCache, _EmbeddingCache),
+        ],
+    )
+    def test_protocol_methods_exist_on_state_and_cli_implementations(
+        self,
+        protocol: type[object],
+        state_impl: type[object],
+        cli_impl: type[object],
+    ) -> None:
+        required_methods = _protocol_method_names(protocol)
+
+        missing_in_state = [
+            name for name in required_methods if not hasattr(state_impl, name)
+        ]
+        missing_in_cli = [
+            name for name in required_methods if not hasattr(cli_impl, name)
+        ]
+
+        assert missing_in_state == []
+        assert missing_in_cli == []
+
+    def test_protocol_appstate_components_exist_for_orchestrator(self) -> None:
+        app_state = AppState.load(Path("/tmp/sfumato-cli-protocol"))
+
+        assert hasattr(app_state, "news_queue")
+        assert hasattr(app_state, "used_paintings")
+        assert hasattr(app_state, "layout_cache")
+        assert hasattr(app_state, "embedding_cache")
+        assert callable(app_state.save_all)
 
 
 # =============================================================================

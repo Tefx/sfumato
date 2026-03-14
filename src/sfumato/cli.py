@@ -45,6 +45,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
 import typer
 
 from sfumato.config import ConfigError, generate_default_config, load_config
@@ -52,6 +53,7 @@ from sfumato.orchestrator import RunOptions, init_project, run_once
 
 if TYPE_CHECKING:
     from sfumato.layout_ai import LayoutParams
+    from sfumato.news import CurationResult
     from sfumato.news import Story
 
 app = typer.Typer(
@@ -165,6 +167,7 @@ class _NewsQueue:
     """Minimal news queue implementation for CLI."""
 
     def __init__(self, state_dir: Path) -> None:
+        self._state_dir = state_dir
         self._queue: list[_QueuedBatch] = []
 
     def dequeue(self) -> _QueuedBatch | None:
@@ -173,17 +176,19 @@ class _NewsQueue:
             return None
         return self._queue.pop(0)
 
-    def enqueue(self, result: Any, batch_size: int) -> int:
+    def enqueue(self, result: "CurationResult", batch_size: int) -> int:
         """Split curation result into batches and append to queue."""
-        if not hasattr(result, 'stories') or not result.stories:
+        if not result.stories:
             return 0
         enqueued = 0
         for idx in range(0, len(result.stories), batch_size):
-            self._queue.append(_QueuedBatch(
-                stories=result.stories[idx:idx + batch_size],
-                tone_description=getattr(result, 'tone_description', ''),
-                enqueued_at=datetime.datetime.now().astimezone(),
-            ))
+            self._queue.append(
+                _QueuedBatch(
+                    stories=result.stories[idx : idx + batch_size],
+                    tone_description=result.tone_description,
+                    enqueued_at=datetime.datetime.now().astimezone(),
+                )
+            )
             enqueued += 1
         return enqueued
 
@@ -191,7 +196,9 @@ class _NewsQueue:
         """Drop batches older than expire_days. Returns removed count."""
         if not self._queue:
             return 0
-        cutoff = datetime.datetime.now().astimezone() - datetime.timedelta(days=expire_days)
+        cutoff = datetime.datetime.now().astimezone() - datetime.timedelta(
+            days=expire_days
+        )
         before = len(self._queue)
         self._queue = [b for b in self._queue if b.enqueued_at >= cutoff]
         return before - len(self._queue)
@@ -209,17 +216,18 @@ class _NewsQueue:
 
     def save(self) -> None:
         """Persist state (no-op for minimal implementation)."""
-        pass
+        return None
 
     def load(self) -> None:
         """Load state (no-op for minimal implementation)."""
-        pass
+        return None
 
 
 class _UsedPaintings:
     """Minimal used paintings tracking."""
 
     def __init__(self, state_dir: Path) -> None:
+        self._state_dir = state_dir
         self._used: set[str] = set()
 
     def mark_used(self, content_hash: str) -> None:
@@ -230,19 +238,29 @@ class _UsedPaintings:
         """Check if painting has been used."""
         return content_hash in self._used
 
+    def reset(self) -> None:
+        """Reset used paintings tracking."""
+        self._used.clear()
+
+    @property
+    def count(self) -> int:
+        """Number of used paintings tracked."""
+        return len(self._used)
+
     def save(self) -> None:
         """Persist state (no-op for minimal implementation)."""
-        pass
+        return None
 
     def load(self) -> None:
         """Load state (no-op for minimal implementation)."""
-        pass
+        return None
 
 
 class _LayoutCache:
     """Minimal layout cache implementation for CLI."""
 
     def __init__(self, state_dir: Path) -> None:
+        self._state_dir = state_dir
         self._cache: dict[str, LayoutParams] = {}
 
     def get(self, content_hash: str) -> "LayoutParams | None":
@@ -257,40 +275,53 @@ class _LayoutCache:
         """Check if layout is cached."""
         return content_hash in self._cache
 
+    @property
+    def size(self) -> int:
+        """Number of cached layouts."""
+        return len(self._cache)
+
     def save(self) -> None:
         """Persist state (no-op for minimal implementation)."""
-        pass
+        return None
 
     def load(self) -> None:
         """Load state (no-op for minimal implementation)."""
-        pass
+        return None
 
 
 class _EmbeddingCache:
     """Minimal embedding cache implementation for CLI."""
 
     def __init__(self, state_dir: Path) -> None:
-        self._cache: dict[str, Any] = {}
+        self._state_dir = state_dir
+        self._cache: dict[str, np.ndarray] = {}
 
-    def get(self, key: str) -> Any:
+    def get(self, key: str) -> np.ndarray | None:
         """Get cached embedding vector."""
         return self._cache.get(key)
 
-    def put(self, key: str, vector: Any) -> None:
+    def put(self, key: str, vector: np.ndarray) -> None:
         """Cache embedding vector."""
+        if vector.ndim != 1:
+            raise ValueError("Embedding vectors must be 1-dimensional")
         self._cache[key] = vector
 
     def has(self, key: str) -> bool:
         """Check if embedding is cached."""
         return key in self._cache
 
+    @property
+    def size(self) -> int:
+        """Number of cached embedding vectors."""
+        return len(self._cache)
+
     def save(self) -> None:
         """Persist state (no-op for minimal implementation)."""
-        pass
+        return None
 
     def load(self) -> None:
         """Load state (no-op for minimal implementation)."""
-        pass
+        return None
 
 
 @dataclass
@@ -386,15 +417,16 @@ def init(
             cli_choice = typer.prompt(
                 "  AI CLI (gemini/codex/claude-code)", default="gemini"
             )
-            model_choice = typer.prompt(
-                "  AI Model", default="gemini-3.1-pro-preview"
-            )
+            model_choice = typer.prompt("  AI Model", default="gemini-3.1-pro-preview")
             language = typer.prompt("  Display language", default="zh")
 
             # Build config with user's choices
             from sfumato.config import (
-                TvConfig, AiConfig, NewsConfig,
+                TvConfig,
+                AiConfig,
+                NewsConfig,
             )
+
             loaded_config = AppConfig(
                 tv=TvConfig(ip=tv_ip) if tv_ip else TvConfig(ip=""),
                 ai=AiConfig(cli=cli_choice, model=model_choice),

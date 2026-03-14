@@ -334,9 +334,21 @@ class NewsQueueProtocol(Protocol):
         """Drop batches older than ``expire_days`` and return removed count."""
         ...
 
+    def peek(self) -> QueuedBatch | None:
+        """Return next batch without removal."""
+        ...
+
     @property
     def size(self) -> int:
         """Number of batches currently in queue."""
+        ...
+
+    def save(self) -> None:
+        """Persist queue state."""
+        ...
+
+    def load(self) -> None:
+        """Load queue state."""
         ...
 
 
@@ -355,6 +367,19 @@ class LayoutCacheProtocol(Protocol):
         """Check if layout is cached."""
         ...
 
+    @property
+    def size(self) -> int:
+        """Number of cached layouts."""
+        ...
+
+    def save(self) -> None:
+        """Persist layout cache state."""
+        ...
+
+    def load(self) -> None:
+        """Load layout cache state."""
+        ...
+
 
 class EmbeddingCacheProtocol(Protocol):
     """Protocol for embedding cache operations."""
@@ -369,6 +394,19 @@ class EmbeddingCacheProtocol(Protocol):
 
     def has(self, key: str) -> bool:
         """Check if embedding is cached."""
+        ...
+
+    @property
+    def size(self) -> int:
+        """Number of cached embeddings."""
+        ...
+
+    def save(self) -> None:
+        """Persist embedding cache state."""
+        ...
+
+    def load(self) -> None:
+        """Load embedding cache state."""
         ...
 
 
@@ -387,14 +425,42 @@ class UsedPaintingsProtocol(Protocol):
         """Reset used paintings tracking (allow re-use of all paintings)."""
         ...
 
+    @property
+    def count(self) -> int:
+        """Number of used paintings tracked."""
+        ...
+
+    def save(self) -> None:
+        """Persist used paintings state."""
+        ...
+
+    def load(self) -> None:
+        """Load used paintings state."""
+        ...
+
 
 class AppStateProtocol(Protocol):
     """Protocol for application state."""
 
-    news_queue: NewsQueueProtocol
-    used_paintings: UsedPaintingsProtocol
-    layout_cache: LayoutCacheProtocol
-    embedding_cache: EmbeddingCacheProtocol
+    @property
+    def news_queue(self) -> NewsQueueProtocol:
+        """News queue state component."""
+        ...
+
+    @property
+    def used_paintings(self) -> UsedPaintingsProtocol:
+        """Used paintings state component."""
+        ...
+
+    @property
+    def layout_cache(self) -> LayoutCacheProtocol:
+        """Layout cache state component."""
+        ...
+
+    @property
+    def embedding_cache(self) -> EmbeddingCacheProtocol:
+        """Embedding cache state component."""
+        ...
 
     def save_all(self) -> None:
         """Persist all state components."""
@@ -861,9 +927,7 @@ async def init_project(config: AppConfig) -> None:
     # Steps 3-5: Pipeline — download paintings and analyze them concurrently
     # Producer: downloads paintings, puts them in queue
     # Consumer: analyzes layout + computes embeddings as paintings arrive
-    print(
-        f"\nFetching and analyzing {config.paintings.seed_size} paintings..."
-    )
+    print(f"\nFetching and analyzing {config.paintings.seed_size} paintings...")
     print(f"  Sources: {config.paintings.sources}")
 
     state = AppState.load(state_dir)
@@ -918,9 +982,7 @@ async def init_project(config: AppConfig) -> None:
                         state.embedding_cache.put(
                             painting.content_hash, embedding_result.vector
                         )
-                        print(
-                            f"      Embedded ({len(embedding_result.vector)}d)"
-                        )
+                        print(f"      Embedded ({len(embedding_result.vector)}d)")
 
                 success_count += 1
 
