@@ -3078,7 +3078,7 @@ phases:
       imports.'
   - id: production.gate
     name: 'Gate: Production'
-    status: pending
+    status: claimed
     description: "step_type: gate\nspec_refs:\n  - ARCHITECTURE.md#2.11\n  - ARCHITECTURE.md#2.12\n\
       \  - ARCHITECTURE.md#2.13\n  - ARCHITECTURE.md#9\ntouch_paths:\n  - src/sfumato/scheduler.py\n\
       \  - src/sfumato/orchestrator.py\n  - src/sfumato/cli.py\n  - Dockerfile\n \
@@ -3135,6 +3135,8 @@ phases:
     - production.docker
     - production.cleanup
     agent: gate-reviewer
+    claimed_by: gate-reviewer
+    claimed_at: '2026-03-14T18:24:50.633473+00:00'
   - id: production.scheduler.contract
     name: Define scheduler contract
     status: done
