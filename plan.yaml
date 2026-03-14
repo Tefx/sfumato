@@ -2010,7 +2010,7 @@ phases:
     claimed_at: '2026-03-14T16:59:16.775881+00:00'
   - id: intelligence.semantic-match
     name: Wire semantic matching and caching into orchestrator
-    status: pending
+    status: claimed
     description: 'Wire matcher.select_painting() into orchestrator.run_once(). Replace
       random painting selection with semantic matching when match_strategy=semantic.
       Use LayoutCache to skip re-analysis of known paintings. Use EmbeddingCache for
@@ -2031,6 +2031,8 @@ phases:
     - intelligence.matcher
     - intelligence.state
     agent: python-executor
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T16:59:19.565741+00:00'
   - id: intelligence.init-cmd
     name: Implement sfumato init command
     status: pending
