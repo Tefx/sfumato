@@ -1827,6 +1827,43 @@ phases:
     - intelligence.semantic-match
     - intelligence.init-cmd
     agent: gate-reviewer
+  - id: intelligence.paintings.contract
+    name: Define paintings module contract
+    status: pending
+    description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
+      \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nspec_refs:\n  - ARCHITECTURE.md#2.3\n\
+      \  - PROTOTYPING.md#semantic-art-news-matching\ntouch_paths:\n  - src/sfumato/paintings.py\n\
+      harness_refs:\n  - tests/test_paintings.py\nagent: python-executor\n\nDefine\
+      \ the acceptance contract for `src/sfumato/paintings.py` before implementation.\n\
+      \nContract scope:\n- Pin `Orientation`, `ArtSource`, and `PaintingInfo` signatures\
+      \ exactly as described in `ARCHITECTURE.md#2.3`.\n- Pin cache layout and metadata\
+      \ contract explicitly: cached assets live under `~/.sfumato/paintings/{source}/{source_id}.jpg`\
+      \ with a `.json` sidecar containing the `PaintingInfo` fields needed by `list_cached_paintings()`.\n\
+      - Pin source-selection semantics explicitly: `fetch_paintings()` dispatches\
+      \ by requested source list, skips ids present in `exclude_ids`, aggregates successful\
+      \ results, and tolerates per-source/per-item download failures by skipping them\
+      \ rather than aborting the whole fetch.\n- Pin dedup semantics explicitly: `exclude_ids`\
+      \ applies to source ids before download, while `content_hash` is the stable\
+      \ image-bytes identity used after caching.\n- Pin content-hash semantics explicitly:\
+      \ `content_hash()` hashes raw cached image bytes with SHA-256 and must remain\
+      \ stable across repeated reads of unchanged bytes.\n- Pin orientation contract\
+      \ explicitly: `detect_orientation()` uses image dimensions; `width > height`\
+      \ is landscape and `width <= height` is portrait so square images are treated\
+      \ as portrait by contract.\n- Pin missing capability behavior explicitly: Rijksmuseum\
+      \ requires an API key and the contract must state whether the source is skipped\
+      \ or raises a source-specific error when the key is absent.\n\nNon-goals:\n\
+      - No live API fetching implementation.\n- No completed caching/downloading logic.\n\
+      - No retries, background refill policy, or orchestration wiring in this step."
+    verification: '- Contract artifact states cache layout, exclude-id filtering,
+      content-hash identity, source-failure handling, and square-image orientation
+      semantics explicitly
+
+      - `src/sfumato/paintings.py` exposes signatures/stubs only; no completed download/cache
+      business logic ships in this step
+
+      - Any deferred source-auth behavior is documented explicitly rather than left
+      implicit'
+    agent: python-executor
 - id: production
   name: Production
   status: locked
