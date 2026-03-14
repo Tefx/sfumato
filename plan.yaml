@@ -432,7 +432,7 @@ phases:
     agent: python-executor
   - id: core.llm.contract
     name: Define LLM invocation contract
-    status: pending
+    status: claimed
     description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
       \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nspec_refs:\n  - ARCHITECTURE.md#2.9\n\
       touch_paths:\n  - src/sfumato/llm.py\nharness_refs:\n  - tests/test_llm.py\n\
@@ -456,6 +456,8 @@ phases:
       - Unsupported backend behavior is pinned explicitly rather than left to implementation-time
       judgment'
     agent: python-executor
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T12:37:10.089905+00:00'
   - id: core.llm.tests
     name: Author LLM invocation tests
     status: pending
