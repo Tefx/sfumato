@@ -3013,7 +3013,7 @@ phases:
       contract expectations.'
   - id: production.cleanup
     name: Remove proto.py and clean up
-    status: claimed
+    status: done
     description: "step_type: implementation\nspec_refs:\n  - src/sfumato/proto.py\n\
       touch_paths:\n  - src/sfumato/proto.py\n  - src/sfumato/__main__.py\n  - src/sfumato/cli.py\n\
       harness_refs:\n  - import smoke checks\nagent: python-executor\nsimple_feature_exception:\n\
@@ -3046,6 +3046,36 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T18:22:47.753301+00:00'
+    done_at: '2026-03-14T18:24:37.818976+00:00'
+    evidence: 'Artifact:
+
+      - PR: commit d6a89aa ([vectl] step-production.cleanup completed), source worktree
+      commit 83bd6a82af71fa864a6cad831761a7195081ad55
+
+
+      Verification:
+
+      - Run: `grep -rn "import.*proto|from.*proto"` -> no proto imports found
+
+      - Run: `ls src/sfumato/proto.py` -> file removed
+
+      - Run: `PYTHONPATH=src python3 -c "import sfumato"` -> module imports successfully
+
+
+      Spec link:
+
+      - production.cleanup step contract
+
+
+      Files changed:
+
+      - src/sfumato/proto.py (deleted)
+
+
+      Gaps/Notes:
+
+      - Cleanup scope limited to removing prototype module and validating no lingering
+      imports.'
   - id: production.gate
     name: 'Gate: Production'
     status: pending
