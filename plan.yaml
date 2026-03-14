@@ -349,6 +349,32 @@ phases:
     depends_on:
     - core.config.contract
     agent: python-executor
+  - id: core.llm.contract
+    name: Define LLM invocation contract
+    status: pending
+    description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
+      \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nspec_refs:\n  - ARCHITECTURE.md#2.9\n\
+      touch_paths:\n  - src/sfumato/llm.py\nharness_refs:\n  - tests/test_llm.py\n\
+      agent: python-executor\n\nDefine the contract for `src/sfumato/llm.py` before\
+      \ implementation.\n\nContract scope:\n- Pin `LlmResponse`, `LlmError`, `LlmParseError`,\
+      \ and `EmbeddingError` public surfaces.\n- Pin backend dispatch map for `gemini`,\
+      \ `codex`, and `claude-code`, including the exact unsupported-backend behavior.\n\
+      - Pin retry semantics: two total attempts for transient timeout/connection failures,\
+      \ no extra retry on deterministic parse/configuration errors.\n- Pin timeout\
+      \ behavior separately for text vs vision invocations.\n- Pin `parse_json_response()`\
+      \ leniency boundaries: strip fenced code blocks, trim whitespace, tolerate trailing\
+      \ commas, and fail with `LlmParseError` on still-invalid payloads.\n- Pin command-selection\
+      \ behavior for embedding fallback or backend-specific embedding support so workers\
+      \ do not improvise.\n\nNon-goals:\n- No working subprocess invocation logic\
+      \ in this step.\n- No finished JSON parser implementation beyond stubs."
+    verification: '- Contract artifact explicitly defines backend map, retry boundaries,
+      timeout branches, and parser leniency/failure boundaries
+
+      - Public signatures/stubs exist without completed subprocess or parsing logic
+
+      - Unsupported backend behavior is pinned explicitly rather than left to implementation-time
+      judgment'
+    agent: python-executor
 - id: intelligence
   name: Intelligence
   status: locked
