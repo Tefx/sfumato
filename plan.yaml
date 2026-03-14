@@ -4689,7 +4689,7 @@ phases:
       - Contract artifact is additive/inert and scoped for downstream implementation.'
   - id: art-facts.template-whisper.test
     name: Define whisper template smoke tests
-    status: pending
+    status: claimed
     description: "step_type: test\nagent: python-executor\nagent_source: default\n\
       spec_refs:\n  - PROTOTYPING.md#11\ntouch_paths:\n  - tests/test_render.py\n\
       \  - templates/painting_text.html\n  - templates/magazine.html\n  - templates/portrait.html\n\
@@ -4711,6 +4711,8 @@ phases:
       work'
     depends_on:
     - art-facts.template-whisper.contract
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T21:53:03.914070+00:00'
 - id: replay
   name: News Replay Queue
   status: in_progress
