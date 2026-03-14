@@ -4894,7 +4894,7 @@ phases:
       follows in replay.config.'
   - id: replay.config.test
     name: Define replay config tests
-    status: pending
+    status: claimed
     description: "step_type: test\nagent: python-executor\nagent_source: default\n\
       spec_refs:\n  - README.md\ntouch_paths:\n  - tests/test_config.py\n  - src/sfumato/config.py\n\
       harness_refs:\n  - tests/test_config.py\n\nDefine and add tests for replay_expire_days\
@@ -4910,6 +4910,8 @@ phases:
       - Production config logic remains unimplemented except for minimal test fixtures'
     depends_on:
     - replay.config.contract
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T21:53:33.180654+00:00'
 - id: polish
   name: 'Polish: Default Model + Documentation'
   status: locked
