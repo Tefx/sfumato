@@ -4639,7 +4639,7 @@ phases:
     - art-facts.layout-prompt.contract
   - id: art-facts.template-whisper.contract
     name: Define whisper template variable contract
-    status: claimed
+    status: done
     description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
       \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nagent: software-architect\n\
       agent_source: default\nspec_refs:\n  - PROTOTYPING.md#11\ntouch_paths:\n  -\
@@ -4663,6 +4663,28 @@ phases:
       - No implementation HTML/CSS beyond placeholder or stub-level contract artifacts'
     claimed_by: software-architect
     claimed_at: '2026-03-14T21:45:50.153031+00:00'
+    done_at: '2026-03-14T21:52:15.394967+00:00'
+    evidence: 'Step: art-facts.template-whisper.contract
+
+      Commit hash(es): 51ad6e5, 8f68730; merged as [main 48084c4]
+
+      Files changed: WHISPER_TEMPLATE_CONTRACT.md, templates/painting_text.html, templates/magazine.html,
+      templates/portrait.html, tests/test_render.py
+
+      Verification:
+
+      - uv run pytest tests/test_render.py -k "whisper_contract or inert_whisper"
+      -> 4 passed, 15 deselected
+
+      - Template placeholders and required variables present across all 3 templates
+
+      - No final whisper render logic added; inert contract placeholders only
+
+      Spec link: PROTOTYPING.md#11
+
+      Gaps/Notes:
+
+      - Contract artifact is additive/inert and scoped for downstream implementation.'
   - id: art-facts.template-whisper.test
     name: Define whisper template smoke tests
     status: pending
