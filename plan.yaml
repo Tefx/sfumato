@@ -5282,7 +5282,7 @@ phases:
       changes in this step.'
   - id: replay.gate
     name: Replay phase gate review
-    status: claimed
+    status: done
     description: 'As an INDEPENDENT REVIEWER (gate-reviewer), assess whether the replay
       phase
 
@@ -5332,6 +5332,21 @@ phases:
     - replay.scheduler-wire
     claimed_by: gate-reviewer
     claimed_at: '2026-03-14T23:07:51.307071+00:00'
+    done_at: '2026-03-14T23:19:43.572477+00:00'
+    evidence: "Step: replay.gate\nCommit hash(es): none (read-only gate review)\n\
+      Files changed: []\nGate decision: FAIL (blocker detected)\nVerification:\n-\
+      \ Replay-targeted config/state/orchestrator checks executed; replay test subset\
+      \ passed\n- Blocker confirmed: production AppState lacked replay_queue integration\
+      \ points despite ReplayQueue and orchestrator hooks\nFindings:\n- severity:\
+      \ blocker\n  item: AppState missing replay_queue field/load/save lifecycle integration,\
+      \ causing production replay path to no-op\n  location: src/sfumato/state.py\
+      \ AppState aggregate and load/save lifecycle\n  recommendation: implement batched\
+      \ integration fix across AppState field, load(), save_all(), and orchestrator\
+      \ seam expectations\nRationale:\n- Gate failed on production wiring completeness,\
+      \ not unit contract intent\n- Per batched-fix protocol, remediation steps were\
+      \ added to plan for consolidated fix+retest before final replay gate\nSpec link:\
+      \ ARCHITECTURE.md#2.10\nGaps/Notes:\n- Planner added replay.replay-fix-app-state-replay-integration\
+      \ and replay.retest-app-state-replay-integration as required remediation chain."
   - id: replay.config.contract
     name: Define replay expiry config contract
     status: done
