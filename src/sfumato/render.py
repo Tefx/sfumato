@@ -225,12 +225,20 @@ def build_template_variables(ctx: RenderContext) -> dict[str, str]:
     }
 
     # Add palette-based colors
+    # Sanitize text_shadow: LLMs often return too-large blur radii (10px+)
+    # which create visible halo boxes around each line of text.
+    # Fallback to a proven tight shadow if the LLM value looks excessive.
+    text_shadow = ctx.layout.colors.text_shadow
+    if "10px" in text_shadow or "12px" in text_shadow or "15px" in text_shadow or "20px" in text_shadow:
+        # Replace with tight shadow proven in prototyping
+        text_shadow = "0 1px 3px rgba(0,0,0,0.7), 0 0 8px rgba(0,0,0,0.3)"
+
     variables.update(
         {
             "TEXT_COLOR": ctx.layout.colors.text_primary,
             "TEXT_COLOR_SEC": ctx.layout.colors.text_secondary,
             "TEXT_COLOR_DIM": ctx.layout.colors.text_dim,
-            "TEXT_SHADOW": ctx.layout.colors.text_shadow,
+            "TEXT_SHADOW": text_shadow,
         }
     )
 

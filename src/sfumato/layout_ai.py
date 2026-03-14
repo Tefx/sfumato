@@ -245,7 +245,9 @@ Analyze and provide:
 4. **Color Harmony**: Design a text color scheme that:
    - Harmonizes with the painting's palette
    - Has sufficient contrast for readability
-   - Uses subtle gradients/scrim for text backdrop
+   - text_shadow must use a SMALL blur radius (2-4px), not large halos.
+     Good: "0 1px 3px rgba(0,0,0,0.7), 0 0 8px rgba(0,0,0,0.3)"
+     Bad:  "0 2px 10px rgba(0,0,0,0.5)" (too blurry, creates visible boxes)
    Text colors should feel like they belong to the painting, not fight with it.
 
 5. **Scrim Design**: Create a subtle gradient overlay for the text zone:
