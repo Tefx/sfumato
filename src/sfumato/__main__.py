@@ -1,5 +1,11 @@
-"""Allow running as: python -m frame_terminal [render|live|tv <IP>]"""
-from .proto import main
-import asyncio
+"""Entry point for running sfumato as a module.
 
-asyncio.run(main())
+Use: python -m sfumato [COMMAND] [OPTIONS]
+
+For help: python -m sfumato --help
+"""
+
+from sfumato.cli import main
+
+if __name__ == "__main__":
+    main()
