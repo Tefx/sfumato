@@ -1166,7 +1166,7 @@ phases:
       applying step branch content.'
   - id: core.pipeline.contract
     name: Define orchestrator.run_once contract
-    status: pending
+    status: claimed
     description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
       \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nspec_refs:\n  - ARCHITECTURE.md#2.12\n\
       \  - ARCHITECTURE.md#2.13\n  - README.md\ntouch_paths:\n  - src/sfumato/orchestrator.py\n\
@@ -1205,6 +1205,8 @@ phases:
     - core.render
     - core.tv
     agent: python-senior
+    claimed_by: python-senior
+    claimed_at: '2026-03-14T14:20:08.918865+00:00'
   - id: core.pipeline.tests
     name: Author orchestrator.run_once tests
     status: pending
