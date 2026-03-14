@@ -4991,7 +4991,7 @@ phases:
       - No additional gaps reported.'
   - id: replay.queue
     name: Implement ReplayQueue in state module
-    status: claimed
+    status: done
     description: "step_type: implementation\nagent: python-senior\nspec_refs:\n  -\
       \ ARCHITECTURE.md#2.10\ntouch_paths:\n  - src/sfumato/state.py\n  - tests/test_state.py\n\
       \nImplement `ReplayQueue` in `state.py` following the explicit contract and\
@@ -5037,6 +5037,29 @@ phases:
     agent: python-senior
     claimed_by: python-senior
     claimed_at: '2026-03-14T22:27:37.756918+00:00'
+    done_at: '2026-03-14T22:36:32.059651+00:00'
+    evidence: 'Step: replay.queue
+
+      Commit hash(es): 48bfe82248619d34f4c385877c66c156506f619e; merged as [main b49e3d8]
+
+      Files changed: src/sfumato/state.py, tests/test_state.py
+
+      Verification:
+
+      - uv run pytest tests/test_state.py -v -> PASS (32 passed)
+
+      - Implemented ReplayQueue methods: next, expire, transfer_from_news_queue, persist,
+      load
+
+      - Verified round-robin replay, expiry by enqueued_at, persistence/index restoration,
+      missing-file fallback, stale-index reset, dedup overlap behavior
+
+      Spec link: ARCHITECTURE.md#2.10
+
+      Gaps/Notes:
+
+      - Includes LayoutCache serialization compatibility updates required for current
+      LayoutParams fields so state suite passes.'
   - id: replay.scheduler-wire
     name: Wire replay queue into orchestrator
     status: pending
