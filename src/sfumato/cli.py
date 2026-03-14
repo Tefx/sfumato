@@ -156,6 +156,18 @@ class _EmbeddingCache:
     def __init__(self, state_dir: Path) -> None:
         self._cache: dict[str, Any] = {}
 
+    def get(self, key: str) -> Any:
+        """Get cached embedding vector."""
+        return self._cache.get(key)
+
+    def put(self, key: str, vector: Any) -> None:
+        """Cache embedding vector."""
+        self._cache[key] = vector
+
+    def has(self, key: str) -> bool:
+        """Check if embedding is cached."""
+        return key in self._cache
+
     def save(self) -> None:
         """Persist state (no-op for minimal implementation)."""
         pass

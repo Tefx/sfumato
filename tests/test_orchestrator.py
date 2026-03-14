@@ -323,6 +323,9 @@ class MockEmbeddingCache:
     def put(self, key: str, vector: list[float]) -> None:
         self._cache[key] = vector
 
+    def has(self, key: str) -> bool:
+        return key in self._cache
+
 
 class MockUsedPaintings:
     """Seam double for state.UsedPaintings."""

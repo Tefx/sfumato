@@ -19,11 +19,25 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Protocol
 
-from sfumato.config import AppConfig, NewsConfig
+import numpy as np
+
+from sfumato.config import AppConfig
 from sfumato.layout_ai import LayoutParams, analyze_painting
+from sfumato.matcher import MatcherError, select_painting
 from sfumato.news import CurationResult, Story, refresh_news
 from sfumato.palette import PaletteColors, extract_palette
-from sfumato.render import Orientation, PaintingInfo, RenderContext, render_to_png
+from sfumato.paintings import (
+    ArtSource,
+    Orientation as PaintingsOrientation,
+)
+from sfumato.paintings import PaintingInfo as PaintingsPaintingInfo
+from sfumato.paintings import list_cached_paintings
+from sfumato.render import (
+    Orientation,
+    PaintingInfo,
+    RenderContext,
+    render_to_png,
+)
 
 if TYPE_CHECKING:
     from sfumato.render import RenderResult
@@ -203,6 +217,22 @@ class LayoutCacheProtocol(Protocol):
         ...
 
 
+class EmbeddingCacheProtocol(Protocol):
+    """Protocol for embedding cache operations."""
+
+    def get(self, key: str) -> np.ndarray | None:
+        """Get cached embedding vector by key (content_hash or tone key)."""
+        ...
+
+    def put(self, key: str, vector: np.ndarray) -> None:
+        """Cache embedding vector."""
+        ...
+
+    def has(self, key: str) -> bool:
+        """Check if embedding is cached."""
+        ...
+
+
 class UsedPaintingsProtocol(Protocol):
     """Protocol for used paintings tracking."""
 
@@ -214,6 +244,10 @@ class UsedPaintingsProtocol(Protocol):
         """Check if a painting has been used."""
         ...
 
+    def reset(self) -> None:
+        """Reset used paintings tracking (allow re-use of all paintings)."""
+        ...
+
 
 class AppStateProtocol(Protocol):
     """Protocol for application state."""
@@ -221,6 +255,7 @@ class AppStateProtocol(Protocol):
     news_queue: NewsQueueProtocol
     used_paintings: UsedPaintingsProtocol
     layout_cache: LayoutCacheProtocol
+    embedding_cache: EmbeddingCacheProtocol
 
     def save_all(self) -> None:
         """Persist all state components."""
@@ -344,13 +379,15 @@ async def run_once(
             batch = state.news_queue.dequeue()
 
     # Stage 2: painting_selection
-    # CONTRACT: Use painting_path if specified, random selection for Phase 1
-    painting = await _select_painting(
+    # CONTRACT: Use painting_path if specified, semantic matching when available
+    selected_painting, match_score = await _select_painting(
         config=config,
         state=state,
         painting_path=options.painting_path,
         batch=batch,
     )
+    # Convert from paintings.PaintingInfo to render.PaintingInfo
+    painting = _convert_painting_info(selected_painting)
 
     # Stage 3: layout_analysis
     # CONTRACT: Check cache first, analyze if not cached, propagate errors
@@ -411,7 +448,7 @@ async def run_once(
         painting=painting,
         story_count=story_count,
         uploaded=uploaded,
-        match_score=None,  # Phase 1: no semantic matching
+        match_score=match_score,
         action=action,
     )
 
@@ -426,13 +463,14 @@ async def _select_painting(
     state: AppStateProtocol,
     painting_path: Path | None,
     batch: QueuedBatch | None,
-) -> PaintingInfo:
+) -> tuple[PaintingsPaintingInfo, float | None]:
     """Select a painting for this rotation.
 
     Selection order:
-    1. If painting_path is specified, use it directly
+    1. If painting_path is specified, use it directly (returns match_score=None)
     2. If batch is None (no_news), use random unused painting from pool
-    3. Otherwise, use random selection (Phase 1: semantic matching deferred)
+    3. If match_strategy is "random", use random selection (returns match_score=0.0)
+    4. Otherwise, use semantic matching with batch.tone_description
 
     Args:
         config: Application configuration.
@@ -441,41 +479,113 @@ async def _select_painting(
         batch: Current news batch (None if no_news).
 
     Returns:
-        PaintingInfo for the selected painting.
+        Tuple of (selected_painting, similarity_score).
+        - match_score is None when painting_path is specified.
+        - match_score is 0.0 for random strategy.
+        - match_score is in [0.0, 1.0] for semantic strategy.
+        - Painting is PaintingsPaintingInfo from paintings module.
 
     Raises:
         ValueError: If painting_path specified but file doesn't exist.
-        RuntimeError: If no painting is available.
+        RuntimeError: If no paintings available in pool.
+        MatcherError: If semantic matching fails.
     """
     # If specific painting is requested, create PaintingInfo from file
     if painting_path is not None:
         if not painting_path.exists():
             raise ValueError(f"Painting file not found: {painting_path}")
 
-        return _create_painting_info_from_path(painting_path)
+        return (_create_painting_info_from_path(painting_path), None)
 
-    # Phase 1: Random selection
-    # TODO: In intelligence phase, use semantic matching with batch.tone_description
-    # For now, we need a pool of paintings. Since paintings module doesn't exist yet,
-    # we'll raise NotImplementedError for the pool case.
-    # This should be implemented by the caller providing a pool in state or config.
+    # Load painting pool from cache
+    paintings = list_cached_paintings(config.paintings.cache_dir)
+    if not paintings:
+        raise RuntimeError("No paintings available in pool")
 
-    # For now, we'll use a placeholder that works with the test doubles
-    # In practice, the CLI would need to initialize a painting pool
-    raise NotImplementedError(
-        "Painting pool selection not implemented. "
-        "Provide a painting_path in RunOptions, or implement painting pool management."
-    )
+    # Filter out used paintings
+    available = [
+        p for p in paintings if not state.used_paintings.is_used(p.content_hash)
+    ]
+    if not available:
+        # All paintings used, reset and use any
+        state.used_paintings.reset()
+        available = paintings
+
+    # If no_news (pure art mode), use random selection
+    if batch is None:
+        selected = random.choice(available)
+        return (selected, None)
+
+    # Get match strategy from config
+    strategy = config.paintings.match_strategy
+
+    # If random strategy, select randomly
+    if strategy == "random":
+        selected = random.choice(available)
+        return (selected, 0.0)
+
+    # Semantic matching strategy
+    # Build painting_descriptions dict from layout cache
+    # For paintings without cached layouts, we need descriptions for embedding
+    painting_descriptions: dict[str, str] = {}
+    for p in available:
+        cached_layout = state.layout_cache.get(p.content_hash)
+        if cached_layout is not None:
+            painting_descriptions[p.content_hash] = cached_layout.painting_description
+
+    # Build embedding cache for lookups (state.embedding_cache is a dict-like cache)
+    embedding_cache: dict[str, np.ndarray] = {}
+    # Copy existing embeddings from state cache
+    for p in available:
+        if state.embedding_cache.has(p.content_hash):
+            vec = state.embedding_cache.get(p.content_hash)
+            if vec is not None:
+                embedding_cache[p.content_hash] = vec
+
+    # Check tone cache
+    from sfumato.matcher import _compute_tone_cache_key
+
+    tone_key = _compute_tone_cache_key(batch.tone_description)
+    if state.embedding_cache.has(tone_key):
+        vec = state.embedding_cache.get(tone_key)
+        if vec is not None:
+            embedding_cache[tone_key] = vec
+
+    try:
+        selected, score = await select_painting(
+            news_tone=batch.tone_description,
+            paintings=available,
+            painting_descriptions=painting_descriptions,
+            embedding_cache=embedding_cache,
+            ai_config=config.ai,
+            strategy=strategy,
+        )
+
+        # Cache tone embedding if it was computed
+        if not state.embedding_cache.has(tone_key):
+            tone_embedding = embedding_cache.get(tone_key)
+            if tone_embedding is not None:
+                state.embedding_cache.put(tone_key, tone_embedding)
+
+        return (selected, score)
+
+    except MatcherError:
+        # Fallback to random selection if semantic matching fails
+        logger.warning(
+            "Semantic matching failed, falling back to random selection",
+        )
+        selected = random.choice(available)
+        return (selected, 0.0)
 
 
-def _create_painting_info_from_path(painting_path: Path) -> PaintingInfo:
+def _create_painting_info_from_path(painting_path: Path) -> PaintingsPaintingInfo:
     """Create PaintingInfo from an image file path.
 
     Args:
         painting_path: Path to the painting image file.
 
     Returns:
-        PaintingInfo with detected orientation and generated hash.
+        PaintingInfo from paintings module with detected orientation and generated hash.
 
     Raises:
         OSError: If file cannot be read.
@@ -486,8 +596,12 @@ def _create_painting_info_from_path(painting_path: Path) -> PaintingInfo:
     img = Image.open(painting_path)
     width, height = img.size
 
-    # Detect orientation
-    orientation = Orientation.LANDSCAPE if width >= height else Orientation.PORTRAIT
+    # Detect orientation (using paintings.Orientation enum)
+    orientation = (
+        PaintingsOrientation.LANDSCAPE
+        if width >= height
+        else PaintingsOrientation.PORTRAIT
+    )
 
     # Compute content hash
     import hashlib
@@ -495,7 +609,7 @@ def _create_painting_info_from_path(painting_path: Path) -> PaintingInfo:
     content = painting_path.read_bytes()
     content_hash = hashlib.sha256(content).hexdigest()
 
-    return PaintingInfo(
+    return PaintingsPaintingInfo(
         image_path=painting_path.resolve(),
         content_hash=content_hash,
         title="Unknown",
@@ -504,9 +618,43 @@ def _create_painting_info_from_path(painting_path: Path) -> PaintingInfo:
         orientation=orientation,
         width=width,
         height=height,
-        source="local",
+        source=ArtSource.RIJKSMUSEUM,  # Use a placeholder source
         source_id=content_hash[:12],
         source_url="",
+    )
+
+
+def _convert_painting_info(p: PaintingsPaintingInfo) -> PaintingInfo:
+    """Convert from paintings.PaintingInfo to render.PaintingInfo.
+
+    This is needed because the two modules have separate PaintingInfo types.
+    The paintings module has full metadata while render has a minimal version.
+
+    Args:
+        p: PaintingInfo from paintings module.
+
+    Returns:
+        PaintingInfo for render module.
+    """
+    # Convert orientation enum
+    render_orientation = (
+        Orientation.LANDSCAPE
+        if p.orientation == PaintingsOrientation.LANDSCAPE
+        else Orientation.PORTRAIT
+    )
+
+    return PaintingInfo(
+        image_path=p.image_path,
+        content_hash=p.content_hash,
+        title=p.title,
+        artist=p.artist,
+        year=p.year,
+        orientation=render_orientation,
+        width=p.width,
+        height=p.height,
+        source=p.source.value if hasattr(p.source, "value") else str(p.source),
+        source_id=p.source_id,
+        source_url=p.source_url,
     )
 
 
