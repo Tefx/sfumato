@@ -904,7 +904,7 @@ phases:
       time, so no additional merge commit was created.'
   - id: core.tv.contract
     name: Define TV control contract
-    status: pending
+    status: claimed
     description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
       \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nspec_refs:\n  - ARCHITECTURE.md#2.8\n\
       \  - PROTOTYPING.md#1\ntouch_paths:\n  - src/sfumato/tv.py\n  - tests/test_tv.py\n\
@@ -940,6 +940,8 @@ phases:
     depends_on:
     - core.config
     agent: python-executor
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T13:30:41.300441+00:00'
   - id: core.tv.tests
     name: Author TV control tests
     status: pending
