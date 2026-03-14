@@ -2172,7 +2172,7 @@ phases:
       - Scope was constrained to init command and orchestrator init behavior only.'
   - id: intelligence.gate
     name: 'Gate: Intelligence'
-    status: pending
+    status: claimed
     description: 'Gate review: Verify intelligence features work. sfumato init should
       fetch seed paintings and analyze them. sfumato run should use semantic matching
       to pick a painting that matches the news tone. Layout and embedding caches should
@@ -2189,6 +2189,8 @@ phases:
     - intelligence.semantic-match
     - intelligence.init-cmd
     agent: gate-reviewer
+    claimed_by: gate-reviewer
+    claimed_at: '2026-03-14T17:19:41.271467+00:00'
   - id: intelligence.paintings.contract
     name: Define paintings module contract
     status: done
