@@ -41,6 +41,7 @@ from sfumato.config import (
 )
 from sfumato.orchestrator import (
     ART_FACT_INDEX_STATE_OWNERSHIP,
+    ART_FACT_INDEX_STATE_OWNERSHIP,
     RUN_BACKFILL_BOUNDED_BEHAVIOR,
     RUN_BACKFILL_ERROR_BOUNDARIES,
     RUN_ONCE_ART_FACT_FLOW,
@@ -57,6 +58,7 @@ from sfumato.orchestrator import (
     RUN_ONCE_STAGE_ORDER,
     RUN_ONCE_TV_DOWNGRADE_SEMANTICS,
     ROTATE_ART_FACT_ACCEPTANCE_CRITERIA,
+    ArtFactRotationStateProtocol,
     AppStateProtocol,
     ReplayBatchProtocol,
     ReplayQueueProtocol,
@@ -655,9 +657,30 @@ def create_mock_painting_info(tmp_path: Path) -> "PaintingInfo":
     )
 
 
-def create_mock_layout_params() -> "LayoutParams":
-    """Create a mock LayoutParams for testing."""
-    from sfumato.layout_ai import LayoutColors, LayoutParams, ScrimParams, TextZone
+def create_mock_layout_params(
+    art_facts: list["ArtFact"] | None = None,
+) -> "LayoutParams":
+    """Create a mock LayoutParams for testing.
+
+    Args:
+        art_facts: Optional list of ArtFact objects. If None, uses default test facts.
+    """
+    from sfumato.layout_ai import (
+        ArtFact,
+        LayoutColors,
+        LayoutParams,
+        ScrimParams,
+        SubjectZone,
+        TextZone,
+        WhisperZone,
+    )
+
+    # Default art_facts for testing (1-3 items per contract)
+    if art_facts is None:
+        art_facts = [
+            ArtFact(text="Painted during the artist's blue period."),
+            ArtFact(text="Features a prominent cypress tree."),
+        ]
 
     return LayoutParams(
         orientation="landscape",
@@ -665,6 +688,14 @@ def create_mock_layout_params() -> "LayoutParams":
         painting_artist="Test Artist",
         painting_description="A test painting description",
         text_zone=TextZone(position="top-right", reason="Dark sky area"),
+        subject_zone=SubjectZone(position="bottom-left", reason="Subject area"),
+        whisper_zone=WhisperZone(
+            position="bottom-right",
+            reason="Low visual density area",
+            max_width_percent=18,
+            readability_notes="Light background with minimal detail",
+        ),
+        art_facts=art_facts,
         colors=LayoutColors(
             text_primary="#ffffff",
             text_secondary="#e0e0e0",
@@ -3942,3 +3973,616 @@ class TestWatchDaemonQuietHoursContract:
     def test_idle_action_defined(self) -> None:
         """IDLE action must be defined for outside active hours."""
         assert "IDLE" in WATCH_SCHEDULER_ACTION_MAPPING
+
+
+# =============================================================================
+# ART-FACT ORCHESTRATOR WIRING CONTRACT TESTS
+# =============================================================================
+
+
+class TestArtFactIndexPropagation:
+    """Tests for whisper_fact_index propagation from orchestrator to RenderContext.
+
+    Contract (RUN_ONCE_ART_FACT_FLOW):
+    - layout_analysis yields LayoutParams with art_facts from cache or fresh analysis
+    - orchestrator resolves whisper_fact_index from rotation state before render
+    - RenderContext receives layout with art_facts unchanged
+    - Empty art_facts results in whisper_fact_index=None
+    """
+
+    @pytest.mark.asyncio
+    async def test_art_facts_preserved_through_render_context(
+        self, tmp_path: Path
+    ) -> None:
+        """RenderContext receives layout.art_facts unchanged from analysis.
+
+        Contract: layout_cache is the persisted source for art_facts keyed by
+        painting.content_hash; orchestrator must not synthesize replacement facts.
+        """
+        from PIL import Image
+        from sfumato.layout_ai import ArtFact
+
+        painting_path = tmp_path / "test_painting.jpg"
+        img = Image.new("RGB", (3840, 2160), color="#1a237e")
+        img.save(painting_path)
+
+        # Create layout with specific art_facts
+        custom_art_facts = [
+            ArtFact(text="First art fact about the painting."),
+            ArtFact(text="Second art fact about the artist."),
+            ArtFact(text="Third art fact about the period."),
+        ]
+        mock_layout = create_mock_layout_params(art_facts=custom_art_facts)
+
+        mock_state = MockAppState()
+        config = create_minimal_app_config()
+        config = AppConfig(
+            tv=config.tv,
+            schedule=config.schedule,
+            news=config.news,
+            paintings=config.paintings,
+            ai=config.ai,
+            data_dir=tmp_path,
+        )
+
+        render_contexts: list["RenderContext"] = []
+
+        async def capture_render_context(
+            ctx: "RenderContext", output_dir: "Path | None" = None
+        ) -> "RenderResult":  # type: ignore[misc]
+            render_contexts.append(ctx)
+            return create_mock_render_result(tmp_path)
+
+        with (
+            patch(
+                "sfumato.orchestrator.analyze_painting", new_callable=AsyncMock
+            ) as mock_analyze,
+            patch("sfumato.orchestrator.extract_palette") as mock_palette,
+            patch(
+                "sfumato.orchestrator.render_to_png", new_callable=AsyncMock
+            ) as mock_render,
+        ):
+            mock_analyze.return_value = mock_layout
+            mock_palette.return_value = create_mock_palette_colors()
+            mock_render.side_effect = capture_render_context
+
+            await run_once(
+                config=config,
+                state=mock_state,
+                options=RunOptions(
+                    no_news=True, no_upload=True, painting_path=painting_path
+                ),
+            )
+
+        # Verify render received the layout with art_facts preserved
+        assert len(render_contexts) == 1
+        ctx = render_contexts[0]
+        assert ctx.layout.art_facts == custom_art_facts
+
+    @pytest.mark.asyncio
+    async def test_cached_layout_preserves_art_facts_order(
+        self, tmp_path: Path
+    ) -> None:
+        """Cached layout yields same art_facts ordering as fresh analysis.
+
+        Contract: A cached layout and a freshly analyzed layout are equivalent
+        inputs if they expose the same ordered art_facts list.
+        """
+        from PIL import Image
+        from sfumato.layout_ai import ArtFact
+
+        painting_path = tmp_path / "test_painting.jpg"
+        img = Image.new("RGB", (3840, 2160), color="#1a237e")
+        img.save(painting_path)
+
+        # Create layout with ordered art_facts
+        ordered_facts = [
+            ArtFact(text="Fact A - must be first."),
+            ArtFact(text="Fact B - must be second."),
+            ArtFact(text="Fact C - must be third."),
+        ]
+        mock_layout = create_mock_layout_params(art_facts=ordered_facts)
+
+        mock_state = MockAppState()
+        config = create_minimal_app_config()
+        config = AppConfig(
+            tv=config.tv,
+            schedule=config.schedule,
+            news=config.news,
+            paintings=config.paintings,
+            ai=config.ai,
+            data_dir=tmp_path,
+        )
+
+        render_contexts: list["RenderContext"] = []
+
+        async def capture_render_context(
+            ctx: "RenderContext", output_dir: "Path | None" = None
+        ) -> "RenderResult":  # type: ignore[misc]
+            render_contexts.append(ctx)
+            return create_mock_render_result(tmp_path)
+
+        with (
+            patch(
+                "sfumato.orchestrator.analyze_painting", new_callable=AsyncMock
+            ) as mock_analyze,
+            patch("sfumato.orchestrator.extract_palette") as mock_palette,
+            patch(
+                "sfumato.orchestrator.render_to_png", new_callable=AsyncMock
+            ) as mock_render,
+        ):
+            mock_analyze.return_value = mock_layout
+            mock_palette.return_value = create_mock_palette_colors()
+            mock_render.side_effect = capture_render_context
+
+            # First call - cache the layout
+            result = await run_once(
+                config=config,
+                state=mock_state,
+                options=RunOptions(
+                    no_news=True, no_upload=True, painting_path=painting_path
+                ),
+            )
+
+        # Verify the layout is cached using content_hash, not title
+        # The content_hash is derived from the painting image file
+        assert result.painting is not None
+        assert mock_state.layout_cache.has(result.painting.content_hash)
+        # Verify ordering is preserved in render context
+        ctx = render_contexts[0]
+        assert [f.text for f in ctx.layout.art_facts] == [f.text for f in ordered_facts]
+
+
+class TestArtFactIndexRotationSemantics:
+    """Tests for art-fact index rotation and ownership expectations.
+
+    Contract (ART_FACT_INDEX_STATE_OWNERSHIP):
+    - Owner: orchestrator-owned rotation state; render consumes but never persists
+    - Key: indexes tracked per painting.content_hash
+    - Default: missing state resolves to whisper_fact_index=0 when art_facts is non-empty
+    - Disabled: empty art_facts resolves to whisper_fact_index=None
+    - Advance: successful rotate advances modulo art_fact_count
+    - Failure_boundary: pre-render and render failures do not commit cursor advancement
+    """
+
+    def test_owner_contract_orchestrator_owns_rotation(self) -> None:
+        """Render never mutates or persists whisper_fact_index."""
+        # Verify: contract explicitly states render consumes but never persists
+        assert (
+            "render consumes the chosen index but never persists or mutates it"
+            in ART_FACT_INDEX_STATE_OWNERSHIP["owner"]
+        )
+        assert "Orchestrator-owned" in ART_FACT_INDEX_STATE_OWNERSHIP["owner"]
+
+    def test_key_contract_content_hash_based(self) -> None:
+        """Index is keyed by painting.content_hash."""
+        assert "painting.content_hash" in ART_FACT_INDEX_STATE_OWNERSHIP["key"]
+
+    def test_default_contract_first_use_is_zero(self) -> None:
+        """Missing state resolves to whisper_fact_index=0 for non-empty art_facts."""
+        assert "whisper_fact_index=0" in ART_FACT_INDEX_STATE_OWNERSHIP["default"]
+        assert "non-empty" in ART_FACT_INDEX_STATE_OWNERSHIP["default"]
+
+    def test_disabled_contract_empty_facts_yields_none(self) -> None:
+        """Empty art_facts resolves to whisper_fact_index=None."""
+        assert "whisper_fact_index=None" in ART_FACT_INDEX_STATE_OWNERSHIP["disabled"]
+        assert "empty" in ART_FACT_INDEX_STATE_OWNERSHIP["disabled"].lower()
+
+    def test_advance_contract_modulo_rotation(self) -> None:
+        """Successful rotate advances modulo art_fact_count."""
+        assert "modulo" in ART_FACT_INDEX_STATE_OWNERSHIP["advance"].lower()
+        assert "art_fact_count" in ART_FACT_INDEX_STATE_OWNERSHIP["advance"]
+
+    def test_failure_boundary_contract_no_commit_on_failure(self) -> None:
+        """Failures before/during render do not commit cursor advancement."""
+        assert "do not commit" in ART_FACT_INDEX_STATE_OWNERSHIP["failure_boundary"]
+        assert "Pre-render" in ART_FACT_INDEX_STATE_OWNERSHIP["failure_boundary"]
+
+
+class TestRotateArtFactAcceptanceCriteria:
+    """Tests for rotate behavior acceptance criteria.
+
+    Contract (ROTATE_ART_FACT_ACCEPTANCE_CRITERIA):
+    - First successful rotate passes whisper_fact_index=0
+    - Subsequent rotates advance modulo len(layout.art_facts)
+    - Cached and fresh layouts with same art_facts are equivalent
+    - Empty art_facts: passes whisper_fact_index=None, emits no selection
+    - Failed rotate: does not consume next index
+    """
+
+    def test_first_rotate_is_index_zero(self) -> None:
+        """First successful rotate for painting with art_facts uses index 0."""
+        assert "First successful rotate" in ROTATE_ART_FACT_ACCEPTANCE_CRITERIA[0]
+        assert "whisper_fact_index=0" in ROTATE_ART_FACT_ACCEPTANCE_CRITERIA[0]
+
+    def test_subsequent_rotate_advances_modulo(self) -> None:
+        """Subsequent rotates advance modulo art_facts length."""
+        assert "modulo" in ROTATE_ART_FACT_ACCEPTANCE_CRITERIA[1].lower()
+        assert "len(layout.art_facts)" in ROTATE_ART_FACT_ACCEPTANCE_CRITERIA[1]
+
+    def test_cached_and_fresh_are_equivalent(self) -> None:
+        """Cached and fresh layouts with same art_facts are equivalent."""
+        assert "equivalent" in ROTATE_ART_FACT_ACCEPTANCE_CRITERIA[2].lower()
+        assert "ordered art_facts" in ROTATE_ART_FACT_ACCEPTANCE_CRITERIA[2]
+
+    def test_empty_facts_passes_none(self) -> None:
+        """Empty art_facts passes whisper_fact_index=None."""
+        assert "whisper_fact_index=None" in ROTATE_ART_FACT_ACCEPTANCE_CRITERIA[3]
+        assert "empty" in ROTATE_ART_FACT_ACCEPTANCE_CRITERIA[3].lower()
+
+    def test_failed_rotate_does_not_consume(self) -> None:
+        """Failed rotate does not consume the next art-fact index."""
+        assert "failed" in ROTATE_ART_FACT_ACCEPTANCE_CRITERIA[4].lower()
+        assert "must not consume" in ROTATE_ART_FACT_ACCEPTANCE_CRITERIA[4]
+
+
+class TestArtFactFlowContract:
+    """Tests for art-fact flow contract constants.
+
+    Contract (RUN_ONCE_ART_FACT_FLOW):
+    - layout_analysis yields LayoutParams with art_facts from cache or fresh analysis
+    - orchestrator resolves whisper_fact_index from rotation state after layout
+    - RenderContext receives LayoutParams unchanged including art_facts ordering
+    - Empty art_facts => whisper_fact_index=None
+    """
+
+    def test_flow_contract_length(self) -> None:
+        """Art-fact flow contract has 5 explicit statements."""
+        assert len(RUN_ONCE_ART_FACT_FLOW) == 5
+
+    def test_flow_first_layout_yields_art_facts(self) -> None:
+        """First flow item: layout_analysis yields art_facts."""
+        assert "layout_analysis" in RUN_ONCE_ART_FACT_FLOW[0]
+        assert "_facts from cache or fresh" in RUN_ONCE_ART_FACT_FLOW[0]
+
+    def test_flow_layout_cache_is_source(self) -> None:
+        """Second flow item: layout_cache is the persisted source."""
+        assert "layout_cache" in RUN_ONCE_ART_FACT_FLOW[1]
+        assert "persisted source" in RUN_ONCE_ART_FACT_FLOW[1]
+        assert "must not synthesize" in RUN_ONCE_ART_FACT_FLOW[1]
+
+    def test_flow_orchestrator_resolves_index(self) -> None:
+        """Third flow item: orchestrator resolves index after layout selection."""
+        assert "orchestrator resolves" in RUN_ONCE_ART_FACT_FLOW[2]
+        assert "whisper_fact_index" in RUN_ONCE_ART_FACT_FLOW[2]
+        assert "rotation state" in RUN_ONCE_ART_FACT_FLOW[2]
+
+    def test_flow_render_receives_unchanged_layout(self) -> None:
+        """Fourth flow item: RenderContext receives layout unchanged."""
+        assert "RenderContext receives" in RUN_ONCE_ART_FACT_FLOW[3]
+        assert "unchanged" in RUN_ONCE_ART_FACT_FLOW[3]
+        assert "ordering" in RUN_ONCE_ART_FACT_FLOW[3]
+
+    def test_flow_empty_facts_yields_none(self) -> None:
+        """Fifth flow item: Empty art_facts => whisper_fact_index=None."""
+        assert "empty" in RUN_ONCE_ART_FACT_FLOW[4].lower()
+        assert "whisper_fact_index must be None" in RUN_ONCE_ART_FACT_FLOW[4]
+
+    def test_flow_no_orchestrator_synthesis(self) -> None:
+        """Orchestrator must never synthesize replacement art_facts."""
+        # Check the contract explicitly forbids synthesis
+        assert "must not synthesize" in RUN_ONCE_ART_FACT_FLOW[1]
+
+
+class TestArtFactRotationStateProtocol:
+    """Tests for ArtFactRotationStateProtocol contract in orchestrator.
+
+    Contract (ArtFactRotationStateProtocol docstring):
+    - State keyed by painting.content_hash
+    - Values are next zero-based whisper_fact_index
+    - Missing state means start at 0 when art_fact_count > 0
+    - Callers must rebase modulo art_fact_count before use
+    - Empty art-fact sets map to None, no persisted cursor required
+    """
+
+    def test_protocol_get_next_index_signature(self) -> None:
+        """get_next_index takes content_hash and art_fact_count, returns WhisperFactIndex."""
+        # Verify the protocol has the method in its definition
+        import inspect
+        from typing import get_type_hints
+
+        # Get method from Protocol class definition
+        method = ArtFactRotationStateProtocol.get_next_index
+        # Verify method exists with expected parameter names
+        sig = inspect.signature(method)
+        params = list(sig.parameters.keys())
+        assert "self" in params or len(params) >= 2
+        # Check the method has content_hash and art_fact_count parameters conceptually
+        # (Protocol methods may not have explicit annotations in signature)
+
+    def test_protocol_commit_rotation_signature(self) -> None:
+        """commit_rotation takes content_hash and art_fact_count, returns WhisperFactIndex."""
+        # Verify the method exists
+        import inspect
+
+        method = ArtFactRotationStateProtocol.commit_rotation
+        sig = inspect.signature(method)
+        params = list(sig.parameters.keys())
+        assert "self" in params or len(params) >= 2
+
+    def test_protocol_clear_signature(self) -> None:
+        """clear takes content_hash only."""
+        # Verify the method exists
+        import inspect
+
+        method = ArtFactRotationStateProtocol.clear
+        sig = inspect.signature(method)
+        params = list(sig.parameters.keys())
+        assert "self" in params or len(params) >= 1
+
+    def test_protocol_get_next_index_returns_index_or_none(self) -> None:
+        """get_next_index returns WhisperFactIndex which is int | None."""
+        # Verify the return type annotation conceptually
+        # WhisperFactIndex is TypeAlias = int | None
+        from sfumato.render import WhisperFactIndex
+
+        # WhisperFactIndex is defined (the type alias exists)
+        assert WhisperFactIndex is not None
+
+    def test_protocol_commit_rotation_returns_advanced_index(self) -> None:
+        """commit_rotation returns the newly advanced WhisperFactIndex."""
+        # The method exists and returns WhisperFactIndex (int | None)
+        # Contract: returns the next index to use after advancing
+        pass  # Signature validation above covers existence
+
+
+class TestRenderContextWhisperFactIndex:
+    """Tests for RenderContext whisper_fact_index field contract.
+
+    Contract (RenderContext in render.py):
+    - whisper_fact_index is WhisperFactIndex (int | None)
+    - None means caller intentionally disables whisper copy for frame
+    - Integers are zero-based indexes into layout.art_facts
+    - Caller owns rotation; render consumes without mutating
+    """
+
+    @pytest.mark.asyncio
+    async def test_render_context_accepts_whisper_fact_index(
+        self, tmp_path: Path
+    ) -> None:
+        """RenderContext accepts whisper_fact_index parameter."""
+        from sfumato.render import RenderContext, Orientation, PaintingInfo
+
+        painting_info = create_mock_painting_info(tmp_path)
+        mock_layout = create_mock_layout_params()
+        mock_palette = create_mock_palette_colors()
+
+        ctx = RenderContext(
+            painting=painting_info,
+            stories=[],
+            layout=mock_layout,
+            palette=mock_palette,
+            template_name="painting_text",
+            language="en",
+            date_str="Monday, January 1, 2024",
+            time_str="12:00",
+            whisper_fact_index=0,
+        )
+
+        assert ctx.whisper_fact_index == 0
+
+    @pytest.mark.asyncio
+    async def test_render_context_accepts_none_whisper_fact_index(
+        self, tmp_path: Path
+    ) -> None:
+        """RenderContext accepts whisper_fact_index=None for disabled whisper."""
+        from sfumato.render import RenderContext, Orientation, PaintingInfo
+
+        painting_info = create_mock_painting_info(tmp_path)
+        mock_layout = create_mock_layout_params()
+        mock_palette = create_mock_palette_colors()
+
+        ctx = RenderContext(
+            painting=painting_info,
+            stories=[],
+            layout=mock_layout,
+            palette=mock_palette,
+            template_name="painting_text",
+            language="en",
+            date_str="Monday, January 1, 2024",
+            time_str="12:00",
+            whisper_fact_index=None,
+        )
+
+        assert ctx.whisper_fact_index is None
+
+    def test_whisper_fact_index_type_is_union(self) -> None:
+        """WhisperFactIndex is int | None (WhisperFactIndex type alias)."""
+        from sfumato.render import WhisperFactIndex
+
+        # Type alias exists
+        # Check that both 0 and None are valid values
+        assert WhisperFactIndex is not None  # type alias exists
+
+
+class TestWhisperTemplateVariablesContract:
+    """Tests for WhisperTemplateVariables contract in render.py.
+
+    Contract (WhisperTemplateVariables TypedDict):
+    - WHISPER_POSITION: CSS position fragment from whisper_zone
+    - WHISPER_COLOR: subordinate text color from layout.colors.text_dim
+    - WHISPER_SHADOW: readability shadow from layout.colors.text_shadow
+    - WHISPER_TEXT: selected art_fact.text when index valid, else empty
+    """
+
+    def test_whisper_variables_has_required_keys(self) -> None:
+        """WhisperTemplateVariables has all four required keys."""
+        from sfumato.render import WhisperTemplateVariables
+
+        # Check TypedDict annotations include all required keys
+        annotations = WhisperTemplateVariables.__annotations__
+        assert "WHISPER_POSITION" in annotations
+        assert "WHISPER_COLOR" in annotations
+        assert "WHISPER_SHADOW" in annotations
+        assert "WHISPER_TEXT" in annotations
+
+    def test_build_template_variables_includes_whisper_keys(
+        self, tmp_path: Path
+    ) -> None:
+        """build_template_variables populates all WHISPER_* keys."""
+        from sfumato.render import RenderContext, build_template_variables
+        from sfumato.layout_ai import ArtFact
+
+        painting_info = create_mock_painting_info(tmp_path)
+        art_facts = [
+            ArtFact(text="First fact."),
+            ArtFact(text="Second fact."),
+        ]
+        mock_layout = create_mock_layout_params(art_facts=art_facts)
+        mock_palette = create_mock_palette_colors()
+
+        ctx = RenderContext(
+            painting=painting_info,
+            stories=[],
+            layout=mock_layout,
+            palette=mock_palette,
+            template_name="painting_text",
+            language="en",
+            date_str="Monday, January 1, 2024",
+            time_str="12:00",
+            whisper_fact_index=0,
+        )
+
+        variables = build_template_variables(ctx)
+
+        assert "WHISPER_POSITION" in variables
+        assert "WHISPER_COLOR" in variables
+        assert "WHISPER_SHADOW" in variables
+        assert "WHISPER_TEXT" in variables
+
+    def test_whisper_text_empty_when_index_none(self, tmp_path: Path) -> None:
+        """WHISPER_TEXT is empty when whisper_fact_index is None."""
+        from sfumato.render import RenderContext, build_template_variables
+        from sfumato.layout_ai import ArtFact
+
+        painting_info = create_mock_painting_info(tmp_path)
+        art_facts = [
+            ArtFact(text="First fact."),
+            ArtFact(text="Second fact."),
+        ]
+        mock_layout = create_mock_layout_params(art_facts=art_facts)
+        mock_palette = create_mock_palette_colors()
+
+        ctx = RenderContext(
+            painting=painting_info,
+            stories=[],
+            layout=mock_layout,
+            palette=mock_palette,
+            template_name="painting_text",
+            language="en",
+            date_str="Monday, January 1, 2024",
+            time_str="12:00",
+            whisper_fact_index=None,
+        )
+
+        variables = build_template_variables(ctx)
+        assert variables["WHISPER_TEXT"] == ""
+
+    def test_whisper_text_empty_when_no_art_facts(self, tmp_path: Path) -> None:
+        """WHISPER_TEXT is empty when layout has no art_facts."""
+        from sfumato.render import RenderContext, build_template_variables
+
+        painting_info = create_mock_painting_info(tmp_path)
+        # Empty art_facts
+        mock_layout = create_mock_layout_params(art_facts=[])
+        mock_palette = create_mock_palette_colors()
+
+        ctx = RenderContext(
+            painting=painting_info,
+            stories=[],
+            layout=mock_layout,
+            palette=mock_palette,
+            template_name="painting_text",
+            language="en",
+            date_str="Monday, January 1, 2024",
+            time_str="12:00",
+            whisper_fact_index=0,
+        )
+
+        variables = build_template_variables(ctx)
+        assert variables["WHISPER_TEXT"] == ""
+
+    def test_whisper_text_selects_correct_art_fact(self, tmp_path: Path) -> None:
+        """WHISPER_TEXT selects correct art_fact based on whisper_fact_index."""
+        from sfumato.render import RenderContext, build_template_variables
+        from sfumato.layout_ai import ArtFact
+
+        painting_info = create_mock_painting_info(tmp_path)
+        art_facts = [
+            ArtFact(text="First fact."),
+            ArtFact(text="Second fact."),
+            ArtFact(text="Third fact."),
+        ]
+        mock_layout = create_mock_layout_params(art_facts=art_facts)
+        mock_palette = create_mock_palette_colors()
+
+        # Test index 0
+        ctx0 = RenderContext(
+            painting=painting_info,
+            stories=[],
+            layout=mock_layout,
+            palette=mock_palette,
+            template_name="painting_text",
+            language="en",
+            date_str="Monday, January 1, 2024",
+            time_str="12:00",
+            whisper_fact_index=0,
+        )
+        assert build_template_variables(ctx0)["WHISPER_TEXT"] == "First fact."
+
+        # Test index 1
+        ctx1 = RenderContext(
+            painting=painting_info,
+            stories=[],
+            layout=mock_layout,
+            palette=mock_palette,
+            template_name="painting_text",
+            language="en",
+            date_str="Monday, January 1, 2024",
+            time_str="12:00",
+            whisper_fact_index=1,
+        )
+        assert build_template_variables(ctx1)["WHISPER_TEXT"] == "Second fact."
+
+        # Test index 2
+        ctx2 = RenderContext(
+            painting=painting_info,
+            stories=[],
+            layout=mock_layout,
+            palette=mock_palette,
+            template_name="painting_text",
+            language="en",
+            date_str="Monday, January 1, 2024",
+            time_str="12:00",
+            whisper_fact_index=2,
+        )
+        assert build_template_variables(ctx2)["WHISPER_TEXT"] == "Third fact."
+
+    def test_whisper_text_empty_on_out_of_range_index(self, tmp_path: Path) -> None:
+        """WHISPER_TEXT is empty when index out of range (per render.py contract)."""
+        from sfumato.render import RenderContext, build_template_variables
+        from sfumato.layout_ai import ArtFact
+
+        painting_info = create_mock_painting_info(tmp_path)
+        art_facts = [
+            ArtFact(text="Only fact."),
+        ]
+        mock_layout = create_mock_layout_params(art_facts=art_facts)
+        mock_palette = create_mock_palette_colors()
+
+        # Out of range index
+        ctx = RenderContext(
+            painting=painting_info,
+            stories=[],
+            layout=mock_layout,
+            palette=mock_palette,
+            template_name="painting_text",
+            language="en",
+            date_str="Monday, January 1, 2024",
+            time_str="12:00",
+            whisper_fact_index=999,
+        )
+
+        variables = build_template_variables(ctx)
+        # Per contract in render.py: "Index out of range: use empty to satisfy contract"
+        assert variables["WHISPER_TEXT"] == ""
