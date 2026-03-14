@@ -63,42 +63,41 @@ phases:
   - id: core.llm
     name: Implement LLM invocation layer
     status: pending
-    description: 'Implement src/sfumato/llm.py per ARCHITECTURE.md section 2.9.
+    description: "step_type: implementation\nspec_refs:\n  - ARCHITECTURE.md#2.9\n\
+      touch_paths:\n  - src/sfumato/llm.py\n  - tests/test_llm.py\nharness_refs:\n\
+      \  - pytest\n  - subprocess mocking boundary\nagent: python-executor\n\nImplement\
+      \ `src/sfumato/llm.py` per `ARCHITECTURE.md#2.9` and the upstream contract/test\
+      \ steps.\n\nScope:\n- Implement `invoke_text()`, `invoke_vision()`, `compute_embedding()`,\
+      \ and `parse_json_response()`.\n- Provide unified CLI dispatch for `gemini`,\
+      \ `codex`, and `claude-code` with the contracted exception hierarchy.\n- Implement\
+      \ retry handling for transient timeout/connection failures and deterministic\
+      \ parser/backend-selection failure behavior.\n\nFailure-mode checklist:\n- timeout\
+      \ retry branch stops at the contracted boundary and preserves the final failure\
+      \ cause\n- malformed fenced JSON and still-invalid JSON payloads raise `LlmParseError`\
+      \ deterministically\n- backend command selection errors fail fast for unsupported/misconfigured\
+      \ CLI selections\n- retry logic does not mask parse/configuration failures as\
+      \ transient transport failures\n\nState semantics:\n- last-writer-wins does\
+      \ not apply; command selection is derived solely from `AiConfig.cli`\n- successful\
+      \ parser normalization must preserve payload meaning while stripping fences/lenient\
+      \ commas only\n- backward-compatible behavior is accepting already-valid plain\
+      \ JSON without modifying its meaning\n\nOut-of-scope guardrail:\n- No painting/news/layout\
+      \ prompt design\n- No result caching or transport-specific orchestration beyond\
+      \ this invocation layer\n"
+    verification: '- Main path: targeted tests prove each supported backend builds
+      the correct subprocess invocation and valid JSON/plain responses parse successfully
 
+      - Failure path: targeted regressions prove timeout retry exhaustion, malformed
+      fenced JSON, and unsupported backend selection each surface the contracted error
+      type and boundary
 
-      Unified interface for invoking LLM backends (gemini/codex/claude-code CLI) via
-      subprocess. Implement invoke_text(), invoke_vision(), compute_embedding(), and
-      parse_json_response(). Handle retries (2x on transient errors), timeouts, and
-      markdown code fence stripping.
-
-
-      File: src/sfumato/llm.py
-
-      Spec: ARCHITECTURE.md section 2.9
-
-
-      Completion criteria:
-
-      - invoke_text() dispatches to correct CLI subprocess based on ai_config.cli
-
-      - invoke_vision() passes image file to CLI
-
-      - compute_embedding() returns list[float]
-
-      - parse_json_response() handles code fences and trailing commas
-
-      - LlmError, LlmParseError, EmbeddingError exception hierarchy
-
-      - Retry logic with 2 attempts on timeout/connection errors'
-    verification: invoke_text() constructs correct subprocess command for each backend;
-      parse_json_response() strips code fences and parses valid JSON; error classes
-      are properly defined
+      - Proof names the exact retry-boundary and parser-edge tests; generic success
+      summaries are insufficient'
     refs:
     - ARCHITECTURE.md#2.9
     - src/sfumato/llm.py
-    - PROTOTYPING.md
-    - ARCHITECTURE.md
-    - src/sfumato/layout_ai.py
+    - tests/test_llm.py
+    depends_on:
+    - core.llm.tests
     agent: python-executor
   - id: core.palette
     name: Implement palette extraction
