@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=Noto+Serif+SC:wght@400;600;700&family=JetBrains+Mono:wght@300;400&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    width: 3840px;
+    height: 2160px;
+    overflow: hidden;
+    display: flex;
+    background: {{BG_COLOR}};
+  }
+
+  /* Left panel — metadata */
+  .left-panel {
+    flex: 0 0 {{LEFT_WIDTH}};
+    height: 100%;
+    padding: 100px 60px 80px 80px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+
+  .left-top .dateline {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 24px;
+    font-weight: 300;
+    letter-spacing: 5px;
+    color: {{DIM}};
+    margin-bottom: 12px;
+  }
+
+  .left-top .source {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 20px;
+    font-weight: 300;
+    color: {{DIM}};
+  }
+
+  .left-bottom .artist {
+    font-family: 'Noto Serif SC', serif;
+    font-size: 26px;
+    color: {{TEXT_SEC}};
+    margin-bottom: 8px;
+  }
+
+  .left-bottom .painting-title {
+    font-family: 'Noto Serif SC', serif;
+    font-size: 22px;
+    font-style: italic;
+    color: {{DIM}};
+    margin-bottom: 6px;
+  }
+
+  .left-bottom .painting-year {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 18px;
+    color: {{DIM}};
+  }
+
+  /* Center — painting */
+  .painting-zone {
+    flex: 0 0 {{PAINTING_WIDTH}};
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  .painting-zone img {
+    height: 100%;
+    width: auto;
+    object-fit: cover;
+  }
+
+  /* Right panel — news */
+  .right-panel {
+    flex: 1;
+    height: 100%;
+    padding: 100px 80px 80px 60px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .right-panel .section-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 18px;
+    font-weight: 400;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: {{ACCENT}};
+    margin-bottom: 40px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid {{BORDER}};
+  }
+
+  .stories {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .story {
+    padding-bottom: 28px;
+    margin-bottom: 28px;
+    border-bottom: 1px solid {{BORDER}};
+  }
+
+  .story:last-child {
+    border-bottom: none;
+  }
+
+  .story .headline {
+    font-family: 'Noto Serif SC', serif;
+    font-size: 34px;
+    font-weight: 700;
+    line-height: 1.35;
+    color: {{TEXT}};
+    margin-bottom: 12px;
+  }
+
+  .story .body {
+    font-family: 'Noto Sans SC', sans-serif;
+    font-size: 26px;
+    font-weight: 300;
+    line-height: 1.7;
+    color: {{TEXT_SEC}};
+  }
+
+  .right-footer {
+    margin-top: auto;
+    padding-top: 20px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 18px;
+    color: {{DIM}};
+  }
+</style>
+</head>
+<body>
+  <div class="left-panel">
+    <div class="left-top">
+      <div class="dateline">{{DATE}}</div>
+      <div class="source">{{SOURCE}}</div>
+    </div>
+    <div class="left-bottom">
+      <div class="artist">{{ARTIST}}</div>
+      <div class="painting-title">{{PAINTING_TITLE}}</div>
+      <div class="painting-year">{{PAINTING_YEAR}}</div>
+    </div>
+  </div>
+  <div class="painting-zone">
+    <img src="{{PAINTING_SRC}}">
+  </div>
+  <div class="right-panel">
+    <div class="section-label">{{SECTION_LABEL}}</div>
+    <div class="stories">
+      {{STORIES}}
+    </div>
+    <div class="right-footer">Claude 策展</div>
+  </div>
+</body>
+</html>

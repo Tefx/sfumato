@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=Noto+Serif+SC:wght@400;600;700&family=JetBrains+Mono:wght@300;400&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    width: 3840px;
+    height: 2160px;
+    overflow: hidden;
+    display: flex;
+  }
+
+  .painting-zone {
+    flex: 0 0 72%;
+    height: 100%;
+    background: url('{{BG_IMAGE}}') center/cover no-repeat;
+  }
+
+  .text-zone {
+    flex: 0 0 28%;
+    height: 100%;
+    background: {{PANEL_BG}};
+    padding: 80px 56px 60px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .dateline {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 22px;
+    font-weight: 300;
+    letter-spacing: 5px;
+    text-transform: uppercase;
+    color: {{DIM}};
+    margin-bottom: 8px;
+  }
+
+  .source {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 20px;
+    font-weight: 300;
+    color: {{DIM}};
+    margin-bottom: 40px;
+    padding-bottom: 28px;
+    border-bottom: 1px solid {{BORDER}};
+  }
+
+  .stories {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    overflow: hidden;
+  }
+
+  .story {
+    padding-bottom: 32px;
+    margin-bottom: 32px;
+    border-bottom: 1px solid {{BORDER}};
+  }
+
+  .story:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+  }
+
+  .story .headline {
+    font-family: 'Noto Serif SC', serif;
+    font-size: 38px;
+    font-weight: 700;
+    line-height: 1.35;
+    color: {{TEXT}};
+    margin-bottom: 14px;
+  }
+
+  .story .body {
+    font-family: 'Noto Sans SC', sans-serif;
+    font-size: 28px;
+    font-weight: 300;
+    line-height: 1.75;
+    color: {{TEXT_SEC}};
+  }
+
+  .art-info {
+    margin-top: auto;
+    padding-top: 28px;
+    border-top: 1px solid {{BORDER}};
+  }
+
+  .art-info .artist {
+    font-family: 'Noto Serif SC', serif;
+    font-size: 24px;
+    color: {{TEXT_SEC}};
+    margin-bottom: 4px;
+  }
+
+  .art-info .title-year {
+    font-family: 'Noto Serif SC', serif;
+    font-size: 20px;
+    font-style: italic;
+    color: {{DIM}};
+  }
+</style>
+</head>
+<body>
+  <div class="painting-zone"></div>
+  <div class="text-zone">
+    <div class="dateline">{{DATE}}</div>
+    <div class="source">{{SOURCE}}</div>
+    <div class="stories">
+      {{STORIES}}
+    </div>
+    <div class="art-info">
+      <div class="artist">{{ARTIST}}</div>
+      <div class="title-year">{{PAINTING_TITLE}}</div>
+    </div>
+  </div>
+</body>
+</html>

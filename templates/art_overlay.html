@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    width: 3840px;
+    height: 2160px;
+    overflow: hidden;
+    font-family: 'Inter', sans-serif;
+    color: #f5f0eb;
+  }
+
+  .bg {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: url('{{BG_IMAGE}}') center/cover no-repeat;
+    filter: brightness(0.6) saturate(1.1);
+  }
+
+  .overlay {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    /* Gradient: clear at top-left (show art), dark at bottom-right (for text) */
+    background: linear-gradient(
+      135deg,
+      rgba(0,0,0,0.05) 0%,
+      rgba(0,0,0,0.15) 30%,
+      rgba(0,0,0,0.55) 60%,
+      rgba(0,0,0,0.75) 100%
+    );
+  }
+
+  .content {
+    position: relative;
+    z-index: 1;
+    width: 100%; height: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto 1fr auto;
+    padding: 80px 100px;
+  }
+
+  /* Header - spans full width, minimal */
+  .header {
+    grid-column: 1 / -1;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding-bottom: 40px;
+    margin-bottom: 40px;
+  }
+
+  .header .title {
+    font-family: 'Playfair Display', serif;
+    font-size: 56px;
+    font-weight: 900;
+    color: rgba(255,255,255,0.9);
+    text-shadow: 0 2px 20px rgba(0,0,0,0.5);
+  }
+
+  .header .date {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 28px;
+    color: rgba(255,255,255,0.6);
+    text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+  }
+
+  /* Left side: mostly transparent, show the art */
+  .art-space {
+    /* intentionally empty - lets the painting show through */
+  }
+
+  .art-credit {
+    position: absolute;
+    bottom: 90px;
+    left: 100px;
+    font-family: 'Playfair Display', serif;
+    font-style: italic;
+    font-size: 26px;
+    color: rgba(255,255,255,0.5);
+    text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+  }
+
+  /* Right side: news panel */
+  .news-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 40px;
+    padding-left: 60px;
+  }
+
+  .story {
+    background: rgba(0,0,0,0.35);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 16px;
+    padding: 36px 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .story .category {
+    font-size: 18px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    color: #d4a754;
+    text-shadow: 0 1px 8px rgba(0,0,0,0.3);
+  }
+
+  .story .headline {
+    font-family: 'Playfair Display', serif;
+    font-size: 36px;
+    font-weight: 700;
+    line-height: 1.25;
+    color: rgba(255,255,255,0.95);
+    text-shadow: 0 2px 12px rgba(0,0,0,0.4);
+  }
+
+  .story .summary {
+    font-size: 24px;
+    line-height: 1.55;
+    color: rgba(255,255,255,0.65);
+    font-weight: 300;
+  }
+
+  .story .source {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 18px;
+    color: rgba(255,255,255,0.35);
+  }
+
+  .story.featured {
+    background: rgba(0,0,0,0.45);
+    border: 1px solid rgba(212,167,84,0.2);
+  }
+
+  .story.featured .headline {
+    font-size: 42px;
+  }
+
+  /* Footer */
+  .footer {
+    grid-column: 1 / -1;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    padding-top: 30px;
+  }
+
+  .footer .info {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 22px;
+    color: rgba(255,255,255,0.3);
+    text-shadow: 0 1px 8px rgba(0,0,0,0.3);
+  }
+</style>
+</head>
+<body>
+  <div class="bg"></div>
+  <div class="overlay"></div>
+  <div class="content">
+    <div class="header">
+      <div class="title">{{TITLE}}</div>
+      <div class="date">{{DATE}}</div>
+    </div>
+
+    <div class="art-space"></div>
+
+    <div class="news-panel">
+      {{STORIES}}
+    </div>
+
+    <div class="footer">
+      <div class="info">Updated {{UPDATE_TIME}} · Curated by Claude</div>
+    </div>
+  </div>
+  <div class="art-credit">{{ART_CREDIT}}</div>
+</body>
+</html>

@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700;900&family=Noto+Sans+SC:wght@300;400;500;700&family=JetBrains+Mono:wght@300;400&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    width: 3840px;
+    height: 2160px;
+    overflow: hidden;
+    background: {{WALL_COLOR}};
+    font-family: 'Noto Sans SC', sans-serif;
+  }
+
+  .scene {
+    width: 100%; height: 100%;
+    display: grid;
+    grid-template-columns: 58% 42%;
+    grid-template-rows: auto 1fr auto;
+    padding: 70px 100px 60px;
+  }
+
+  /* Top bar */
+  .topbar {
+    grid-column: 1 / -1;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 50px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid {{BORDER_COLOR}};
+  }
+
+  .topbar .brand {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 24px;
+    font-weight: 300;
+    letter-spacing: 6px;
+    text-transform: uppercase;
+    color: {{TEXT_DIM}};
+  }
+
+  .topbar .datetime {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 24px;
+    font-weight: 300;
+    color: {{TEXT_DIM}};
+  }
+
+  /* Left: painting area */
+  .painting-area {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding-right: 80px;
+  }
+
+  .painting-frame {
+    /* Subtle shadow to simulate real frame depth */
+    box-shadow:
+      0 4px 20px rgba(0,0,0,0.3),
+      0 0 0 2px {{FRAME_INNER}},
+      0 0 0 16px {{FRAME_COLOR}},
+      0 0 0 18px {{FRAME_OUTER}};
+    line-height: 0;
+  }
+
+  .painting-frame img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+  }
+
+  .painting-label {
+    margin-top: 40px;
+    text-align: center;
+  }
+
+  .painting-label .artist {
+    font-family: 'Noto Serif SC', serif;
+    font-size: 26px;
+    font-weight: 400;
+    color: {{TEXT_SEC}};
+    margin-bottom: 6px;
+  }
+
+  .painting-label .title-year {
+    font-family: 'Noto Serif SC', serif;
+    font-size: 22px;
+    font-style: italic;
+    color: {{TEXT_DIM}};
+  }
+
+  /* Right: news labels */
+  .news-area {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 10px;
+    padding-left: 20px;
+    border-left: 1px solid {{BORDER_COLOR}};
+  }
+
+  .news-item {
+    padding: 24px 0 24px 28px;
+    border-left: 3px solid transparent;
+    transition: all 0.3s;
+  }
+
+  .news-item .category {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 18px;
+    font-weight: 400;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: {{ACCENT}};
+    margin-bottom: 8px;
+  }
+
+  .news-item .headline {
+    font-family: 'Noto Serif SC', serif;
+    font-size: 32px;
+    font-weight: 700;
+    line-height: 1.35;
+    color: {{TEXT_PRI}};
+    margin-bottom: 8px;
+  }
+
+  .news-item .summary {
+    font-family: 'Noto Sans SC', sans-serif;
+    font-size: 22px;
+    line-height: 1.6;
+    color: {{TEXT_SEC}};
+    font-weight: 300;
+  }
+
+  .news-item .source {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 16px;
+    color: {{TEXT_DIM}};
+    margin-top: 6px;
+  }
+
+  .news-divider {
+    height: 1px;
+    background: {{BORDER_COLOR}};
+    margin: 0 0 0 28px;
+    width: 80px;
+  }
+
+  /* Footer */
+  .footer {
+    grid-column: 1 / -1;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 40px;
+    padding-top: 20px;
+    border-top: 1px solid {{BORDER_COLOR}};
+  }
+
+  .footer .weather {
+    font-family: 'Noto Sans SC', sans-serif;
+    font-size: 22px;
+    color: {{TEXT_DIM}};
+  }
+
+  .footer .updated {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 20px;
+    color: {{TEXT_DIM}};
+  }
+</style>
+</head>
+<body>
+  <div class="scene">
+    <div class="topbar">
+      <div class="brand">Frame Terminal</div>
+      <div class="datetime">{{DATE}}</div>
+    </div>
+
+    <div class="painting-area">
+      <div class="painting-frame">
+        <img src="{{PAINTING_SRC}}" width="{{PAINTING_W}}" height="{{PAINTING_H}}">
+      </div>
+      <div class="painting-label">
+        <div class="artist">{{ARTIST}}</div>
+        <div class="title-year">{{PAINTING_TITLE}}</div>
+      </div>
+    </div>
+
+    <div class="news-area">
+      {{NEWS_ITEMS}}
+    </div>
+
+    <div class="footer">
+      <div class="weather">{{WEATHER}}</div>
+      <div class="updated">{{UPDATE_TIME}} 更新 · Claude 策展</div>
+    </div>
+  </div>
+</body>
+</html>

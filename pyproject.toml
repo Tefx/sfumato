@@ -1,0 +1,24 @@
+[project]
+name = "sfumato"
+version = "0.1.0"
+description = "Turn Samsung The Frame into a living art + news terminal"
+requires-python = ">=3.12"
+dependencies = [
+    "samsungtvws[async,encrypted]",
+    "playwright",
+    "Pillow",
+    "numpy",
+    "feedparser",
+    "httpx",
+    "typer>=0.9",
+]
+
+[project.scripts]
+sfumato = "sfumato.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[tool.setuptools.packages.find]
+where = ["src"]

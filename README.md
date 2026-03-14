@@ -1,0 +1,238 @@
+# sfumato
+
+Turn your Samsung The Frame TV into a living art + news terminal.
+
+Sfumato displays famous paintings full-screen on The Frame, with curated news text softly blended into the painting's natural quiet areas — sky, fog, water, shadows. An LLM analyzes each painting's composition to find the optimal text placement, colors, and density, so the information feels like part of the artwork, not overlaid on top of it.
+
+Named after Leonardo da Vinci's *sfumato* technique — the smoky, borderless blending of tones — because that's exactly how text meets canvas here.
+
+## How It Works
+
+```
+┌─────────────┐     ┌──────────────┐     ┌────────────┐     ┌──────────┐
+│  Art Sources │────▶│ LLM Analysis │────▶│  Renderer  │────▶│ Frame TV │
+│  (cloud)     │     │ (composition)│     │ (4K PNG)   │     │ (upload) │
+└─────────────┘     └──────────────┘     └────────────┘     └──────────┘
+                           ▲                    ▲
+                    ┌──────┘              ┌─────┘
+               ┌────────────┐      ┌───────────┐
+               │ RSS Feeds  │─────▶│ LLM News  │
+               │ (multiple) │      │ (curate,  │
+               └────────────┘      │  translate)│
+                                   └───────────┘
+```
+
+Every 15 minutes, sfumato selects a painting that matches the current news mood, analyzes its composition via LLM vision, pulls the next batch of curated news from the queue, renders a 4K image with text placed in the painting's quiet zones, and pushes it to your Frame TV.
+
+## Features
+
+- **Full-screen paintings** — The Frame's bezel is the frame. No borders, no panels, no picture-in-picture. The painting fills the screen.
+- **LLM-driven layout** — Each painting is analyzed by an LLM (via Gemini CLI, Codex CLI, or Claude Code) to find optimal text placement. Bright areas get dark text, dark areas get light text. The LLM recommends how many stories fit.
+- **Semantic art–news matching** — No fixed mood categories. Each painting gets a free-form LLM description of its emotional tone, themes, and atmosphere. Each news batch gets the same. Embeddings are computed and cosine similarity finds the best painting for the current news. "Stormy skies with golden fields" naturally matches "industry upheaval amid golden-age AI breakthroughs."
+- **Smart news curation** — Multiple RSS sources are fetched, then an LLM selects, ranks, summarizes, and translates to your configured language. Complete stories, not just headlines.
+- **Time-window awareness** — Fetches news from the past N days (default 3), not just the latest. If you've been away, you'll catch up on what matters. Articles older than 7 days are expired.
+- **Configurable display language** — Output in any language: Chinese, English, Japanese, etc. The LLM translates and adapts summaries accordingly.
+- **Dual refresh cycle** — News is fetched every 6 hours (configurable), paintings rotate every 15 minutes. News is split into batches so each rotation shows fresh stories.
+- **Cloud art sources** — Paintings from Rijksmuseum, Met Museum, and Wikimedia Commons APIs. Locally cached, never repeats until the full pool is exhausted.
+- **Layout caching** — Each painting's composition analysis, description, and embedding are cached by content hash. One LLM call per painting, forever.
+- **Seed art library** — `sfumato init` pre-fetches 50 paintings from cloud APIs covering diverse styles and moods, then analyzes and embeds them all. The daemon continues backfilling to 200+ in the background.
+- **TV-aware** — Detects if the TV is off or not in Art Mode before pushing. Auto-cleans old uploads.
+- **Quiet hours** — Configurable time range (e.g., midnight to 6am) where only pure artwork is displayed, no news.
+- **Multi-template** — Landscape paintings with whitespace get text blended in. Portrait paintings get a side-panel layout. Dense compositions get a magazine split.
+- **Container-ready** — Runs as a long-lived `watch` daemon. Deploy on Synology NAS, Mac Mini, or any Docker host.
+
+## Quick Start
+
+```bash
+# Install
+pip install sfumato
+playwright install chromium
+
+# Initialize (creates config + fetches 50 seed paintings + analyzes them)
+sfumato init
+
+# Single run (for testing)
+sfumato run                     # Pick art → analyze → fetch news → render → upload
+sfumato run --no-upload         # Render only, open preview
+sfumato run --painting my.jpg   # Use a specific painting
+
+# Daemon mode
+sfumato watch                   # Long-running, manages all timers
+
+# TV management
+sfumato tv status               # Check TV connection and Art Mode
+sfumato tv list                 # List uploaded images
+sfumato tv clean                # Remove old uploads
+
+# Preview
+sfumato preview                 # Render and open in system viewer
+```
+
+## Configuration
+
+```toml
+# ~/.config/sfumato/config.toml
+
+[tv]
+ip = "192.168.88.22"
+port = 8002
+max_uploads = 5                     # Auto-clean older uploads
+
+[schedule]
+news_interval_hours = 6             # How often to fetch + curate news
+rotate_interval_minutes = 15        # How often to switch painting + news batch
+quiet_hours = [0, 6]                # Pure art mode, no news overlay
+active_hours = [7, 23]              # Only push during these hours
+
+[news]
+language = "zh"                     # Display language (zh, en, ja, ...)
+stories_per_refresh = 12            # LLM curates this many per fetch
+max_age_days = 3                    # Fetch articles up to N days old
+expire_days = 7                     # Discard articles older than this
+
+[[news.feeds]]
+name = "TLDR Tech"
+url = "https://tldr.tech/api/rss/tech"
+category = "Tech"
+
+[[news.feeds]]
+name = "TLDR AI"
+url = "https://tldr.tech/api/rss/ai"
+category = "AI"
+
+[[news.feeds]]
+name = "Hacker News 100+"
+url = "https://hnrss.org/frontpage?points=100"
+category = "Tech"
+
+[[news.feeds]]
+name = "Ars Technica"
+url = "https://feeds.arstechnica.com/arstechnica/index"
+category = "Tech"
+
+[[news.feeds]]
+name = "TechCrunch"
+url = "https://techcrunch.com/feed/"
+category = "Tech"
+
+[[news.feeds]]
+name = "The Verge"
+url = "https://www.theverge.com/rss/index.xml"
+category = "Tech"
+
+[[news.feeds]]
+name = "Import AI"
+url = "https://importai.substack.com/feed"
+category = "AI"
+
+[[news.feeds]]
+name = "Latent Space"
+url = "https://www.latent.space/feed"
+category = "AI"
+
+[[news.feeds]]
+name = "BBC News"
+url = "https://feeds.bbci.co.uk/news/rss.xml"
+category = "World"
+
+[[news.feeds]]
+name = "Reuters"
+url = "http://feeds.reuters.com/reuters/topNews"
+category = "World"
+
+[[news.feeds]]
+name = "NYT Home"
+url = "https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml"
+category = "World"
+
+[[news.feeds]]
+name = "Nature"
+url = "https://www.nature.com/nature.rss"
+category = "Science"
+
+[[news.feeds]]
+name = "MIT Tech Review"
+url = "https://www.technologyreview.com/feed/"
+category = "Science"
+
+[[news.feeds]]
+name = "Ars Technica Science"
+url = "https://feeds.arstechnica.com/arstechnica/science"
+category = "Science"
+
+[[news.feeds]]
+name = "Financial Times"
+url = "https://www.ft.com/rss/home"
+category = "Economy"
+
+[paintings]
+cache_dir = "~/.sfumato/paintings"
+seed_size = 50                      # Pre-fetch during `sfumato init`
+pool_size = 200                     # Background backfill target
+sources = ["rijksmuseum", "met", "wikimedia"]
+match_strategy = "semantic"         # semantic | random
+
+[ai]
+cli = "gemini"                      # gemini | codex | claude-code
+model = "gemini-3.1-pro-preview"    # Model for layout analysis and news curation
+```
+
+## How Layout Analysis Works
+
+For each new painting, sfumato calls the configured LLM with the image and asks it to:
+
+1. **Identify quiet zones** — Sky, fog, water, shadows, flat backgrounds
+2. **Choose text placement** — CSS position for the text zone
+3. **Set colors** — Adaptive text color based on zone brightness
+4. **Recommend density** — How many stories fit without visual noise
+5. **Design scrim** — A subtle gradient to ensure readability without visible overlay
+6. **Tag mood and themes** — Emotional tone and subject matter for news matching
+
+The result is cached by painting content hash — the same painting never needs re-analysis.
+
+```
+Bright painting (e.g., Monet)     Dark painting (e.g., Van Gogh)
+┌─────────────────────────┐       ┌─────────────────────────┐
+│              dark text ◄─┤       │                         │
+│              on bright   │       │  light text ►───────────┤
+│              sky area    │       │  on dark                │
+│                          │       │  lower area             │
+│   ████ painting ████     │       │   ████ painting ████    │
+│   ████ subject  ████     │       │   ████ subject  ████    │
+└─────────────────────────┘       └─────────────────────────┘
+```
+
+## Semantic Art–News Matching
+
+No predefined mood categories. Instead, sfumato uses free-form descriptions and embedding similarity:
+
+```
+Painting analysis (one-time, cached):
+  LLM sees painting → generates rich description:
+  "暴风雨前的宁静，灰蓝色天空压迫着金色麦田，
+   孤独感与自然的壮美交织，带有不安的预兆感"
+  → compute embedding → store
+
+News batch (each rotation):
+  LLM reads stories → describes overall tone:
+  "科技巨头间的紧张博弈，收购与反垄断交织，
+   行业格局快速重组，充满不确定性"
+  → compute embedding
+  → cosine similarity against all painting embeddings
+  → pick best match
+```
+
+This captures nuances that fixed labels cannot: the difference between "quiet melancholy" and "peaceful solitude," or between "anxious energy" and "joyful momentum." The matching is emergent, not hand-coded.
+
+Painting descriptions and embeddings are cached forever (one LLM call per painting). News batch descriptions are generated during curation (no extra LLM call — part of the same prompt). Embedding computation is instant and free.
+
+## Requirements
+
+- Python 3.12+
+- Chromium (installed via Playwright)
+- Samsung The Frame TV (2020+ models, on same network)
+- One of: `gemini` CLI, `codex` CLI, or `claude` CLI installed and authenticated
+
+## License
+
+MIT
