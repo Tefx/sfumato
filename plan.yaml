@@ -2835,7 +2835,7 @@ phases:
       semantics and bounded backfill behavior as contracted.'
   - id: production.cli-full
     name: 'Complete CLI: watch + tv subcommands'
-    status: claimed
+    status: done
     description: "step_type: implementation\ntags:\n  - integration\nspec_refs:\n\
       \  - ARCHITECTURE.md#2.13\n  - ARCHITECTURE.md#2.12\ntouch_paths:\n  - src/sfumato/cli.py\n\
       \  - src/sfumato/__main__.py\n  - tests/test_cli.py\nharness_refs:\n  - typer\
@@ -2881,6 +2881,34 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T18:11:01.854110+00:00'
+    done_at: '2026-03-14T18:22:25.477619+00:00'
+    evidence: 'Artifact:
+
+      - PR: commit 368e007 ([vectl] step-production.cli-full completed), source worktree
+      commit d98df08
+
+
+      Verification:
+
+      - Run: `uv run pytest tests/test_cli.py tests/test_tv.py -v` -> 189 passed
+
+      - Run: `uv run invar guard --changed` -> passed
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#2.13
+
+
+      Files changed:
+
+      - src/sfumato/cli.py
+
+
+      Gaps/Notes:
+
+      - watch and tv subcommands are wired to orchestrator/tv implementations with
+      documented flag/exit/help behavior.'
   - id: production.docker
     name: Create Dockerfile and deployment config
     status: claimed
