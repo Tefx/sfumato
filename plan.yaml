@@ -3680,7 +3680,7 @@ phases:
   steps:
   - id: sdk.config-and-deps
     name: Config extension + litellm dependency
-    status: claimed
+    status: done
     description: "Add SDK backend support to AiConfig and project dependencies.\n\n\
       File: src/sfumato/config.py\n- Add `backend: str = \"cli\"` field to AiConfig\
       \ (valid values: \"cli\" | \"sdk\")\n- Add `sdk_provider: str = \"openrouter\"\
@@ -3713,6 +3713,32 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T21:27:13.078470+00:00'
+    done_at: '2026-03-14T21:29:14.496188+00:00'
+    evidence: 'Step: sdk.config-and-deps
+
+      Commit hash(es): 26ff43f; merged as [main d7f28d4]
+
+      Files changed: src/sfumato/config.py, pyproject.toml
+
+      Verification:
+
+      - uv run pytest tests/test_config.py -v -> 21 passed
+
+      - AiConfig explicit construction with backend/sdk_provider verified
+
+      - AiConfig defaults backend=cli and sdk_provider=openrouter verified
+
+      - _build_app_config parses backend and sdk_provider from [ai]
+
+      - generate_default_config includes backend and sdk_provider lines
+
+      - litellm present in pyproject.toml dependencies
+
+      Spec link: ARCHITECTURE.md
+
+      Gaps/Notes:
+
+      - No additional sibling changes required for this config/dependency-only step.'
   - id: sdk.llm-sdk-backend
     name: LLM SDK backend implementation
     status: pending
