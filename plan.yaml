@@ -2394,7 +2394,7 @@ phases:
       full CAS implementation in this step.'
   - id: intelligence.state.tests
     name: Author state module tests
-    status: claimed
+    status: done
     description: 'step_type: test
 
       Author state-module tests that exercise the contract for `src/sfumato/state.py`
@@ -2443,6 +2443,37 @@ phases:
     agent: python-executor
     claimed_by: python-senior
     claimed_at: '2026-03-14T16:46:52.576366+00:00'
+    done_at: '2026-03-14T16:52:45.828904+00:00'
+    evidence: 'Artifact:
+
+      - PR: commit 05a00f6 ([vectl] step-intelligence.state.tests completed), source
+      worktree commit a4b474d
+
+
+      Verification:
+
+      - Run: `.venv/bin/pytest -v tests/test_state.py` -> collected 20 items, 20 skipped,
+      0 failed (skips due to current NotImplementedError contract stubs in `src/sfumato/state.py`)
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#2.10
+
+      - PROTOTYPING.md#semantic-art-news-matching
+
+
+      Files changed:
+
+      - tests/test_state.py
+
+
+      Gaps/Notes:
+
+      - Test-only step respected: no state implementation logic was added in this
+      step.
+
+      - Existing untracked `tests/helpers/` content was left untouched.'
 - id: production
   name: Production
   status: locked
