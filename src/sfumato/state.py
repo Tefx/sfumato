@@ -1484,6 +1484,7 @@ class AppState:
     """
 
     news_queue: NewsQueue
+    replay_queue: ReplayQueue
     used_paintings: UsedPaintings
     layout_cache: LayoutCache
     embedding_cache: EmbeddingCache
@@ -1506,12 +1507,14 @@ class AppState:
         resolved = resolve_state_dir(state_dir)
 
         news_queue = NewsQueue(resolved)
+        replay_queue = ReplayQueue(resolved)
         used_paintings = UsedPaintings(resolved)
         layout_cache = LayoutCache(resolved)
         embedding_cache = EmbeddingCache(resolved)
         art_fact_rotation = ArtFactRotation(resolved)
 
         news_queue.load()
+        replay_queue.load()
         used_paintings.load()
         layout_cache.load()
         embedding_cache.load()
@@ -1519,6 +1522,7 @@ class AppState:
 
         return cls(
             news_queue=news_queue,
+            replay_queue=replay_queue,
             used_paintings=used_paintings,
             layout_cache=layout_cache,
             embedding_cache=embedding_cache,
@@ -1537,6 +1541,7 @@ class AppState:
             OSError: If any component save fails.
         """
         self.news_queue.save()
+        self.replay_queue.persist()
         self.used_paintings.save()
         self.layout_cache.save()
         self.embedding_cache.save()

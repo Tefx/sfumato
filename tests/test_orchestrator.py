@@ -5236,3 +5236,14 @@ class TestReplayProtocolSurface:
         assert "replay_queue" in protocol_attrs or hasattr(
             AppStateProtocol, "replay_queue"
         )
+
+    def test_production_app_state_replay_queue_seam_is_present(
+        self, tmp_path: Path
+    ) -> None:
+        """Real AppState instances always expose replay_queue to orchestrator seam."""
+        from sfumato.orchestrator import _get_replay_queue
+        from sfumato.state import AppState
+
+        state = AppState.load(tmp_path)
+        replay_queue = _get_replay_queue(state)
+        assert replay_queue is state.replay_queue

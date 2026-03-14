@@ -875,6 +875,7 @@ class TestAppStateLoadContract:
         )
 
         assert isinstance(state.news_queue, NewsQueue)
+        assert isinstance(state.replay_queue, ReplayQueue)
         assert isinstance(state.used_paintings, UsedPaintings)
         assert isinstance(state.layout_cache, LayoutCache)
         assert isinstance(state.embedding_cache, EmbeddingCache)
@@ -883,6 +884,8 @@ class TestAppStateLoadContract:
             _or_skip_not_implemented("NewsQueue.size", lambda: state.news_queue.size)
             == 0
         )
+        assert state.replay_queue.size == 0
+        assert state.replay_queue.next_index == 0
         assert (
             _or_skip_not_implemented(
                 "UsedPaintings.count", lambda: state.used_paintings.count
@@ -967,3 +970,32 @@ class TestAppStateLoadContract:
             lambda: resolve_state_dir(relative_dir, cwd=tmp_path, home=tmp_path),
         )
         assert resolved == expected
+
+    def test_app_state_replay_queue_lifecycle_persists_via_save_all(
+        self, tmp_path: Path
+    ) -> None:
+        state = _or_skip_not_implemented(
+            "AppState.load", lambda: AppState.load(tmp_path)
+        )
+        batch = QueuedBatch(
+            stories=[_story(501, published_at=datetime.now(timezone.utc))],
+            tone_description="replay lifecycle",
+            enqueued_at=datetime.now(timezone.utc),
+        )
+
+        transfer = state.replay_queue.transfer_from_news_queue(batch)
+        assert transfer.accepted
+        assert state.replay_queue.size == 1
+
+        state.save_all()
+
+        replay_path = tmp_path / REPLAY_QUEUE_JSON
+        assert replay_path.exists()
+        payload = _read_json(replay_path)
+        assert payload["batches"]
+
+        reloaded_state = _or_skip_not_implemented(
+            "AppState.load replay round-trip",
+            lambda: AppState.load(tmp_path),
+        )
+        assert reloaded_state.replay_queue.size == 1

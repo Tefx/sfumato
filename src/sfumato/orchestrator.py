@@ -1813,6 +1813,8 @@ def _get_replay_queue(state: AppStateProtocol) -> ReplayQueueProtocol | None:
     """Return replay queue when the state surface exposes one."""
     replay_queue = getattr(state, "replay_queue", None)
     if replay_queue is None:
+        if isinstance(state, AppState):
+            raise RuntimeError("AppState.replay_queue must be initialized")
         return None
     return cast(ReplayQueueProtocol, replay_queue)
 
