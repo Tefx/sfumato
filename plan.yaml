@@ -3834,3 +3834,13 @@ phases:
     - sdk.llm-sdk-backend
     - sdk.dockerfile
     agent: gate-reviewer
+- id: hardening
+  name: 'Hardening: Bug Fixes + Integration Tests'
+  status: pending
+  gate: All identified bugs fixed, Protocol conformance enforced by pyright, integration
+    test covers run_once end-to-end with real state/config/render
+  context: 'Fix bugs discovered during end-to-end sfumato run testing that 671 existing
+    tests failed to catch. Root causes: over-mocked tests, incomplete Protocol declarations,
+    untested CLI command construction, missing boundary condition coverage.'
+  depends_on:
+  - production
