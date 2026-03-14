@@ -2894,3 +2894,26 @@ phases:
     - production.scheduler
     - production.watch.contract
     agent: python-executor
+  - id: production.cli-full.contract
+    name: Define production CLI contract
+    status: pending
+    description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
+      \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nspec_refs:\n  - ARCHITECTURE.md#2.13\n\
+      \  - ARCHITECTURE.md#2.12\ntouch_paths:\n  - src/sfumato/cli.py\n  - src/sfumato/__main__.py\n\
+      harness_refs:\n  - typer CLI harness\nagent: python-executor\n\nDefine the acceptance\
+      \ contract for the production CLI surfaces without shipping command implementation\
+      \ logic.\n\nContract scope:\n- `sfumato watch` options, help text, and dispatch\
+      \ contract to `orchestrator.watch`\n- `sfumato tv status|list|clean` command\
+      \ names, option surfaces, exit behavior, and output expectations\n- top-level\
+      \ error/exit-code boundary for production-only commands\n- requirement that\
+      \ help output exposes the new commands through the real CLI entrypoint\n\nConstraints:\n\
+      - command signatures, docs, and behavioral notes only\n- no completed command\
+      \ bodies or TV integration logic in this step"
+    verification: '- Contract names every new production CLI command surface and dispatch
+      target
+
+      - Main path semantics are explicit for watch startup and TV subcommand routing
+
+      - Highest-risk failure semantics are explicit for help exposure, bad-config
+      exits, and command-to-runtime miswiring'
+    agent: python-executor
