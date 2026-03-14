@@ -519,7 +519,7 @@ phases:
     - docker-compose.yml
     - ARCHITECTURE.md
     depends_on:
-    - production.cli-full
+    - production.watch
     agent: python-executor
   - id: production.cleanup
     name: Remove proto.py and clean up
