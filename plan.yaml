@@ -269,17 +269,59 @@ phases:
   - id: core.gate
     name: 'Gate: Core Pipeline'
     status: pending
-    description: 'Gate review: Verify core pipeline works end-to-end. sfumato run
-      --no-upload should produce a valid 4K PNG from a local painting + live news.
-      All module interfaces conform to ARCHITECTURE.md. No proto.py dependencies remain
-      in the pipeline path.'
-    verification: sfumato run --no-upload --painting <test.jpg> produces a 4K PNG;
-      all modules importable; public interfaces match arch spec
+    description: 'Gate review: Verify core pipeline works end-to-end. `sfumato run
+      --no-upload` should produce a valid 4K PNG from a local painting + live news.
+      All module interfaces conform to `ARCHITECTURE.md`. No `proto.py` dependencies
+      remain in the pipeline path.
+
+
+      review_depth: THOROUGH
+
+      review_depth_rationale:
+
+      - Phase now includes contract-first chains for config, llm, and palette
+
+      - Config and LLM steps carry explicit failure-path semantics that must be checked,
+      not just happy-path completion
+
+      - Cross-module pipeline still depends on these initial modules being contract-complete
+      before downstream refactors proceed
+
+
+      cross_cutting_focus:
+
+      - config precedence/fallback semantics match the contracted behavior
+
+      - llm retry/parser/backend-selection branches are evidenced, not only described
+
+      - palette output invariants and image edge cases are covered before end-to-end
+      execution'
+    verification: '- All core phase steps, including contract/test predecessors, completed
+      successfully
+
+      - Evidence shows config precedence/fallback, llm retry/parser failure paths,
+      and palette edge cases were each exercised explicitly
+
+      - `sfumato run --no-upload` reaches the real entrypoint path and produces a
+      valid 4K PNG
+
+      - All module interfaces conform to `ARCHITECTURE.md`
+
+      - No unresolved blockers remain for downstream phases'
     refs:
     - ARCHITECTURE.md
+    - src/sfumato/config.py
+    - src/sfumato/llm.py
+    - src/sfumato/palette.py
     depends_on:
+    - core.config.contract
+    - core.config.tests
     - core.config
+    - core.llm.contract
+    - core.llm.tests
     - core.llm
+    - core.palette.contract
+    - core.palette.tests
     - core.palette
     - core.news
     - core.layout-ai
