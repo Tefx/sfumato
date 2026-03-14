@@ -332,7 +332,7 @@ phases:
     agent: gate-reviewer
   - id: core.config.contract
     name: Define config loader contract
-    status: claimed
+    status: done
     description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
       \  - signatures\n  - type_defs\n  - stubs\nspec_refs:\n  - ARCHITECTURE.md#2.1\n\
       touch_paths:\n  - src/sfumato/config.py\nharness_refs:\n  - tests/test_config.py\n\
@@ -365,6 +365,43 @@ phases:
     agent: python-senior
     claimed_by: python-senior
     claimed_at: '2026-03-14T12:30:34.355745+00:00'
+    done_at: '2026-03-14T12:36:35.928667+00:00'
+    evidence: 'Artifact:
+
+      - Worker commit: eb6c820 (isolated worktree)
+
+      - Main commit: c5e266ccf21205f072a47ba189da2ba43092a9b5
+
+
+      Verification:
+
+      - Run: `uv run --no-project python -m py_compile src/sfumato/config.py` -> success
+      (exit 0)
+
+      - Run: `PYTHONPATH=src uv run --no-project python -c "from typing import get_type_hints;
+      import sfumato.config as m; hints=get_type_hints(m.AppConfig); assert hints[''tv'']
+      is m.TvConfig; assert m.CONFIG_SOURCE_PRECEDENCE == (''path argument'',''SFUMATO_CONFIG'',''~/.config/sfumato/config.toml'',''./sfumato.toml'');
+      assert m.SUPPORTED_ENV_OVERRIDES == (''SFUMATO_CONFIG'',); print(''contract-check:
+      ok'')"` -> `contract-check: ok`
+
+      - Run: `PYTHONPATH=src uv run --no-project python -c "import inspect; import
+      sfumato.config as m; doc=inspect.getdoc(m.load_config) or ''''; required=(''Source
+      precedence (highest first):'',''Missing-file behavior:'',''Path behavior:'',''Env
+      behavior:''); assert all(s in doc for s in required); print(''doc-contract:
+      ok'')"` -> `doc-contract: ok`
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#2.1
+
+      - src/sfumato/config.py
+
+
+      Gaps/Notes:
+
+      - Contract-only step; no TOML parsing/business logic, no CLI wiring, no tests
+      file updates.'
   - id: core.config.tests
     name: Author config loader tests
     status: pending
