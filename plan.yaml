@@ -5010,7 +5010,7 @@ phases:
       - Contract-only step; implementation reserved for art-facts.orchestrator-wire.'
   - id: art-facts.orchestrator-wire.test
     name: Define orchestrator art-facts contract tests
-    status: pending
+    status: claimed
     description: "step_type: test\nagent: python-executor\nspec_refs:\n  - ARCHITECTURE.md#2.12\n\
       touch_paths:\n  - tests/\n  - src/sfumato/orchestrator.py\n  - src/sfumato/render.py\n\
       harness_refs:\n  - tests/\n\nDefine contract tests for orchestrator-side art-facts\
@@ -5034,6 +5034,8 @@ phases:
     depends_on:
     - art-facts.orchestrator-wire.contract
     agent: python-executor
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T22:47:39.430605+00:00'
 - id: replay
   name: News Replay Queue
   status: in_progress
