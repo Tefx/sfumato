@@ -4969,7 +4969,7 @@ phases:
       - No additional gaps reported.'
   - id: replay.queue
     name: Implement ReplayQueue in state module
-    status: pending
+    status: claimed
     description: "step_type: implementation\nagent: python-senior\nspec_refs:\n  -\
       \ ARCHITECTURE.md#2.10\ntouch_paths:\n  - src/sfumato/state.py\n  - tests/test_state.py\n\
       \nImplement `ReplayQueue` in `state.py` following the explicit contract and\
@@ -5013,6 +5013,8 @@ phases:
     depends_on:
     - replay.queue.test
     agent: python-senior
+    claimed_by: python-senior
+    claimed_at: '2026-03-14T22:27:37.756918+00:00'
   - id: replay.scheduler-wire
     name: Wire replay queue into orchestrator
     status: pending
