@@ -4478,7 +4478,7 @@ phases:
       in this implementation.'
   - id: art-facts.template-whisper
     name: Add whisper block to all production templates
-    status: claimed
+    status: done
     description: "step_type: implementation\nagent: python-executor\nagent_source:\
       \ default\nspec_refs:\n  - PROTOTYPING.md#11\ntouch_paths:\n  - templates/painting_text.html\n\
       \  - templates/magazine.html\n  - templates/portrait.html\nharness_refs:\n \
@@ -4510,6 +4510,30 @@ phases:
     - art-facts.template-whisper.test
     claimed_by: python-executor
     claimed_at: '2026-03-14T22:01:00.898568+00:00'
+    done_at: '2026-03-14T22:06:02.954231+00:00'
+    evidence: 'Step: art-facts.template-whisper
+
+      Commit hash(es): 457795f; merged as [main a687fe3]
+
+      Files changed: templates/painting_text.html, templates/magazine.html, templates/portrait.html,
+      tests/test_render.py
+
+      Verification:
+
+      - Whisper-focused render tests pass: required WHISPER_* placeholders present,
+      whisper-zone visible element present, contract uniformity checks pass, syntax
+      smoke checks pass
+
+      - Subagent reported targeted run with whisper subset passed; non-whisper fixture
+      errors remain out-of-scope for this step family
+
+      Spec link: PROTOTYPING.md#11
+
+      Gaps/Notes:
+
+      - Existing test_render fixture compatibility issues (LayoutParams arg updates)
+      were reported as pre-existing/out-of-scope for this step and should be addressed
+      in downstream render integration work if needed.'
   - id: art-facts.render-whisper
     name: Wire whisper into render module
     status: pending
