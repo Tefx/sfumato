@@ -1690,7 +1690,7 @@ phases:
   steps:
   - id: intelligence.paintings
     name: Implement paintings module
-    status: claimed
+    status: done
     description: "step_type: implementation\nspec_refs:\n  - ARCHITECTURE.md#2.3\n\
       \  - PROTOTYPING.md#semantic-art-news-matching\ntouch_paths:\n  - src/sfumato/paintings.py\n\
       \  - tests/test_paintings.py\nharness_refs:\n  - pytest\n  - tmp_path image\
@@ -1738,6 +1738,49 @@ phases:
     agent: python-executor
     claimed_by: python-senior
     claimed_at: '2026-03-14T16:19:10.499381+00:00'
+    done_at: '2026-03-14T16:26:41.222415+00:00'
+    evidence: 'Artifact:
+
+      - PR: commit 2b90c9c ([vectl] step-intelligence.paintings completed), source
+      worktree commits 775730f and 45952b3
+
+
+      Verification:
+
+      - Run: `pytest tests/test_paintings.py -k "dispatch or exclude_ids or content_hash
+      or orientation or sidecar" -v` -> failed in environment (`zsh: command not found:
+      pytest`)
+
+      - Run: `uv run pytest tests/test_paintings.py -k "dispatch or exclude_ids or
+      content_hash or orientation or sidecar" -v` -> 13 passed, 3 deselected
+
+      - Run: `uv run pytest tests/test_paintings.py -k "missing_rijksmuseum_key or
+      one_source_fails" -v` -> 3 passed, 13 deselected
+
+      - Run: `uv run pytest tests/test_paintings.py -v` -> 16 passed
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#2.3
+
+      - PROTOTYPING.md#semantic-art-news-matching
+
+
+      Files changed:
+
+      - src/sfumato/paintings.py
+
+      - tests/test_paintings.py
+
+
+      Gaps/Notes:
+
+      - Out-of-scope items (layout analysis, embedding generation, orchestrator wiring,
+      background backfill) were not modified.
+
+      - Missing-key and one-source-fails/siblings-succeed regressions are explicitly
+      included in test evidence.'
   - id: intelligence.matcher
     name: Implement matcher module
     status: pending
