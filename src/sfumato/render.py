@@ -550,15 +550,24 @@ async def _playwright_screenshot(html_content: str, output_path: Path) -> None:
     Raises:
         PlaywrightError: If rendering fails.
     """
+    # Write HTML to a temp file next to output so file:// image refs work
+    html_path = output_path.with_suffix(".html")
+    html_path.write_text(html_content, encoding="utf-8")
+
     async with async_playwright() as p:
         browser = await p.chromium.launch()
         try:
             page = await browser.new_page(
                 viewport={"width": VIEWPORT_WIDTH, "height": VIEWPORT_HEIGHT}
             )
-            await page.set_content(html_content, wait_until="networkidle")
-            # Wait for fonts to load
-            await page.wait_for_timeout(1000)
+            # Use goto with file:// URL instead of set_content,
+            # because set_content uses about:blank as base URL which
+            # blocks file:// image references due to security policy.
+            await page.goto(
+                html_path.resolve().as_uri(), wait_until="networkidle"
+            )
+            # Wait for fonts and images to load
+            await page.wait_for_timeout(1500)
             await page.screenshot(path=str(output_path), type="png")
         finally:
             await browser.close()
