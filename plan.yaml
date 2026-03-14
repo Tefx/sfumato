@@ -568,22 +568,32 @@ phases:
   - id: core.cli-run
     name: Implement CLI run and preview commands
     status: pending
-    description: 'Implement src/sfumato/cli.py per ARCHITECTURE.md section 2.13 (run
-      + preview commands only). Create Typer app with run command (--config, --no-upload,
-      --no-news, --painting, --cli, --model, --verbose) and preview command. Load
-      config, construct RunOptions, call orchestrator.run_once(). Handle top-level
-      errors with user-friendly messages and exit codes. Update __main__.py entry
-      point. File: src/sfumato/cli.py (new), src/sfumato/__main__.py. Completion:
-      sfumato run and sfumato preview work as documented in README.'
-    verification: sfumato run --no-upload executes without error; sfumato preview
-      renders and attempts to open; --help shows correct options
+    description: "step_type: implementation\nspec_refs:\n  - ARCHITECTURE.md#2.13\n\
+      \  - ARCHITECTURE.md#2.12\n  - README.md\ntouch_paths:\n  - src/sfumato/cli.py\n\
+      \  - src/sfumato/__main__.py\nharness_refs:\n  - pytest\n  - Typer CLI invocation\
+      \ tests\nagent: python-executor\n\nImplement `src/sfumato/cli.py` per `ARCHITECTURE.md#2.13`\
+      \ (run + preview commands only) after the orchestrator pipeline has independent\
+      \ verification evidence.\n\nCreate Typer app with `run` command (`--config`,\
+      \ `--no-upload`, `--no-news`, `--painting`, `--cli`, `--model`, `--verbose`)\
+      \ and `preview` command. Load config, construct `RunOptions`, call `orchestrator.run_once()`,\
+      \ and handle top-level errors with user-friendly messages and exit codes. Update\
+      \ `src/sfumato/__main__.py` entry point.\n\nCompletion:\n- `sfumato run` and\
+      \ `sfumato preview` work as documented in `README.md`\n- CLI behavior stays\
+      \ aligned with the strengthened `RunOptions` / `RunResult` contract"
+    verification: '- `sfumato run --no-upload` executes without error and surfaces
+      the local render result cleanly
+
+      - `sfumato preview` renders and attempts to open the generated PNG
+
+      - `--help` shows the contracted options and help text'
     refs:
     - ARCHITECTURE.md#2.13
+    - ARCHITECTURE.md#2.12
+    - README.md
     - src/sfumato/cli.py
     - src/sfumato/__main__.py
-    - ARCHITECTURE.md
     depends_on:
-    - core.pipeline
+    - core.pipeline.verify
     agent: python-executor
   - id: core.gate
     name: 'Gate: Core Pipeline'
