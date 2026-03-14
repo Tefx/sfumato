@@ -2669,7 +2669,7 @@ phases:
       - Existing untracked `tests/helpers/` content was left untouched.'
 - id: production
   name: Production
-  status: in_progress
+  status: done
   gate: sfumato watch starts daemon, handles SIGTERM gracefully, Docker image builds
     and runs
   context: 'Daemon mode, Docker deployment. Modules: scheduler, orchestrator(watch),
@@ -3078,7 +3078,7 @@ phases:
       imports.'
   - id: production.gate
     name: 'Gate: Production'
-    status: claimed
+    status: done
     description: "step_type: gate\nspec_refs:\n  - ARCHITECTURE.md#2.11\n  - ARCHITECTURE.md#2.12\n\
       \  - ARCHITECTURE.md#2.13\n  - ARCHITECTURE.md#9\ntouch_paths:\n  - src/sfumato/scheduler.py\n\
       \  - src/sfumato/orchestrator.py\n  - src/sfumato/cli.py\n  - Dockerfile\n \
@@ -3137,6 +3137,54 @@ phases:
     agent: gate-reviewer
     claimed_by: gate-reviewer
     claimed_at: '2026-03-14T18:24:50.633473+00:00'
+    done_at: '2026-03-14T18:29:12.897758+00:00'
+    evidence: 'Artifact:
+
+      - PR: gate review by `gate-reviewer` task_id `ses_31267b483ffee6e1khfshdPSHs`
+      (verify-only)
+
+
+      Verification:
+
+      - Run: `uv run pytest tests/test_orchestrator.py tests/test_cli.py tests/test_scheduler.py
+      tests/test_deployment_contract.py -v` -> 341 passed
+
+      - Run: `uv run pytest tests/ -q --ignore=tests/test_e2e.py --ignore=tests/test_integration_tv.py`
+      -> 673 passed
+
+      - Run: `test ! -f src/sfumato/proto.py` -> pass
+
+      - Run: `grep -rn "from.*proto\|import.*proto" src/` -> no proto imports found
+
+      - Run: `docker build --target runtime -t sfumato:gate-test .` -> success
+
+      - Run: `docker run --rm sfumato:gate-test sfumato --help` -> success
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#2.11
+
+      - ARCHITECTURE.md#2.12
+
+      - ARCHITECTURE.md#2.13
+
+      - ARCHITECTURE.md#9
+
+      - DEPLOYMENT_CONTRACT.md
+
+
+      Files changed:
+
+      - none (verify-only)
+
+
+      Gaps/Notes:
+
+      - No blocker findings.
+
+      - Non-blocking lint/type-stub observations were treated as suggestions/tech-debt,
+      not release blockers.'
   - id: production.scheduler.contract
     name: Define scheduler contract
     status: done
