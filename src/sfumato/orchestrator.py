@@ -13,6 +13,7 @@ Spec references:
 
 from __future__ import annotations
 
+import asyncio
 import datetime
 import json
 import logging
@@ -857,89 +858,86 @@ async def init_project(config: AppConfig) -> None:
     print(f"  - Paintings: {paintings_dir}")
     print(f"  - Output: {output_dir}")
 
-    # Step 3: Fetch seed_size paintings from configured sources
+    # Steps 3-5: Pipeline — download paintings and analyze them concurrently
+    # Producer: downloads paintings, puts them in queue
+    # Consumer: analyzes layout + computes embeddings as paintings arrive
     print(
-        f"\nFetching {config.paintings.seed_size} paintings from configured sources..."
+        f"\nFetching and analyzing {config.paintings.seed_size} paintings..."
     )
     print(f"  Sources: {config.paintings.sources}")
 
-    paintings = await fetch_paintings(
-        sources=config.paintings.sources,
-        count=config.paintings.seed_size,
-        cache_dir=config.paintings.cache_dir,
-        exclude_ids=None,  # No exclusions for initial fetch
-    )
-
-    if not paintings:
-        print(
-            "Warning: No paintings were fetched. Check API keys and network connectivity."
-        )
-        print("  - Met and Wikimedia require network access")
-        return
-
-    print(f"Fetched {len(paintings)} paintings.")
-
-    # Step 4: Analyze each painting (layout + description)
-    # Step 5: Compute embeddings for each painting
-    print(f"\nAnalyzing {len(paintings)} paintings and computing embeddings...")
-
-    # Load state to get access to caches
     state = AppState.load(state_dir)
-
+    queue: asyncio.Queue[PaintingsPaintingInfo | None] = asyncio.Queue(maxsize=5)
+    download_count = 0
     success_count = 0
-    for i, painting in enumerate(paintings, 1):
-        try:
-            print(f"  [{i}/{len(paintings)}] {painting.title} by {painting.artist}")
 
-            # Check if already cached
-            if state.layout_cache.has(painting.content_hash):
-                print(f"    Layout already cached, skipping analysis")
-            else:
-                # Analyze painting layout
-                layout = await analyze_painting(painting.image_path, config.ai)
+    async def producer() -> None:
+        """Download paintings and feed them into the queue."""
+        nonlocal download_count
+        paintings = await fetch_paintings(
+            sources=config.paintings.sources,
+            count=config.paintings.seed_size,
+            cache_dir=config.paintings.cache_dir,
+            exclude_ids=None,
+        )
+        download_count = len(paintings)
+        for painting in paintings:
+            await queue.put(painting)
+        await queue.put(None)  # Sentinel: signal consumer to stop
 
-                # Cache result
-                state.layout_cache.put(painting.content_hash, layout)
-                print(f"    Analyzed layout: {layout.template_hint}")
+    async def consumer() -> None:
+        """Analyze and embed paintings as they arrive from the queue."""
+        nonlocal success_count
+        idx = 0
+        while True:
+            painting = await queue.get()
+            if painting is None:
+                break
+            idx += 1
 
-            # Check if embedding already cached
-            if state.embedding_cache.has(painting.content_hash):
-                print(f"    Embedding already cached, skipping computation")
-            else:
-                # Compute embedding for painting description
-                # Get description from layout cache
-                layout = state.layout_cache.get(painting.content_hash)
-                if layout is None:
-                    print(f"    Warning: No layout for painting, skipping embedding")
-                    continue
+            try:
+                print(f"  [{idx}] {painting.title} — {painting.artist}")
 
-                description = layout.painting_description
-                if not description:
-                    print(
-                        f"    Warning: Empty description for painting, skipping embedding"
-                    )
-                    continue
+                # Layout analysis (cached)
+                if state.layout_cache.has(painting.content_hash):
+                    print(f"      Layout cached, skipping")
+                else:
+                    layout = await analyze_painting(painting.image_path, config.ai)
+                    state.layout_cache.put(painting.content_hash, layout)
+                    print(f"      Layout: {layout.template_hint}")
 
-                # Compute embedding
-                embedding_result = await compute_embedding(description, config.ai)
-                state.embedding_cache.put(
-                    painting.content_hash, embedding_result.vector
+                # Embedding (cached)
+                if state.embedding_cache.has(painting.content_hash):
+                    print(f"      Embedding cached, skipping")
+                else:
+                    layout = state.layout_cache.get(painting.content_hash)
+                    if layout and layout.painting_description:
+                        embedding_result = await compute_embedding(
+                            layout.painting_description, config.ai
+                        )
+                        state.embedding_cache.put(
+                            painting.content_hash, embedding_result.vector
+                        )
+                        print(
+                            f"      Embedded ({len(embedding_result.vector)}d)"
+                        )
+
+                success_count += 1
+
+            except Exception as e:
+                print(f"      Error: {e}")
+                logger.warning(
+                    "Failed to process painting %s: %s",
+                    painting.content_hash,
+                    e,
                 )
-                print(
-                    f"    Computed embedding ({len(embedding_result.vector)} dimensions)"
-                )
 
-            success_count += 1
+    # Run producer and consumer concurrently
+    await asyncio.gather(producer(), consumer())
 
-        except Exception as e:
-            print(f"    Error: {e}")
-            logger.warning(f"Failed to analyze painting {painting.content_hash}: {e}")
-            continue
-
-    # Save state after all processing
     state.save_all()
     print(f"\nInitialization complete!")
-    print(f"  - Paintings fetched: {len(paintings)}")
+    print(f"  - Paintings downloaded: {download_count}")
     print(f"  - Successfully processed: {success_count}")
     print(f"  - State saved to: {state_dir}")
 
