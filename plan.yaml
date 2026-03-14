@@ -3710,3 +3710,50 @@ phases:
     - src/sfumato/config.py
     - pyproject.toml
     agent: python-executor
+  - id: sdk.llm-sdk-backend
+    name: LLM SDK backend implementation
+    status: pending
+    description: "Add SDK backend to llm.py using litellm library. Existing CLI code\
+      \ stays untouched.\n\nFile: src/sfumato/llm.py\n\n1. Add routing logic to invoke_text(),\
+      \ invoke_vision(), compute_embedding():\n   - Check ai_config.backend: if \"\
+      cli\" use existing _run_subprocess_with_retry path; if \"sdk\" use new SDK functions\n\
+      \   - Keep all existing CLI code paths unchanged\n\n2. New internal function\
+      \ _call_sdk(prompt, ai_config, system_prompt, max_tokens, temperature, image_path=None)\
+      \ -> LlmResponse:\n   - Import litellm at module level: `import litellm`\n \
+      \  - Build model string for litellm based on ai_config.sdk_provider:\n     -\
+      \ \"openrouter\": f\"openrouter/{ai_config.model}\"\n     - \"google\": f\"\
+      gemini/{ai_config.model}\"\n     - \"openai\": ai_config.model\n   - Call litellm.completion()\
+      \ with messages=[{\"role\": \"user\", \"content\": prompt}]\n   - If system_prompt:\
+      \ prepend {\"role\": \"system\", \"content\": system_prompt}\n   - If image_path:\
+      \ use litellm vision format with base64 encoded image\n   - Apply retry with\
+      \ MAX_RETRY_ATTEMPTS using litellm's built-in retry or manual loop\n   - Return\
+      \ LlmResponse(text=response.choices[0].message.content, model=ai_config.model,\
+      \ cli=\"sdk\", usage=dict from response.usage)\n\n3. New internal function _embed_sdk(text,\
+      \ ai_config) -> list[float]:\n   - Call litellm.embedding(model=..., input=[text])\n\
+      \   - Return response.data[0].embedding\n\n4. Update BACKEND_DISPATCH_MAP to\
+      \ document sdk option\n5. Add \"sdk\" to VALID_BACKENDS or adjust validation\
+      \ to also accept backend=\"sdk\"\n\nPattern: Follow the existing invoke_text/invoke_vision\
+      \ structure. The routing is a simple if/else at the top of each public function.\n\
+      \nTimeout: Use litellm's timeout parameter matching DEFAULT_TEXT_TIMEOUT_SECONDS\
+      \ / DEFAULT_VISION_TIMEOUT_SECONDS.\nError handling: Catch litellm exceptions,\
+      \ wrap in LlmError/EmbeddingError for consistency."
+    verification: '- invoke_text with backend="sdk" calls litellm.completion() and
+      returns LlmResponse
+
+      - invoke_vision with backend="sdk" handles image encoding and passes to litellm
+
+      - compute_embedding with backend="sdk" calls litellm.embedding()
+
+      - invoke_text with backend="cli" still uses subprocess path (unchanged)
+
+      - Error cases: invalid sdk_provider raises LlmError
+
+      - Timeout and retry semantics preserved for SDK path
+
+      - All existing tests pass: pytest tests/ -v'
+    refs:
+    - src/sfumato/llm.py
+    - src/sfumato/config.py
+    depends_on:
+    - sdk.config-and-deps
+    agent: python-executor
