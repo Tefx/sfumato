@@ -233,6 +233,16 @@ Painting descriptions and embeddings are cached forever (one LLM call per painti
 - Samsung The Frame TV (2020+ models, on same network)
 - One of: `gemini` CLI, `codex` CLI, or `claude` CLI installed and authenticated
 
+## Container Deployment Contract
+
+This repo now includes contract-only container artifacts:
+
+- `DEPLOYMENT_CONTRACT.md` defines the required Dockerfile stages, compose service shape,
+  persistence semantics, and graceful-stop behavior.
+- `Dockerfile` is a stage-name stub only; it is not a production image yet.
+- `docker-compose.yml` is a contract stub only; it captures required mounts, healthcheck shape,
+  and shutdown semantics without claiming production readiness.
+
 ## License
 
 MIT

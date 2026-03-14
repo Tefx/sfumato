@@ -1,0 +1,37 @@
+name: sfumato-contract
+
+services:
+  sfumato:
+    profiles:
+      - contract-only
+    build:
+      context: .
+      target: runtime
+    image: sfumato:contract-stub
+    environment:
+      SFUMATO_CONFIG: /data/config.toml
+      SFUMATO_DATA_DIR: /data
+      RIJKSMUSEUM_API_KEY: ${RIJKSMUSEUM_API_KEY:-}
+    network_mode: host
+    init: true
+    stop_signal: SIGTERM
+    stop_grace_period: 90s
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /data/state/last_action.json"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - type: bind
+        source: ./data/config.toml
+        target: /data/config.toml
+      - type: bind
+        source: ./data/paintings
+        target: /data/paintings
+      - type: bind
+        source: ./data/state
+        target: /data/state
+      - type: bind
+        source: ./data/output
+        target: /data/output

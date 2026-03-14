@@ -1865,37 +1865,17 @@ each story is rendered as:
 
 ## 9. Deployment Architecture
 
-### 9.1 Dockerfile Design
+### 9.1 Dockerfile Contract
 
-```dockerfile
-FROM python:3.12-slim
+The repository-level `Dockerfile` is a contract stub in this phase. The production image must
+conform to these stage boundaries:
 
-# System dependencies for Playwright and PIL
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libnss3 libatk-bridge2.0-0 libdrm2 libxcomposite1 libxdamage1 \
-    libxrandr2 libgbm1 libasound2 libpango-1.0-0 libcairo2 \
-    fonts-noto-cjk fonts-noto-color-emoji \
-    && rm -rf /var/lib/apt/lists/*
+- `base-runtime`: Python runtime plus Playwright-compatible shared libraries and multilingual fonts
+- `builder`: application artifact assembly from `pyproject.toml`, `src/`, and `templates/`
+- `runtime`: final daemon image exposing `sfumato watch` with `/data`-based config and state
 
-# Install sfumato
-WORKDIR /app
-COPY pyproject.toml .
-COPY src/ src/
-COPY templates/ templates/
-RUN pip install --no-cache-dir . && \
-    playwright install chromium --with-deps
-
-# Default data directory
-VOLUME /data
-
-# Environment variables
-ENV SFUMATO_CONFIG=/data/config.toml
-ENV SFUMATO_DATA_DIR=/data
-ENV RIJKSMUSEUM_API_KEY=""
-
-# Run the daemon
-CMD ["sfumato", "watch", "--config", "/data/config.toml"]
-```
+The contract artifact lives in `Dockerfile`; rationale and failure conditions are captured in
+`DEPLOYMENT_CONTRACT.md`.
 
 ### 9.2 Environment Variables
 
@@ -1922,20 +1902,17 @@ CMD ["sfumato", "watch", "--config", "/data/config.toml"]
   output/                       # Rendered PNGs (transient, can be cleaned)
 ```
 
-### 9.4 Docker Compose Example
+### 9.4 Docker Compose Contract
 
-```yaml
-services:
-  sfumato:
-    build: .
-    container_name: sfumato
-    restart: unless-stopped
-    volumes:
-      - ./data:/data
-    environment:
-      - RIJKSMUSEUM_API_KEY=${RIJKSMUSEUM_API_KEY}
-    network_mode: host    # Required for mDNS/TV discovery on local network
-```
+The repository-level `docker-compose.yml` is a contract stub in this phase. The production
+compose definition must provide:
+
+- a single long-running `sfumato` service targeting the Docker `runtime` stage
+- `/data/config.toml`, `/data/paintings`, `/data/state`, and optional `/data/output` mounts
+- `SIGTERM`-based shutdown with a non-zero grace period
+- a healthcheck tied to daemon freshness rather than raw PID existence
+- runtime injection of `RIJKSMUSEUM_API_KEY`
+- host-network deployment by default on Linux hosts
 
 Note: `network_mode: host` is required because Samsung TV communication uses WebSocket
 on the local network. Bridge networking would require the TV IP to be routable from the
@@ -1947,8 +1924,9 @@ container's network namespace.
 - Graceful shutdown: Handles `SIGTERM` (from `docker stop`) by finishing current action,
   saving state, then exiting
 - No process supervisor needed (no multiple processes)
-- Health check: Could expose a simple file-based health indicator (`/data/state/last_action.json`
-  with timestamp; stale = unhealthy)
+- Health check contract: Expose a file-based freshness indicator at
+  `/data/state/last_action.json` (or an explicitly superseding path) and treat stale timestamps as
+  unhealthy
 
 ---
 
