@@ -2263,7 +2263,7 @@ phases:
     claimed_at: '2026-03-14T16:29:27.922483+00:00'
   - id: intelligence.state.contract
     name: Define state module contract
-    status: pending
+    status: claimed
     description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
       \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nDefine the acceptance\
       \ contract for `src/sfumato/state.py` without shipping persistence logic.\n\n\
@@ -2287,6 +2287,8 @@ phases:
       - Highest-risk failure semantics are explicit for path resolution, legacy fallback,
       clear/null overwrite, stale-vs-new precedence, and partial-write/CAS handling'
     agent: python-senior
+    claimed_by: python-senior
+    claimed_at: '2026-03-14T16:30:13.425729+00:00'
   - id: intelligence.state.tests
     name: Author state module tests
     status: pending
