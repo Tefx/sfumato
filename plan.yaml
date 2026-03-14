@@ -841,6 +841,39 @@ phases:
     depends_on:
     - core.config
     agent: python-executor
+  - id: core.tv.tests
+    name: Author TV control tests
+    status: pending
+    description: "step_type: test\nspec_refs:\n  - ARCHITECTURE.md#2.8\n  - PROTOTYPING.md#1\n\
+      touch_paths:\n  - tests/test_tv.py\n  - src/sfumato/tv.py\nharness_refs:\n \
+      \ - pytest\n  - samsungtvws art-mode seam doubles\nagent: python-executor\n\n\
+      Add contract-driven tests for `src/sfumato/tv.py` before product implementation\
+      \ is dispatched.\n\nRequired coverage:\n- Success path: reachable TV status\
+      \ produces the contracted `TvStatus` fields; upload returns the assigned content\
+      \ id; cleanup deletes only uploads outside the retained set.\n- Non-throwing\
+      \ status path: `check_status()` absorbs connection refusal, art-mode probing\
+      \ failures, and timeout exhaustion into `TvStatus(reachable=False, error=...)`.\n\
+      - Timeout boundary path: the status probe enforces the 10-second timeout boundary\
+      \ instead of hanging indefinitely.\n- Error-mapping path: connection/setup errors\
+      \ surface as `TvConnectionError`; upload failures after a successful connection\
+      \ surface as `TvUploadError`.\n- Keep-policy path: `clean_old_uploads(tv_config,\
+      \ keep)` retains the newest `keep` uploads by the contracted ordering and logs/skips\
+      \ individual delete failures without aborting the sweep.\n- Convenience path:\
+      \ `is_available_for_push()` returns `False` for any contracted status failure\
+      \ and `True` only when the TV is reachable, supports Art Mode, and Art Mode\
+      \ is active.\n\nKeep tests focused on contract behavior and failure boundaries;\
+      \ do not implement production samsungtvws logic in this step."
+    verification: '- `tests/test_tv.py` names the happy path, timeout boundary, non-throwing
+      status behavior, connection/upload error mapping, and keep-policy cleanup regressions
+      explicitly
+
+      - Verification includes both the success path and the highest-risk failure path
+      (`check_status()` timeout/non-throwing boundary)
+
+      - Test step adds tests/helpers only'
+    depends_on:
+    - core.tv.contract
+    agent: python-executor
 - id: intelligence
   name: Intelligence
   status: locked
