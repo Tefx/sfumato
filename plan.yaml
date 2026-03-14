@@ -2749,7 +2749,7 @@ phases:
       with scheduler contract/tests.'
   - id: production.watch
     name: Implement orchestrator.watch daemon loop
-    status: claimed
+    status: done
     description: "step_type: implementation\ntags:\n  - integration\nspec_refs:\n\
       \  - ARCHITECTURE.md#2.12\n  - ARCHITECTURE.md#2.13\ntouch_paths:\n  - src/sfumato/orchestrator.py\n\
       \  - src/sfumato/scheduler.py\n  - tests/test_orchestrator.py\n  - tests/test_cli.py\n\
@@ -2799,6 +2799,40 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T18:01:22.507013+00:00'
+    done_at: '2026-03-14T18:06:25.093729+00:00'
+    evidence: 'Artifact:
+
+      - PR: commit 3e8ae97 ([vectl] step-production.watch completed), source worktree
+      commit 495e9de
+
+
+      Verification:
+
+      - Run: `uv run pytest tests/test_orchestrator.py` -> 137 passed in 3.66s
+
+      - Run: `uv run pytest tests/test_scheduler.py` -> 84 passed
+
+      - Run: `uv run invar guard --changed` -> passed
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#2.12
+
+      - ARCHITECTURE.md#2.11
+
+
+      Files changed:
+
+      - src/sfumato/orchestrator.py
+
+      - tests/test_orchestrator.py
+
+
+      Gaps/Notes:
+
+      - watch loop and run_backfill implemented with graceful shutdown/state-save
+      semantics and bounded backfill behavior as contracted.'
   - id: production.cli-full
     name: 'Complete CLI: watch + tv subcommands'
     status: pending
