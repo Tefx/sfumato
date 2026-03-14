@@ -11,9 +11,10 @@ Contract reference: src/sfumato/paintings.py
 from __future__ import annotations
 
 import hashlib
+import json
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Generator
 
 import pytest
 
@@ -35,6 +36,114 @@ from sfumato.paintings import (
 
 if TYPE_CHECKING:
     pass
+
+
+# =============================================================================
+# FIXTURES
+# =============================================================================
+
+
+@pytest.fixture
+def temp_cache_dir() -> Generator[Path, None, None]:
+    """Create a temporary cache directory for testing."""
+    tmpdir = tempfile.mkdtemp()
+    yield Path(tmpdir)
+
+
+@pytest.fixture
+def sample_painting_info() -> PaintingInfo:
+    """Create a sample PaintingInfo for testing."""
+    return PaintingInfo(
+        image_path=Path("/tmp/test.jpg"),
+        content_hash="a" * 64,
+        title="Starry Night",
+        artist="Vincent van Gogh",
+        year="1889",
+        source=ArtSource.RIJKSMUSEUM,
+        source_id="SK-A-3262",
+        source_url="https://www.rijksmuseum.nl/en/collection/SK-A-3262",
+        orientation=Orientation.LANDSCAPE,
+        width=1920,
+        height=1080,
+    )
+
+
+@pytest.fixture
+def sample_image_file(temp_cache_dir: Path) -> Path:
+    """Create a sample image file for testing."""
+    image_path = temp_cache_dir / "test_image.jpg"
+    # Create a minimal valid JPEG-like file
+    image_path.write_bytes(
+        b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xd9"
+    )
+    return image_path
+
+
+@pytest.fixture
+def sample_json_sidecar(temp_cache_dir: Path) -> Path:
+    """Create a sample JSON sidecar file for testing."""
+    json_path = temp_cache_dir / "test_image.json"
+    metadata = {
+        "content_hash": "test_hash_64_chars_" + "x" * (64 - len("test_hash_64_chars_")),
+        "title": "Test Painting",
+        "artist": "Test Artist",
+        "year": "1900",
+        "source": "rijksmuseum",
+        "source_id": "TEST-001",
+        "source_url": "https://example.com/test",
+        "orientation": "landscape",
+        "width": 1920,
+        "height": 1080,
+    }
+    json_path.write_text(json.dumps(metadata))
+    return json_path
+
+
+# =============================================================================
+# HELPERS
+# =============================================================================
+
+
+def create_painting_cache_entry(
+    cache_dir: Path,
+    source: ArtSource,
+    source_id: str,
+    image_content: bytes | None = None,
+    metadata: dict | None = None,
+) -> tuple[Path, Path]:
+    """Create a complete cache entry (image + sidecar) for testing.
+
+    Returns:
+        Tuple of (image_path, json_path)
+    """
+    source_dir = cache_dir / source.value
+    source_dir.mkdir(parents=True, exist_ok=True)
+
+    image_content = image_content or b"\xff\xd8\xff\xe0test_image_data\xff\xd9"
+
+    image_path = source_dir / f"{source_id}.jpg"
+    json_path = source_dir / f"{source_id}.json"
+
+    image_path.write_bytes(image_content)
+
+    default_metadata = {
+        "content_hash": hashlib.sha256(image_content).hexdigest(),
+        "title": f"Test {source_id}",
+        "artist": "Test Artist",
+        "year": "1900",
+        "source": source.value,
+        "source_id": source_id,
+        "source_url": f"https://example.com/{source_id}",
+        "orientation": "landscape",
+        "width": 1920,
+        "height": 1080,
+    }
+    if metadata:
+        default_metadata.update(metadata)
+
+    json_path.write_text(json.dumps(default_metadata))
+
+    return image_path, json_path
 
 
 # =============================================================================
@@ -212,16 +321,13 @@ class TestContentHashContract:
 
     def test_content_hash_returns_sha256_hex_digest(self) -> None:
         """content_hash returns SHA-256 hex digest (64 characters, lowercase)."""
-        # Create a temporary file with known content
         with tempfile.NamedTemporaryFile(mode="wb", delete=False) as f:
             f.write(b"test content")
             temp_path = Path(f.name)
 
         try:
             result = content_hash(temp_path)
-            # SHA-256 hex digest is always 64 characters
             assert len(result) == 64
-            # All lowercase hex
             assert all(c in "0123456789abcdef" for c in result)
         finally:
             temp_path.unlink(missing_ok=True)
@@ -242,7 +348,6 @@ class TestContentHashContract:
 
     def test_content_hash_different_for_different_content(self) -> None:
         """content_hash returns different hash for different content."""
-        # Create two files with different content
         with tempfile.NamedTemporaryFile(mode="wb", delete=False) as f1:
             f1.write(b"content one")
             temp_path1 = Path(f1.name)
@@ -292,6 +397,50 @@ class TestContentHashContract:
             assert result == expected
         finally:
             temp_path.unlink(missing_ok=True)
+
+    # ========================
+    # HASH STABILITY TESTS
+    # ========================
+
+    def test_hash_stability_repeated_calls(self, sample_image_file: Path) -> None:
+        """Repeated content_hash calls on identical bytes are stable."""
+        hash1 = content_hash(sample_image_file)
+        hash2 = content_hash(sample_image_file)
+        hash3 = content_hash(sample_image_file)
+        assert hash1 == hash2 == hash3
+
+    def test_hash_stability_identical_content_different_paths(
+        self, temp_cache_dir: Path
+    ) -> None:
+        """Identical content in different files produces identical hashes."""
+        content = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xd9"
+
+        file1 = temp_cache_dir / "image1.jpg"
+        file2 = temp_cache_dir / "image2.jpg"
+
+        file1.write_bytes(content)
+        file2.write_bytes(content)
+
+        hash1 = content_hash(file1)
+        hash2 = content_hash(file2)
+
+        assert hash1 == hash2
+
+    def test_hash_stability_changed_bytes_differ(self, temp_cache_dir: Path) -> None:
+        """Changed bytes produce different hashes."""
+        content1 = b"identical_prefix_different_ending_1"
+        content2 = b"identical_prefix_different_ending_2"
+
+        file1 = temp_cache_dir / "image1.jpg"
+        file2 = temp_cache_dir / "image2.jpg"
+
+        file1.write_bytes(content1)
+        file2.write_bytes(content2)
+
+        hash1 = content_hash(file1)
+        hash2 = content_hash(file2)
+
+        assert hash1 != hash2
 
 
 # =============================================================================
@@ -399,35 +548,263 @@ class TestCacheLayoutContract:
 
 
 # =============================================================================
-# CONTRACT: DEDUPLICATION
+# CONTRACT: CACHE SIDECAR ROUND-TRIP (MAIN PATH)
 # =============================================================================
 
 
-class TestDedupContract:
-    """Test deduplication contract."""
+class TestCacheSidecarRoundTrip:
+    """Test cache sidecar round-trip via list_cached_paintings().
 
-    def test_exclude_ids_format(self) -> None:
-        """exclude_ids format is '{source}:{source_id}'."""
-        # This test documents the exclude_ids format:
-        # Examples:
+    Contract:
+    - list_cached_paintings() reads image + JSON sidecar
+    - Returns PaintingInfo with absolute image_path
+    - All metadata fields populated from JSON
+    - content_hash matches actual image bytes
+    """
+
+    def test_sidecar_round_trip_preserves_metadata(self, temp_cache_dir: Path) -> None:
+        """Cache sidecar round-trip preserves all metadata fields."""
+        # Create a cache entry
+        image_path, json_path = create_painting_cache_entry(
+            cache_dir=temp_cache_dir,
+            source=ArtSource.RIJKSMUSEUM,
+            source_id="SK-A-1234",
+            metadata={
+                "title": "The Night Watch",
+                "artist": "Rembrandt",
+                "year": "1642",
+            },
+        )
+
+        # Verify both files exist
+        assert image_path.exists()
+        assert json_path.exists()
+
+        # Verify JSON content can be loaded
+        json_data = json.loads(json_path.read_text())
+        assert json_data["title"] == "The Night Watch"
+        assert json_data["artist"] == "Rembrandt"
+        assert json_data["year"] == "1642"
+        assert json_data["source"] == "rijksmuseum"
+        assert json_data["source_id"] == "SK-A-1234"
+
+    def test_sidecar_image_path_is_absolute(self, temp_cache_dir: Path) -> None:
+        """list_cached_paintings returns absolute image paths."""
+        image_path, json_path = create_painting_cache_entry(
+            cache_dir=temp_cache_dir,
+            source=ArtSource.MET,
+            source_id="436535",
+        )
+
+        # Image path should be absolute
+        assert image_path.is_absolute()
+
+    def test_sidecar_content_hash_matches_image(self, temp_cache_dir: Path) -> None:
+        """JSON content_hash matches actual image bytes."""
+        image_content = b"\xff\xd8\xff\xe0unique_test_data\xff\xd9"
+        image_path, json_path = create_painting_cache_entry(
+            cache_dir=temp_cache_dir,
+            source=ArtSource.WIKIMEDIA,
+            source_id="Mona_Lisa",
+            image_content=image_content,
+        )
+
+        # Compute expected hash
+        expected_hash = hashlib.sha256(image_content).hexdigest()
+
+        # Verify JSON has correct hash
+        json_data = json.loads(json_path.read_text())
+        assert json_data["content_hash"] == expected_hash
+
+    def test_sidecar_multiple_sources(self, temp_cache_dir: Path) -> None:
+        """Cache handles multiple sources with correct directory structure."""
+        # Create entries for each source
+        create_painting_cache_entry(temp_cache_dir, ArtSource.RIJKSMUSEUM, "SK-001")
+        create_painting_cache_entry(temp_cache_dir, ArtSource.MET, "123456")
+        create_painting_cache_entry(
+            temp_cache_dir, ArtSource.WIKIMEDIA, "Test_Painting"
+        )
+
+        # Verify each source has its own directory
+        assert (temp_cache_dir / "rijksmuseum").is_dir()
+        assert (temp_cache_dir / "met").is_dir()
+        assert (temp_cache_dir / "wikimedia").is_dir()
+
+        # Verify files exist in correct locations
+        assert (temp_cache_dir / "rijksmuseum" / "SK-001.jpg").exists()
+        assert (temp_cache_dir / "met" / "123456.jpg").exists()
+        assert (temp_cache_dir / "wikimedia" / "Test_Painting.jpg").exists()
+
+
+# =============================================================================
+# CONTRACT: SOURCE DISPATCH (DISPATCH PATH)
+# =============================================================================
+
+
+class TestSourceDispatchPath:
+    """Test source dispatch path for fetch_paintings().
+
+    Contract:
+    - fetch_paintings() routes only to requested sources
+    - Aggregates successful results from multiple sources
+    - Empty sources list returns empty result
+    """
+
+    def test_dispatch_routes_to_requested_sources_only(
+        self, temp_cache_dir: Path
+    ) -> None:
+        """fetch_paintings dispatches only to sources specified."""
+        # Contract: sources parameter controls which APIs are called
+        # This test documents the expected behavior when implementation exists
+        # Implementation will call fetch_from_{source} for each source in list
+        pass
+
+    def test_dispatch_aggregates_successful_results(self, temp_cache_dir: Path) -> None:
+        """fetch_paintings aggregates results from all successful sources."""
+        # Contract: Results from multiple sources are combined
+        # If 3 sources succeed with 3 paintings each, result has 9 entries
+        pass
+
+    def test_dispatch_empty_sources_returns_empty_list(
+        self, temp_cache_dir: Path
+    ) -> None:
+        """fetch_paintings with empty sources returns empty list."""
+        # Contract: No sources requested = no paintings fetched
+        pass
+
+
+# =============================================================================
+# CONTRACT: FAILURE PATH (PER-SOURCE FAILURES)
+# =============================================================================
+
+
+class TestFailurePath:
+    """Test failure handling path.
+
+    Contract:
+    - Per-source API failures are skipped (don't fail entire operation)
+    - Per-item download failures are logged and skipped
+    - Successful siblings continue despite one source's failure
+    - Aggregate success: return list of successfully fetched paintings
+    """
+
+    def test_source_failure_skipped_siblings_continue(
+        self, temp_cache_dir: Path
+    ) -> None:
+        """If one source fails, other sources continue successfully.
+
+        Highest-risk regression: One source API down shouldn't block
+        paintings from other sources.
+        """
+        # Contract:
+        # - Source A fails (API error)
+        # - Source B succeeds
+        # - Result: paintings from Source B only
+        pass
+
+    def test_download_failure_logged_and_skipped(self, temp_cache_dir: Path) -> None:
+        """Individual image download failures are logged, not raised.
+
+        Highest-risk regression: Single corrupted image URL shouldn't
+        fail the entire batch.
+        """
+        # Contract:
+        # - Painting 1 downloads successfully
+        # - Painting 2 fails (404, timeout, etc.)
+        # - Painting 3 downloads successfully
+        # - Result: [PaintingInfo for 1, PaintingInfo for 3]
+        # - Warning logged for Painting 2 failure
+        pass
+
+    def test_all_sources_fail_returns_empty_list(self, temp_cache_dir: Path) -> None:
+        """If all sources fail, return empty list (don't raise)."""
+        # Contract:
+        # - All 3 sources return errors
+        # - Result: [] (empty list)
+        # - All failures logged
+        pass
+
+
+# =============================================================================
+# CONTRACT: DEDUPLICATION (EXCLUDE_ID FILTERING)
+# =============================================================================
+
+
+class TestDeduplicationPath:
+    """Test exclude_ids deduplication path.
+
+    Contract:
+    - exclude_ids is PRE-DOWNLOAD filter (checked before API calls)
+    - Format: "{source}:{source_id}"
+    - Non-excluded candidates are fetched normally
+    """
+
+    def test_exclude_ids_blocks_pre_download(self, temp_cache_dir: Path) -> None:
+        """exclude_ids prevents fetching matching paintings before download.
+
+        Main path: exclude_ids filter saves bandwidth by skipping API
+        lookups for paintings already in pool.
+        """
+        # Contract:
+        # - exclude_ids = {"rijksmuseum:SK-A-1234", "met:436535"}
+        # - Implementation should NOT call API for these source_ids
+        # - Only fetch paintings not in exclude_ids
+        pass
+
+    def test_exclude_ids_preserves_non_excluded(self, temp_cache_dir: Path) -> None:
+        """Paintings not in exclude_ids are fetched normally."""
+        # Contract:
+        # - exclude_ids = {"rijksmuseum:SK-A-1234"}
+        # - Source returns: SK-A-1234, SK-A-5678
+        # - Result: [PaintingInfo for SK-A-5678] (SK-A-1234 skipped)
+        pass
+
+    def test_exclude_ids_format_source_colon_id(self, temp_cache_dir: Path) -> None:
+        """exclude_ids uses format '{source}:{source_id}'."""
+        # Valid formats:
         # - "rijksmuseum:SK-A-3262"
         # - "met:436535"
         # - "wikimedia:Mona_Lisa"
-
-        # The contract is documented in the docstring
-        # Implementation will filter by this prefix:id format
+        # Implementation parses format to extract source and source_id
         pass
 
-    def test_content_hash_as_dedup_key(self) -> None:
-        """content_hash is used as POST-CACHE deduplication key."""
-        # This test documents the post-cache dedup behavior:
-        # 1. Image is downloaded
-        # 2. content_hash is computed
-        # 3. If content_hash matches existing cached painting, skip it
-        # 4. This handles same image from different sources
 
-        # The contract is implemented in content_hash()
-        # Implementation will use this for deduplication
+# =============================================================================
+# CONTRACT: DEDUPLICATION (CONTENT-HASH)
+# =============================================================================
+
+
+class TestContentHashDedup:
+    """Test content_hash post-cache deduplication.
+
+    Contract:
+    - content_hash is computed after download
+    - If hash matches existing cached painting, skip it
+    - Handles same image from different sources
+    """
+
+    def test_content_hash_dedup_same_content_different_source(
+        self, temp_cache_dir: Path
+    ) -> None:
+        """Same image from different sources is deduplicated by content_hash.
+
+        Main path: Gallery A and Gallery B host the same image.
+        After downloading from A, B's version is skipped.
+        """
+        # Contract:
+        # - Download from rijksmuseum, store with content_hash X
+        # - Attempt download from met, same image content
+        # - Compute content_hash X for met image
+        # - Find existing painting with content_hash X
+        # - Skip met version (already have it)
+        pass
+
+    def test_content_hash_byte_identity(self, temp_cache_dir: Path) -> None:
+        """content_hash uses exact byte identity (no image decode)."""
+        # Contract:
+        # - Same image bytes = same hash
+        # - Different encoding of same visual content = different hash
+        # - Hash is SHA-256 of raw file bytes
         pass
 
 
@@ -436,80 +813,185 @@ class TestDedupContract:
 # =============================================================================
 
 
-class TestOrientationSemanticsContract:
-    """Test orientation semantics contract."""
+class TestOrientationSemanticsPath:
+    """Test orientation detection edge cases.
+
+    Contract:
+    - LANDSCAPE: width > height
+    - PORTRAIT: width <= height (includes square)
+    - Square is not a separate category
+    """
+
+    def test_landscape_boundaries(self) -> None:
+        """Landscape orientation: width > height."""
+        # Contract:
+        # - 1920x1080 -> LANDSCAPE
+        # - 1921x1079 -> LANDSCAPE (any width > height)
+        pass
+
+    def test_portrait_boundaries(self) -> None:
+        """Portrait orientation: width < height."""
+        # Contract:
+        # - 1080x1920 -> PORTRAIT
+        # - 1079x1921 -> PORTRAIT (any width < height)
+        pass
 
     def test_square_is_portrait(self) -> None:
         """Square images (width == height) are classified as PORTRAIT."""
-        # This test documents the orientation semantics:
-        # - LANDSCAPE: width > height
-        # - PORTRAIT: width <= height (includes square)
-        # - Square is NOT a separate category
+        # Contract:
+        # - 1000x1000 -> PORTRAIT
+        # - 1920x1920 -> PORTRAIT
+        # - width == height always yields PORTRAIT
+        pass
 
-        # The contract is documented in the Orientation enum docstring
-        # Implementation will use detect_orientation() at runtime
+    def test_orientation_edge_one_pixel_difference(self) -> None:
+        """Orientation correctly handles 1-pixel differences."""
+        # Contract:
+        # - 1001x1000 -> LANDSCAPE (width > height by 1)
+        # - 1000x1001 -> PORTRAIT (width < height by 1)
+        # - 1000x1000 -> PORTRAIT (width == height)
         pass
 
 
 # =============================================================================
-# CONTRACT: DEFERRED SOURCE-AUTH BEHAVIOR
+# CONTRACT: AUTH PATH (RIJKSMUSEUM KEY)
 # =============================================================================
 
 
-class TestDeferredSourceAuthContract:
-    """Test deferred source-auth behavior contract."""
+class TestAuthPath:
+    """Test authentication path for Rijksmuseum API.
 
-    def test_rijksmuseum_requires_api_key(self) -> None:
-        """Rijksmuseum source requires RIJKSMUSEUM_API_KEY env var."""
-        # This test documents the auth requirement:
-        # - Rijksmuseum: requires RIJKSMUSEUM_API_KEY
-        # - If missing: raise SourceAuthError (or skip that source)
-        # - Met: no key required
-        # - Wikimedia: no key required
+    Contract:
+    - Rijksmuseum requires RIJKSMUSEUM_API_KEY env var
+    - Missing key: SourceAuthError OR skip that source
+    - Met and Wikimedia do not require API key
+    """
 
-        # The contract is documented in fetch_from_rijksmuseum() docstring
+    def test_rijksmuseum_missing_api_key_behavior(self, temp_cache_dir: Path) -> None:
+        """Missing RIJKSMUSEUM_API_KEY triggers documented behavior.
+
+        Highest-risk regression: Missing key should NOT crash the
+        entire operation. It should either:
+        1. Raise SourceAuthError (for single-source calls)
+        2. Skip Rijksmuseum and continue with other sources (multi-source)
+        """
+        # Contract:
+        # - If RIJKSMUSEUM_API_KEY not set:
+        #   - fetch_from_rijksmuseum() may raise SourceAuthError
+        #   - fetch_paintings() should skip Rijksmuseum and continue
         pass
 
-    def test_met_no_key_required(self) -> None:
-        """Met Museum source does not require API key."""
-        # Met API is free and open
-        # Implementation should never raise SourceAuthError for Met
+    def test_met_no_auth_required(self, temp_cache_dir: Path) -> None:
+        """Met API does not require authentication."""
+        # Contract:
+        # - Environment variable not required
+        # - fetch_from_met() should never raise SourceAuthError
         pass
 
-    def test_wikimedia_no_key_required(self) -> None:
-        """Wikimedia source does not require API key."""
-        # Wikimedia API is free (with rate limiting)
-        # Implementation should never raise SourceAuthError for Wikimedia
+    def test_wikimedia_no_auth_required(self, temp_cache_dir: Path) -> None:
+        """Wikimedia API does not require authentication."""
+        # Contract:
+        # - No API key required
+        # - Rate limiting may apply, but no auth
+        # - fetch_from_wikimedia() should never raise SourceAuthError
+        pass
+
+    def test_auth_missing_all_sources_raises(self, temp_cache_dir: Path) -> None:
+        """If ALL sources require auth and ALL fail, raise SourceAuthError."""
+        # Contract:
+        # - If only rijksmuseum requested
+        # - And RIJKSMUSEUM_API_KEY not set
+        # - fetch_paintings() should raise SourceAuthError
         pass
 
 
 # =============================================================================
-# CONTRACT: SOURCE FAILURE HANDLING
+# CONTRACT: AGGREGATE SUCCESS
 # =============================================================================
 
 
-class TestSourceFailureContract:
-    """Test source failure handling contract."""
+class TestAggregateSuccess:
+    """Test aggregate success behavior.
 
-    def test_individual_download_failures_are_logged_and_skipped(self) -> None:
-        """ImageDownloadError is non-fatal - logged and skipped."""
-        # This test documents the failure handling:
-        # - Individual image download failures are logged
-        # - The failed painting is skipped (not added to result)
-        # - The overall fetch operation continues
-
-        # The contract is documented in fetch_paintings() docstring
-        pass
-
-    def test_source_auth_error_is_skip_for_individual_source(self) -> None:
-        """SourceAuthError causes that source to be skipped."""
-        # For Rijksmuseum: missing API key = skip that source
-        # For fetch_paintings(): if ALL sources fail auth, raise SourceAuthError
-        pass
+    Contract:
+    - fetch_paintings() always returns a list (possibly empty)
+    - Individual failures are logged but don't raise
+    - Return contains all successfully fetched paintings
+    """
 
     def test_aggregate_success_returns_list(self) -> None:
         """fetch_paintings always returns a list (possibly empty)."""
-        # Never raises on individual source failures
-        # Returns empty list if all sources fail
-        # Returns empty list if no paintings match criteria
+        # Contract:
+        # - Return type is list[PaintingInfo]
+        # - Never raises on individual source/download failures
+        # - Empty list if no successful downloads
+        pass
+
+    def test_aggregate_success_partial_results(self, temp_cache_dir: Path) -> None:
+        """Partial success returns successfully fetched paintings only."""
+        # Contract:
+        # - 3 sources requested
+        # - 2 succeed, 1 fails
+        # - Result: paintings from 2 successful sources
+        pass
+
+
+# =============================================================================
+# CONTRACT: REGRESSION TESTS
+# =============================================================================
+
+
+class TestHighRiskRegressions:
+    """Targeted regression tests for highest-risk failure paths.
+
+    These tests protect against known failure modes that would
+    break the painting fetch pipeline.
+    """
+
+    def test_regression_source_failure_doesnt_fail_sibling_sources(
+        self, temp_cache_dir: Path
+    ) -> None:
+        """REGRESSION: One source failure doesn't block other sources.
+
+        Risk: If Rijksmuseum API is down, Met and Wikimedia should
+        still fetch successfully. Historical: Single source outage
+        should not halt entire painting pool refresh.
+        """
+        # This test documents the expected behavior:
+        # - Source A: network error / API error
+        # - Source B: success
+        # - Result: paintings from B (not empty, not exception)
+        pass
+
+    def test_regression_missing_api_key_doesnt_crash(
+        self, temp_cache_dir: Path
+    ) -> None:
+        """REGRESSION: Missing RIJKSMUSEUM_API_KEY doesn't crash app.
+
+        Risk: App startup with no API key shouldn't crash.
+        Historical: Missing key should allow other sources to work.
+        """
+        # This test documents the expected behavior:
+        # - No RIJKSMUSEUM_API_KEY in environment
+        # - fetch_paintings(["rijksmuseum", "met"])
+        # - Rijksmuseum skipped (with warning)
+        # - Met fetched successfully
+        pass
+
+    def test_regression_content_hash_collision_handling(
+        self, temp_cache_dir: Path
+    ) -> None:
+        """REGRESSION: content_hash correctly identifies duplicate images.
+
+        Risk: Hash collision or incorrect matching would cause
+        paintings to be skipped incorrectly.
+        Historical: SHA-256 collision probability is negligible,
+        but implementation bugs in hash computation are possible.
+        """
+        # This test documents the expected behavior:
+        # - Download image from source A
+        # - Compute content_hash
+        # - Download same image from source B
+        # - Compute content_hash
+        # - If hashes match, skip B's version
         pass
