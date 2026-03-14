@@ -11,13 +11,122 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, TypedDict, TypeAlias
 
 from sfumato.config import AiConfig
 from sfumato.llm import LlmError, LlmParseError, invoke_vision, parse_json_response
 
 if TYPE_CHECKING:
     pass
+
+
+OrientationName: TypeAlias = Literal["landscape", "portrait"]
+ZonePosition: TypeAlias = Literal[
+    "top-left",
+    "top-right",
+    "bottom-left",
+    "bottom-right",
+    "left-side",
+    "right-side",
+]
+TemplateHint: TypeAlias = Literal[
+    "painting_text", "magazine", "portrait", "art_overlay"
+]
+InfoSide: TypeAlias = Literal["left", "right", "both"]
+
+
+class TextZoneJson(TypedDict):
+    """LLM JSON contract for the primary news text zone."""
+
+    position: ZonePosition
+    reason: str
+
+
+class SubjectZoneJson(TypedDict):
+    """LLM JSON contract for the painting subject zone to preserve."""
+
+    position: ZonePosition
+    reason: str
+
+
+class WhisperZoneJson(TypedDict):
+    """LLM JSON contract for low-emphasis whisper text placement.
+
+    Contract:
+        - max_width_percent defines the allowed whisper text block width.
+        - readability_notes must explain why the zone remains legible at TV distance.
+    """
+
+    position: ZonePosition
+    reason: str
+    max_width_percent: int
+    readability_notes: str
+
+
+class LayoutColorsJson(TypedDict):
+    """LLM JSON contract for overlay color recommendations."""
+
+    text_primary: str
+    text_secondary: str
+    text_dim: str
+    text_shadow: str
+    scrim_color: str
+    panel_bg: str
+    border: str
+    accent: str
+
+
+class ScrimParamsJson(TypedDict):
+    """LLM JSON contract for the news scrim CSS payload."""
+
+    position_css: str
+    size_css: str
+    gradient_css: str
+
+
+class PortraitLayoutJson(TypedDict):
+    """LLM JSON contract for portrait-only layout parameters."""
+
+    painting_width_percent: int
+    left_panel_color: str
+    right_panel_color: str
+    info_side: InfoSide
+
+
+class LayoutAnalysisResponseJson(TypedDict):
+    """Structured LLM response contract for layout analysis.
+
+    Top-level output items requested from the LLM:
+        1. orientation
+        2. painting_title
+        3. painting_artist
+        4. text_zone
+        5. subject_zone
+        6. whisper_zone
+        7. art_facts
+        8. colors
+        9. scrim
+        10. recommended_stories
+
+    Additional required fields:
+        - painting_description
+        - template_hint
+        - portrait_layout
+    """
+
+    orientation: OrientationName
+    painting_title: str
+    painting_artist: str
+    text_zone: TextZoneJson
+    subject_zone: SubjectZoneJson
+    whisper_zone: WhisperZoneJson
+    art_facts: list[str]
+    colors: LayoutColorsJson
+    scrim: ScrimParamsJson
+    recommended_stories: int
+    painting_description: str
+    template_hint: TemplateHint
+    portrait_layout: PortraitLayoutJson | None
 
 
 # =============================================================================
@@ -67,8 +176,60 @@ class TextZone:
         - reason is free-form text for debugging/display
     """
 
-    position: str
+    position: ZonePosition
     reason: str
+
+
+@dataclass(frozen=True)
+class SubjectZone:
+    """Identifies the dominant subject area that overlays must avoid.
+
+    Attributes:
+        position: Coarse zone containing the primary painted subject mass.
+        reason: LLM explanation describing the protected visual subject.
+
+    Contract:
+        - position must be one of the six valid values
+        - Must remain mutually exclusive with ``text_zone`` and ``whisper_zone``
+    """
+
+    position: ZonePosition
+    reason: str
+
+
+@dataclass(frozen=True)
+class WhisperZone:
+    """Placement contract for secondary whisper text carrying art facts.
+
+    Attributes:
+        position: Coarse zone reserved for low-emphasis art facts.
+        reason: LLM explanation for choosing this zone.
+        max_width_percent: Maximum whisper block width as percent of screen width.
+        readability_notes: Why the zone remains readable at TV distance.
+
+    Contract:
+        - position must be one of the six valid values
+        - Must remain mutually exclusive with ``text_zone`` and ``subject_zone``
+        - max_width_percent must be between 12 and 24 inclusive
+        - readability_notes must justify TV-distance readability for whisper text
+    """
+
+    position: ZonePosition
+    reason: str
+    max_width_percent: int
+    readability_notes: str
+
+
+@dataclass(frozen=True)
+class ArtFact:
+    """Single art-fact line for whisper text rendering.
+
+    Contract:
+        - text is presentation-ready whisper copy, not markup
+        - Facts should stand alone when rendered independently
+    """
+
+    text: str
 
 
 @dataclass(frozen=True)
@@ -167,7 +328,7 @@ class PortraitLayout:
     painting_width_percent: int
     left_panel_color: str
     right_panel_color: str
-    info_side: str
+    info_side: InfoSide
 
 
 @dataclass(frozen=True)
@@ -189,6 +350,9 @@ class LayoutParams:
             and subject matter. Used for embedding-based matching with
             news tone descriptions.
         text_zone: Where to place text overlays.
+        subject_zone: Where the painting's primary subject mass sits.
+        whisper_zone: Reserved low-emphasis area for art facts.
+        art_facts: Short whisper-copy facts about the artwork.
         colors: Color scheme for text and overlays.
         scrim: CSS parameters for the text backdrop.
         recommended_stories: LLM's suggestion for story count.
@@ -203,20 +367,26 @@ class LayoutParams:
     Contract:
         - orientation matches the actual painting dimensions
         - painting_description is rich enough for embedding-based matching
+        - text_zone, subject_zone, and whisper_zone are mutually exclusive
+        - whisper_zone.max_width_percent is between 12 and 24 inclusive
+        - art_facts contains 1 to 3 items suitable for whisper presentation
         - recommended_stories is between 2 and 5
         - portrait_layout is set when orientation is "portrait"
         - All nested dataclass fields are populated (no None within sub-objects)
     """
 
-    orientation: str
+    orientation: OrientationName
     painting_title: str
     painting_artist: str
     painting_description: str
     text_zone: TextZone
+    subject_zone: SubjectZone
+    whisper_zone: WhisperZone
+    art_facts: list[ArtFact]
     colors: LayoutColors
     scrim: ScrimParams
     recommended_stories: int
-    template_hint: str
+    template_hint: TemplateHint
     portrait_layout: PortraitLayout | None
 
 
@@ -230,48 +400,60 @@ You are a visual layout designer for Samsung The Frame TV. Analyze this painting
 
 TV resolution: 3840x2160px (4K). The painting fills the entire screen.
 
-Analyze and provide:
+Analyze and provide exactly these 10 items:
 
 1. **Orientation**: Is this painting landscape or portrait composition?
 
 2. **Painting Identity**: Identify the title and artist if known, or "Unknown" otherwise.
 
-3. **Quiet Zone**: Find the area of lowest visual density where text can be placed. Consider:
+3. **News Zone**: Find the area of lowest visual density where news text can be placed. Consider:
    - Large uniform areas (skies, water, fog, dark corners)
    - Areas with simple color fields rather than complex details
    - Edges where the eye naturally rests less
    Choose from: "top-left", "top-right", "bottom-left", "bottom-right", "left-side", "right-side"
 
-4. **Color Harmony**: Design a text color scheme that:
+4. **Subject Zone**: Identify the coarse zone containing the painting's primary subject mass.
+   This protected zone must not overlap the news zone or whisper zone.
+
+5. **Whisper Zone**: Choose a secondary zone for art-fact whisper text.
+   - Must not overlap the news zone or the subject zone
+   - Must remain readable at TV distance
+   - Width must stay between 12% and 24% of screen width
+   - Keep it visually subordinate to the main news block
+
+6. **Art Facts**: Produce 1-3 whisper-ready art facts.
+   - Short, factual, and display-ready
+   - Each item should fit comfortably inside the whisper zone
+
+7. **Color Harmony**: Design a text color scheme that:
    - Harmonizes with the painting's palette
    - Has sufficient contrast for readability
    - text_shadow must use a SMALL blur radius (2-4px), not large halos.
-     Good: "0 1px 3px rgba(0,0,0,0.7), 0 0 8px rgba(0,0,0,0.3)"
-     Bad:  "0 2px 10px rgba(0,0,0,0.5)" (too blurry, creates visible boxes)
+      Good: "0 1px 3px rgba(0,0,0,0.7), 0 0 8px rgba(0,0,0,0.3)"
+      Bad:  "0 2px 10px rgba(0,0,0,0.5)" (too blurry, creates visible boxes)
    Text colors should feel like they belong to the painting, not fight with it.
 
-5. **Scrim Design**: Create a subtle gradient overlay for the text zone:
+8. **Scrim Design**: Create a subtle gradient overlay for the news zone:
    - Use radial-gradient or linear-gradient
    - Should be barely visible - just enough to improve text contrast
-   - Position and size to protect the text zone
+   - Position and size to protect the news zone only
 
-6. **Story Count**: How many news stories (2-5) fit comfortably? Consider:
+9. **Story Count**: How many news stories (2-5) fit comfortably? Consider:
    - Visual complexity of the painting
-   - Size of the available quiet zone
+   - Size of the available news zone
    - Balance between art and information
 
-7. **Painting Description**: Write a rich, evocative description of the painting's mood, atmosphere, colors, and subject matter. This will be used for semantic matching with news stories. Write in the language most appropriate to the painting's origin or style.
-
-8. **Template Hint**: Which template works best?
-   - "painting_text": Full painting with text in quiet zone (default for landscape)
-   - "portrait": Three-column layout with painting centered (for portrait)
-   - "magazine": 72/28 split with painting left, text panel right
-   - "art_overlay": Frosted glass cards over painting (rare - only for very busy compositions)
-
-9. **Portrait Layout** (if orientation is "portrait"):
-   - What percentage of screen should the painting occupy? (45-55)
-   - Panel colors derived from painting edge colors
-   - Which side for painting info? (left/right/both)
+10. **Composition Notes**: Provide the remaining structured guidance:
+   - painting_description: rich, evocative description of the painting's mood, atmosphere, colors, and subject matter for semantic matching. Write in the language most appropriate to the painting's origin or style.
+   - template_hint: Which template works best?
+    - "painting_text": Full painting with text in quiet zone (default for landscape)
+    - "portrait": Three-column layout with painting centered (for portrait)
+    - "magazine": 72/28 split with painting left, text panel right
+    - "art_overlay": Frosted glass cards over painting (rare - only for very busy compositions)
+   - portrait_layout (if orientation is "portrait"):
+     - What percentage of screen should the painting occupy? (45-55)
+     - Panel colors derived from painting edge colors
+     - Which side for painting info? (left/right/both)
 
 Output strict JSON (no markdown fence, no commentary):
 
@@ -283,6 +465,20 @@ Output strict JSON (no markdown fence, no commentary):
     "position": "top-left" or "top-right" or "bottom-left" or "bottom-right" or "left-side" or "right-side",
     "reason": "Brief explanation for choosing this zone"
   },
+  "subject_zone": {
+    "position": "top-left" or "top-right" or "bottom-left" or "bottom-right" or "left-side" or "right-side",
+    "reason": "Brief explanation of the protected subject area"
+  },
+  "whisper_zone": {
+    "position": "top-left" or "top-right" or "bottom-left" or "bottom-right" or "left-side" or "right-side",
+    "reason": "Brief explanation for choosing this whisper zone",
+    "max_width_percent": 18,
+    "readability_notes": "Why the whisper text remains readable at TV distance"
+  },
+  "art_facts": [
+    "Short art fact 1",
+    "Short art fact 2"
+  ],
   "colors": {
     "text_primary": "#RRGGBB",
     "text_secondary": "#RRGGBB",
@@ -311,6 +507,7 @@ Output strict JSON (no markdown fence, no commentary):
 
 CRITICAL RULES:
 - Colors MUST harmonize with the painting's actual palette
+- text_zone, subject_zone, and whisper_zone MUST be mutually exclusive
 - Use the BRIGHTNESS DATA below to choose text colors:
   - If the chosen text zone is BRIGHT (>150), use DARK text (#1a1a1a to #3a3a3a range) with light text-shadow
   - If the chosen text zone is DARK (<100), use LIGHT text (#e0e0e0 to #f0f0f0 range) with dark text-shadow
@@ -319,10 +516,12 @@ CRITICAL RULES:
 - Scrim should be subtle, not create a visible box
 - Position text at least 120-160px from screen edges
 - Text zone width MUST NOT exceed 38% of screen width (max ~1460px) for landscape
+- Whisper zone width MUST stay between 12% and 24% of screen width
+- Whisper text must remain readable at TV distance while staying visually subordinate to the news block
 - scrim size_css should cover the text zone area (e.g. "width: 40%; height: 45%;")
 - Portrait paintings MUST have portrait_layout populated
 """
-"""Structured prompt for layout analysis covering all 7 analysis aspects."""
+"""Structured prompt for layout analysis covering all 10 requested items."""
 
 
 # =============================================================================
@@ -424,7 +623,9 @@ def _analyze_brightness(image_path: Path) -> str:
             var = int(np.var(zone))
             label = "BRIGHT" if avg > 150 else ("DARK" if avg < 100 else "MID-TONE")
             flatness = "flat/uniform" if var < 1000 else "complex/detailed"
-            lines.append(f"  {name}: brightness={avg} ({label}), variance={var} ({flatness})")
+            lines.append(
+                f"  {name}: brightness={avg} ({label}), variance={var} ({flatness})"
+            )
 
         # Recommend best zone
         best_zone = min(quadrants, key=lambda k: int(np.var(quadrants[k])))
