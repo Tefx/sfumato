@@ -40,6 +40,7 @@ from sfumato.render import (
     Orientation,
     PaintingInfo,
     RenderContext,
+    WhisperFactIndex,
     render_to_png,
 )
 from sfumato.state import AppState
@@ -126,6 +127,48 @@ RUN_ONCE_OUTPUT_PATH_GUARANTEE: Final[str] = (
 """Output-path guarantee for successful renders.
 
 Source: step contract "Pin output-path guarantees" and ARCHITECTURE.md#2.12.
+"""
+
+
+RUN_ONCE_ART_FACT_FLOW: Final[tuple[str, ...]] = (
+    "layout_analysis yields LayoutParams with whisper_zone and art_facts from cache or fresh analysis.",
+    "layout_cache is the persisted source for art_facts keyed by painting.content_hash; orchestrator must not synthesize replacement facts.",
+    "orchestrator resolves RenderContext.whisper_fact_index from caller-owned rotation state after layout selection and before render.",
+    "RenderContext receives the selected LayoutParams unchanged, including layout.art_facts ordering.",
+    "If layout.art_facts is empty, RenderContext.whisper_fact_index must be None.",
+)
+"""Art-fact data flow contract for ``run_once``.
+
+Source: task contract for art-fact wiring across layout cache, orchestrator, and
+render context.
+"""
+
+
+ART_FACT_INDEX_STATE_OWNERSHIP: Final[dict[str, str]] = {
+    "owner": "Orchestrator-owned rotation state; render consumes the chosen index but never persists or mutates it.",
+    "key": "Indexes are tracked per painting.content_hash.",
+    "default": "Missing state resolves to whisper_fact_index=0 when layout.art_facts is non-empty.",
+    "disabled": "Empty art_facts resolves to whisper_fact_index=None and does not require a stored cursor.",
+    "advance": "Successful rotate advances the next index by one modulo the current art_fact_count.",
+    "rebase": "If cached/fresh layout changes the art_fact_count, any stored cursor is rebased modulo the current count before use.",
+    "failure_boundary": "Pre-render failures and render failures do not commit cursor advancement.",
+}
+"""Ownership and rotation semantics for whisper art-fact indexes.
+
+Source: task contract for orchestrator-owned art-fact rotation state.
+"""
+
+
+ROTATE_ART_FACT_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
+    "First successful rotate for a painting with art_facts passes whisper_fact_index=0 into RenderContext.",
+    "Subsequent successful rotates for the same painting.content_hash advance modulo len(layout.art_facts).",
+    "A cached layout and a freshly analyzed layout are equivalent inputs if they expose the same ordered art_facts list.",
+    "When layout.art_facts is empty, rotate passes whisper_fact_index=None and emits no art-fact selection.",
+    "A failed rotate attempt must not consume the next art-fact index.",
+)
+"""Acceptance criteria for rotate-mode art-fact behavior.
+
+Source: task contract for rotate behavior and render-context propagation.
 """
 
 
@@ -436,6 +479,36 @@ class UsedPaintingsProtocol(Protocol):
 
     def load(self) -> None:
         """Load used paintings state."""
+        ...
+
+
+class ArtFactRotationStateProtocol(Protocol):
+    """Protocol for orchestrator-owned art-fact rotation state.
+
+    Contract:
+        - State is keyed by ``painting.content_hash``.
+        - Values represent the next zero-based ``whisper_fact_index`` to emit for
+          that painting.
+        - Missing state means "start at index 0" when ``art_fact_count > 0``.
+        - Callers must rebase stored indexes modulo ``art_fact_count`` before use.
+        - Empty art-fact sets map to ``None`` and should not require persisted
+          cursor state.
+    """
+
+    def get_next_index(
+        self, content_hash: str, art_fact_count: int
+    ) -> WhisperFactIndex:
+        """Return the next caller-owned whisper index for ``content_hash``."""
+        ...
+
+    def commit_rotation(
+        self, content_hash: str, art_fact_count: int
+    ) -> WhisperFactIndex:
+        """Advance and persist the next whisper index after a successful rotate."""
+        ...
+
+    def clear(self, content_hash: str) -> None:
+        """Drop any stored cursor for ``content_hash``."""
         ...
 
 
@@ -1026,6 +1099,16 @@ async def run_once(
     Error propagation boundary:
     - news/layout/palette/render failures surface to caller
     - only TV availability/upload branch may degrade to local-render success
+
+    Art-fact wiring contract:
+    - ``layout_analysis`` is the sole source of ``layout.art_facts`` for the cycle,
+      whether produced freshly or loaded from ``state.layout_cache``.
+    - ``RenderContext.layout`` preserves the selected ``LayoutParams`` unchanged,
+      including ordered ``art_facts``.
+    - ``RenderContext.whisper_fact_index`` is caller-owned orchestration metadata;
+      render consumes it but does not rotate or persist it.
+    - Rotate-mode index advancement happens only after a successful rotate commit
+      boundary, so failed attempts do not consume an art fact.
 
     Args:
         config: Application configuration.

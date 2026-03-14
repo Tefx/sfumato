@@ -40,14 +40,17 @@ from sfumato.config import (
     TvConfig,
 )
 from sfumato.orchestrator import (
+    ART_FACT_INDEX_STATE_OWNERSHIP,
     RUN_BACKFILL_BOUNDED_BEHAVIOR,
     RUN_BACKFILL_ERROR_BOUNDARIES,
+    RUN_ONCE_ART_FACT_FLOW,
     RUN_BACKFILL_STAGE_ORDER,
     RUN_ONCE_ERROR_SURFACE_STAGES,
     RUN_ONCE_FLAG_SEMANTICS,
     RUN_ONCE_OUTPUT_PATH_GUARANTEE,
     RUN_ONCE_STAGE_ORDER,
     RUN_ONCE_TV_DOWNGRADE_SEMANTICS,
+    ROTATE_ART_FACT_ACCEPTANCE_CRITERIA,
     WATCH_ACTION_DISPATCH_ORDER,
     WATCH_ERROR_PROPAGATION_BOUNDARIES,
     WATCH_LOOP_STAGE_ORDER,
@@ -140,6 +143,58 @@ def test_tv_downgrade_and_output_path_guarantees_are_pinned() -> None:
     assert "uploaded=False" in RUN_ONCE_TV_DOWNGRADE_SEMANTICS
     assert "render_result.png_path" in RUN_ONCE_TV_DOWNGRADE_SEMANTICS
     assert "local 4K PNG" in RUN_ONCE_OUTPUT_PATH_GUARANTEE
+
+
+def test_art_fact_flow_contract_is_explicit() -> None:
+    """run_once should pin art-fact flow from layout/cache into RenderContext."""
+    assert RUN_ONCE_ART_FACT_FLOW == (
+        "layout_analysis yields LayoutParams with whisper_zone and art_facts from cache or fresh analysis.",
+        "layout_cache is the persisted source for art_facts keyed by painting.content_hash; orchestrator must not synthesize replacement facts.",
+        "orchestrator resolves RenderContext.whisper_fact_index from caller-owned rotation state after layout selection and before render.",
+        "RenderContext receives the selected LayoutParams unchanged, including layout.art_facts ordering.",
+        "If layout.art_facts is empty, RenderContext.whisper_fact_index must be None.",
+    )
+
+
+def test_art_fact_index_state_ownership_and_rotation_semantics_are_pinned() -> None:
+    """The orchestrator, not render, owns art-fact index state and rotation."""
+    assert sorted(ART_FACT_INDEX_STATE_OWNERSHIP.keys()) == [
+        "advance",
+        "default",
+        "disabled",
+        "failure_boundary",
+        "key",
+        "owner",
+        "rebase",
+    ]
+    assert (
+        "render consumes the chosen index but never persists or mutates it"
+        in (ART_FACT_INDEX_STATE_OWNERSHIP["owner"])
+    )
+    assert "painting.content_hash" in ART_FACT_INDEX_STATE_OWNERSHIP["key"]
+    assert "whisper_fact_index=0" in ART_FACT_INDEX_STATE_OWNERSHIP["default"]
+    assert "whisper_fact_index=None" in ART_FACT_INDEX_STATE_OWNERSHIP["disabled"]
+    assert (
+        "modulo the current art_fact_count" in ART_FACT_INDEX_STATE_OWNERSHIP["advance"]
+    )
+    assert (
+        "rebased modulo the current count" in ART_FACT_INDEX_STATE_OWNERSHIP["rebase"]
+    )
+    assert (
+        "do not commit cursor advancement"
+        in ART_FACT_INDEX_STATE_OWNERSHIP["failure_boundary"]
+    )
+
+
+def test_rotate_art_fact_acceptance_criteria_are_explicit() -> None:
+    """Rotate behavior should pin first-use, modulo advance, and failure semantics."""
+    assert ROTATE_ART_FACT_ACCEPTANCE_CRITERIA == (
+        "First successful rotate for a painting with art_facts passes whisper_fact_index=0 into RenderContext.",
+        "Subsequent successful rotates for the same painting.content_hash advance modulo len(layout.art_facts).",
+        "A cached layout and a freshly analyzed layout are equivalent inputs if they expose the same ordered art_facts list.",
+        "When layout.art_facts is empty, rotate passes whisper_fact_index=None and emits no art-fact selection.",
+        "A failed rotate attempt must not consume the next art-fact index.",
+    )
 
 
 def test_error_propagation_boundary_is_explicit() -> None:
