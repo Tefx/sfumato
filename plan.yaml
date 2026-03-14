@@ -2749,7 +2749,7 @@ phases:
       with scheduler contract/tests.'
   - id: production.watch
     name: Implement orchestrator.watch daemon loop
-    status: pending
+    status: claimed
     description: "step_type: implementation\ntags:\n  - integration\nspec_refs:\n\
       \  - ARCHITECTURE.md#2.12\n  - ARCHITECTURE.md#2.13\ntouch_paths:\n  - src/sfumato/orchestrator.py\n\
       \  - src/sfumato/scheduler.py\n  - tests/test_orchestrator.py\n  - tests/test_cli.py\n\
@@ -2797,6 +2797,8 @@ phases:
     - production.watch.contract
     - production.watch.tests
     agent: python-executor
+    claimed_by: python-executor
+    claimed_at: '2026-03-14T18:01:22.507013+00:00'
   - id: production.cli-full
     name: 'Complete CLI: watch + tv subcommands'
     status: pending
