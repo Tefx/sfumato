@@ -4415,22 +4415,25 @@ phases:
   - id: art-facts.layout-prompt
     name: Upgrade layout prompt with zones + art facts
     status: pending
-    description: "step_type: implementation\nagent: python-senior\nspec_refs:\n  -\
-      \ PROTOTYPING.md#11\n  - ARCHITECTURE.md#2.5\ntouch_paths:\n  - src/sfumato/layout_ai.py\n\
-      \  - tests/test_layout_ai.py\n\nRedesign the LLM layout analysis prompt and\
-      \ data model to output three\nmutually exclusive zones and art facts in a single\
-      \ call:\n\n1. Add new dataclasses: WhisperZone (position_css, color, text_shadow),\n\
-      \   SubjectZone (bounding area of painting subject).\n2. Add fields to LayoutParams:\
-      \ subject_zone, whisper_zone, art_facts (list[str]).\n3. Rewrite the LLM prompt\
-      \ to request all 10 items:\n   - Items 1-7: existing (quiet zones, text placement,\
-      \ colors, story count, scrim, mood, template hint)\n   - Item 8: subject_zone\
-      \ — bounding area of the main subject\n   - Item 9: whisper_zone — position\
-      \ for art fact text, must not overlap news_zone or subject_zone\n   - Item 10:\
-      \ art_facts — 3-5 independent facts/trivia about the painting\n4. Add overlap_check\
-      \ validation: verify zones don't overlap.\n5. Aesthetic constraint: LLM decides\
-      \ whisper zone width to avoid too-narrow line breaks.\n\nPattern: Follow existing\
-      \ LayoutParams/TextZone dataclass style.\nTests: Update tests/test_layout_ai.py\
-      \ for new fields.\n"
+    description: "step_type: implementation\nagent: python-senior\nagent_source: default\n\
+      spec_refs:\n  - PROTOTYPING.md#11\n  - ARCHITECTURE.md#2.5\ntouch_paths:\n \
+      \ - src/sfumato/layout_ai.py\n  - tests/test_layout_ai.py\nharness_refs:\n \
+      \ - tests/test_layout_ai.py\n\nImplement the previously defined layout-analysis\
+      \ contract for zones + art facts.\n\nRedesign the LLM layout analysis prompt\
+      \ and data model to output three\nmutually exclusive zones and art facts in\
+      \ a single call:\n\n1. Add new dataclasses: WhisperZone (position_css, color,\
+      \ text_shadow),\n   SubjectZone (bounding area of painting subject).\n2. Add\
+      \ fields to LayoutParams: subject_zone, whisper_zone, art_facts (list[str]).\n\
+      3. Rewrite the LLM prompt to request all 10 items:\n   - Items 1-7: existing\
+      \ (quiet zones, text placement, colors, story count, scrim, mood, template hint)\n\
+      \   - Item 8: subject_zone — bounding area of the main subject\n   - Item 9:\
+      \ whisper_zone — position for art fact text, must not overlap news_zone or subject_zone\n\
+      \   - Item 10: art_facts — 3-5 independent facts/trivia about the painting\n\
+      4. Add overlap_check validation: verify zones don't overlap.\n5. Aesthetic constraint:\
+      \ LLM decides whisper zone width to avoid too-narrow line breaks.\n\nPattern:\
+      \ Follow existing LayoutParams/TextZone dataclass style.\nTests: Update tests/test_layout_ai.py\
+      \ for new fields.\n\nThis step executes only after the upstream contract and\
+      \ test-definition steps are in place."
     verification: '- LayoutParams now has subject_zone, whisper_zone, art_facts fields
 
       - LLM prompt requests all 10 items in structured JSON
@@ -4439,14 +4442,14 @@ phases:
 
       - Existing tests still pass; new field tests added
 
-      - uv run pytest tests/test_layout_ai.py -v passes
-
-      '
+      - uv run pytest tests/test_layout_ai.py -v passes'
     refs:
     - PROTOTYPING.md#11
     - ARCHITECTURE.md#2.5
     - src/sfumato/layout_ai.py
     - tests/test_layout_ai.py
+    depends_on:
+    - art-facts.layout-prompt.test
   - id: art-facts.template-whisper
     name: Add whisper block to all production templates
     status: pending
