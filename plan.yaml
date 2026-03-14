@@ -2156,6 +2156,32 @@ phases:
     depends_on:
     - intelligence.matcher.contract
     agent: python-executor
+  - id: intelligence.state.contract
+    name: Define state module contract
+    status: pending
+    description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
+      \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nDefine the acceptance\
+      \ contract for `src/sfumato/state.py` without shipping persistence logic.\n\n\
+      Contract scope:\n- constructor and public method signatures for `NewsQueue`,\
+      \ `UsedPaintings`, `LayoutCache`, `EmbeddingCache`, and `AppState`\n- serialization\
+      \ boundaries for JSON and `.npz` state files under `~/.sfumato/state/`\n- path-resolution\
+      \ rules for caller-supplied `state_dir` values, including relative vs absolute\
+      \ path handling\n- missing-file and legacy-layout fallback behavior for `load()`/`AppState.load()`\n\
+      - explicit clear/null overwrite semantics for persisted state updates\n- stale-vs-new\
+      \ precedence rules when on-disk state and in-memory state disagree during load/save\
+      \ flows\n- whether partial-write or compare-and-swap style conflict protection\
+      \ is in scope for this module, and what backward-compatible behavior is required\
+      \ if full CAS is not implemented\n\nConstraints:\n- stubs, docstrings, schemas,\
+      \ and behavioral notes only\n- no completed disk IO or mutation logic in this\
+      \ step\n\nRefs: `ARCHITECTURE.md#2.10`, `src/sfumato/state.py`, `PROTOTYPING.md`"
+    verification: '- Contract names every public state surface and persistence file
+      boundary
+
+      - Main path semantics are explicit for save/load and default creation
+
+      - Highest-risk failure semantics are explicit for path resolution, legacy fallback,
+      clear/null overwrite, stale-vs-new precedence, and partial-write/CAS handling'
+    agent: python-senior
 - id: production
   name: Production
   status: locked
