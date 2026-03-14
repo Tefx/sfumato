@@ -5121,32 +5121,35 @@ phases:
     status: pending
     description: "step_type: implementation\nagent: python-executor\ntags: [\"integration\"\
       ]\nspec_refs:\n  - ARCHITECTURE.md#2.12\ntouch_paths:\n  - src/sfumato/orchestrator.py\n\
-      \nWire replay queue into orchestrator rotation logic:\n\nFile: src/sfumato/orchestrator.py\n\
-      In the rotate/dequeue path (around line where state.news_queue.dequeue() is\
-      \ called):\n\n1. Try primary queue first: batch = state.news_queue.dequeue()\n\
-      2. If primary empty: batch = state.replay_queue.next()\n3. If both empty: skip\
-      \ rotation (existing behavior)\n4. After consuming from primary: move batch\
-      \ to replay queue\n5. Call state.replay_queue.expire(config.news.replay_expire_days)\
-      \ during news refresh\n\nWire seen_urls deduplication into refresh_news flow:\n\
-      - Before LLM curation, check RSS overlap ratio\n- If >80% URLs already seen,\
-      \ skip LLM call and reuse existing batches\n\nPattern: Follow existing news_queue.dequeue()\
-      \ usage in orchestrator.py.\n"
-    verification: '- Primary queue has priority over replay
+      \  - src/sfumato/state.py\nharness_refs:\n  - tests/\n\nWire replay queue into\
+      \ orchestrator rotation logic after the contract and test chain is defined.\n\
+      \nImplementation scope:\n1. Try primary queue first: batch = state.news_queue.dequeue().\n\
+      2. If primary empty: batch = state.replay_queue.next().\n3. If both empty: skip\
+      \ rotation (existing behavior).\n4. After consuming from primary: move batch\
+      \ to replay queue.\n5. Call state.replay_queue.expire(config.news.replay_expire_days)\
+      \ during news refresh.\n6. Before LLM curation, check RSS overlap ratio and\
+      \ skip the LLM path when >80% URLs are already seen, reusing existing batches.\n\
+      \nAcceptance checks:\n- primary queue has precedence over replay queue\n- consumed\
+      \ primary batches transfer into replay storage\n- replay cycles when primary\
+      \ is empty\n- expiry is triggered during news refresh using replay_expire_days\n\
+      - >80% overlap dedup skips the LLM path and preserves existing batches\n\nPattern:\
+      \ Follow existing news_queue.dequeue() usage in orchestrator.py.\n\ntags: [\"\
+      integration\"]"
+    verification: '- Main path: targeted orchestrator tests for queue precedence,
+      replay transfer, expiry trigger, and >80% overlap dedup skip pass
 
-      - Consumed batches move to replay queue
+      - Integration: full rotate/refresh path proves primary-first dequeue and replay
+      fallback behavior
 
-      - Replay cycles when primary is empty
-
-      - Expiry runs during news refresh
-
-      - Dedup skips LLM when overlap >80%
-
-      '
+      - Failure path: regression evidence covers >80% overlap skip behavior and expiry
+      on refresh'
     refs:
     - ARCHITECTURE.md#2.12
     - src/sfumato/orchestrator.py
     depends_on:
     - replay.queue
+    - replay.scheduler-wire.test
+    agent: python-executor
   - id: replay.gate
     name: Replay phase gate review
     status: pending
