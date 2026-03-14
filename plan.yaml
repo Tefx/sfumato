@@ -1691,21 +1691,50 @@ phases:
   - id: intelligence.paintings
     name: Implement paintings module
     status: pending
-    description: 'Implement src/sfumato/paintings.py per ARCHITECTURE.md section 2.3.
-      Implement Orientation, ArtSource enums and PaintingInfo dataclass. Implement
-      fetch_paintings() dispatcher, fetch_from_rijksmuseum() (requires API key), fetch_from_met()
-      (public API), fetch_from_wikimedia() (Commons category search). Implement detect_orientation(),
-      list_cached_paintings(), content_hash(). Cache layout: ~/.sfumato/paintings/{source}/{source_id}.jpg
-      + .json sidecar. File: src/sfumato/paintings.py (new). Completion: all 3 cloud
-      sources implemented; images cached with sidecar metadata; deduplication via
-      exclude_ids.'
-    verification: fetch_from_met() downloads paintings to cache dir; list_cached_paintings()
-      reads sidecar JSON; content_hash() returns SHA-256
+    description: "step_type: implementation\nspec_refs:\n  - ARCHITECTURE.md#2.3\n\
+      \  - PROTOTYPING.md#semantic-art-news-matching\ntouch_paths:\n  - src/sfumato/paintings.py\n\
+      \  - tests/test_paintings.py\nharness_refs:\n  - pytest\n  - tmp_path image\
+      \ fixtures\nagent: python-executor\n\nImplement `src/sfumato/paintings.py` against\
+      \ the contracted cache and source-fetch semantics.\n\nScope:\n- Implement `Orientation`,\
+      \ `ArtSource`, and `PaintingInfo` exactly as contracted.\n- Implement `fetch_paintings()`\
+      \ dispatch, `fetch_from_rijksmuseum()`, `fetch_from_met()`, `fetch_from_wikimedia()`,\
+      \ `detect_orientation()`, `list_cached_paintings()`, and `content_hash()`.\n\
+      - Write image files plus sidecar JSON under `~/.sfumato/paintings/{source}/{source_id}.jpg|.json`\
+      \ with stable absolute-path metadata reconstruction.\n\nFailure-mode checklist:\n\
+      - `exclude_ids` filters by source id before download and does not accidentally\
+      \ drop non-excluded candidates.\n- Mixed-source fetches preserve successful\
+      \ results when one source request fails, times out, or returns unusable metadata.\n\
+      - `content_hash()` remains consistent for unchanged bytes and is not derived\
+      \ from path or sidecar content.\n- `detect_orientation()` handles landscape,\
+      \ portrait, and square images without an off-by-one boundary.\n- `list_cached_paintings()`\
+      \ tolerates missing or malformed sidecars according to the contract rather than\
+      \ crashing the entire scan.\n\nState semantics:\n- Last-writer-wins is limited\
+      \ to overwriting the same `{source}/{source_id}` cache entry during a deliberate\
+      \ re-fetch.\n- Exact image-byte identity is preserved by `content_hash`; sidecar\
+      \ metadata must not redefine that identity.\n- Backward-compatible legacy behavior\
+      \ for partially populated cache directories must remain a non-fatal skip, not\
+      \ a pool-wide failure.\n\nConcrete regressions to satisfy:\n- `pytest tests/test_paintings.py\
+      \ -k \"dispatch or exclude_ids or content_hash or orientation or sidecar\" -v`\n\
+      - Add/keep explicit regressions for missing Rijksmuseum key and one-source-fails/others-succeed\
+      \ behavior.\n\nOut-of-scope guardrail:\n- No layout analysis, embedding generation,\
+      \ orchestrator wiring, or background backfill policy in this step."
+    verification: '- Main path: targeted tests prove multi-source fetch, cache write/read,
+      and metadata reconstruction work against the contracted layout
+
+      - Failure path: targeted regressions cover missing Rijksmuseum credentials,
+      per-source failure skip behavior, malformed/missing sidecars, and square-image
+      orientation handling
+
+      - Proof includes exact pytest command(s) and explicit cache/hash assertions;
+      generic ''download works'' evidence is insufficient'
     refs:
     - ARCHITECTURE.md#2.3
-    - src/sfumato/paintings.py
     - PROTOTYPING.md
-    - ARCHITECTURE.md
+    - src/sfumato/paintings.py
+    - tests/test_paintings.py
+    depends_on:
+    - intelligence.paintings.contract
+    - intelligence.paintings.tests
     agent: python-executor
   - id: intelligence.matcher
     name: Implement matcher module
