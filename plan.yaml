@@ -4933,6 +4933,36 @@ phases:
 
       - Step included minimal fixture-level render contract scaffolding in render.py;
       final full whisper behavior remains in implementation step.'
+  - id: art-facts.orchestrator-wire.contract
+    name: Define orchestrator art-facts wiring contract
+    status: pending
+    description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
+      \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nagent: software-architect\n\
+      spec_refs:\n  - ARCHITECTURE.md#2.12\ntouch_paths:\n  - src/sfumato/orchestrator.py\n\
+      \  - src/sfumato/render.py\n\nDefine the acceptance contract for orchestrator-side\
+      \ art-facts integration without adding implementation logic.\n\nContract scope:\n\
+      1. Specify the RenderContext fields and call-path contract required for art_facts\
+      \ and whisper_fact_index propagation from orchestrator into rendering.\n2. Specify\
+      \ AppState or rotation-state ownership for whisper_fact_index, including rotation\
+      \ behavior and modulo semantics.\n3. Specify how layout-cache art_facts are\
+      \ surfaced into RenderContext during rotate/run_once flows.\n4. Specify acceptance\
+      \ expectations for whisper_fact_index state persistence/rotation and RenderContext\
+      \ propagation.\n\nAcceptance checks to encode explicitly:\n- whisper_fact_index\
+      \ state exists at the orchestrator-owned state layer and rotates predictably\
+      \ across successive rotations\n- whisper_fact_index rotation wraps modulo len(art_facts)\n\
+      - RenderContext receives both art_facts-derived whisper content inputs and whisper_fact_index\
+      \ on the real orchestrator path\n- Contract remains implementation-free; stubs/types/docstrings\
+      \ only\n\nPattern reference: Follow existing layout -> RenderContext wiring\
+      \ surfaces in src/sfumato/orchestrator.py and render-side consumption in src/sfumato/render.py."
+    verification: '- Contract artifact defines orchestrator -> RenderContext propagation
+      and whisper_fact_index ownership clearly
+
+      - Acceptance includes whisper_fact_index state/rotation and RenderContext propagation
+
+      - No runnable business logic added in the contract artifact
+
+      - Downstream test step can be written without inventing behavior'
+    agent: software-architect
 - id: replay
   name: News Replay Queue
   status: in_progress
