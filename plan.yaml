@@ -1436,7 +1436,7 @@ phases:
       - `core.core-pipeline-verify-retest-full-suite`'
   - id: core.core-pipeline-verify-fix-skip-blockers
     name: core.pipeline.verify.fix-skip-blockers
-    status: claimed
+    status: done
     description: "step_type: implementation\nspec_refs:\n  - ARCHITECTURE.md#2.12\n\
       \  - ARCHITECTURE.md#2.13\n  - README.md\n touch_paths:\n  - tests/test_orchestrator.py\n\
       \  - src/sfumato/orchestrator.py\nharness_refs:\n  - pytest\n  - orchestrator\
@@ -1493,6 +1493,38 @@ phases:
     agent: python-executor
     claimed_by: python-executor
     claimed_at: '2026-03-14T14:59:01.934763+00:00'
+    done_at: '2026-03-14T15:08:05.678519+00:00'
+    evidence: 'Artifact:
+
+      - Worker commit: 5da1a9f
+
+      - Main commit: c54f8c561cfda2123bd298ed0eb4b657b6482860
+
+
+      Verification:
+
+      - Run: `uv run pytest tests/test_orchestrator.py -v --tb=short` -> 50 passed,
+      0 skipped
+
+      - Run: `grep -rn "pytest.skip" tests/test_orchestrator.py` -> no matches
+
+      - Run: `grep -n "Implementation dispatch pending" tests/test_orchestrator.py`
+      -> no matches
+
+
+      Spec link:
+
+      - ARCHITECTURE.md#2.12
+
+      - ARCHITECTURE.md#2.13
+
+      - tests/test_orchestrator.py
+
+
+      Gaps/Notes:
+
+      - All previously skipped run_once regression families activated in one batched
+      fix pass; no intentional skip markers remain in `tests/test_orchestrator.py`.'
   - id: core.core-pipeline-verify-retest-full-suite
     name: core.pipeline.verify.retest-full-suite
     status: pending
