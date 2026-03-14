@@ -1,21 +1,22 @@
-"""Semantic painting-news matching contract.
+"""Semantic painting-news matching implementation.
 
 Implements the matcher contract from ARCHITECTURE.md#2.6:
 - Embedding computation for text (painting descriptions and news tone)
 - Cosine similarity calculation with explicit zero-vector semantics
 - Painting selection with semantic vs random strategy precedence
 - Embedding cache management keyed by content_hash
-
-This module provides signatures and stubs only - no completed matching
-or business logic implementation.
 """
 
 from __future__ import annotations
 
+import hashlib
+import random
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
+
+from sfumato.llm import compute_embedding as llm_compute_embedding, EmbeddingError
 
 if TYPE_CHECKING:
     from sfumato.config import AiConfig
@@ -117,14 +118,18 @@ async def compute_embedding(
         - Does NOT cache results - caching is caller's responsibility
           (typically via EmbeddingCache in state.py).
         - Zero-vector detection is NOT performed here; caller should check.
-
-    Implementation Note:
-        This is a STUB. Actual implementation will be provided by
-        a future implementation step. The stub raises NotImplementedError.
     """
-    raise NotImplementedError(
-        "compute_embedding is a contract stub. "
-        "Implementation will be provided by a future implementation step."
+    # Delegate to llm.compute_embedding which returns list[float]
+    embedding_list = await llm_compute_embedding(text, ai_config)
+
+    # Convert to numpy float32 array
+    vector = np.array(embedding_list, dtype=np.float32)
+
+    # Return the structured result
+    return EmbeddingResult(
+        text=text,
+        vector=vector,
+        model=ai_config.model,
     )
 
 
@@ -143,6 +148,7 @@ def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
     Raises:
         ValueError: If vectors have different dimensions.
         ValueError: If either vector is not 1-D.
+        ValueError: If either vector contains NaN.
 
     Contract:
         - Result is ALWAYS in [-1.0, 1.0].
@@ -155,15 +161,46 @@ def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
         - Identical vectors (including zero): return 1.0 if both zero
           and same, otherwise computed similarity.
         - Vectors must have the same dimension.
-
-    Implementation Note:
-        This is a STUB. Actual implementation will be provided by
-        a future implementation step. The stub raises NotImplementedError.
     """
-    raise NotImplementedError(
-        "cosine_similarity is a contract stub. "
-        "Implementation will be provided by a future implementation step."
-    )
+    # Validate 1-D
+    if a.ndim != 1:
+        raise ValueError(f"vector a must be 1-D, got {a.ndim} dimensions")
+    if b.ndim != 1:
+        raise ValueError(f"vector b must be 1-D, got {b.ndim} dimensions")
+
+    # Validate same dimensions
+    if len(a) != len(b):
+        raise ValueError(
+            f"vectors must have same dimensions: a has {len(a)}, b has {len(b)}"
+        )
+
+    # Validate no NaN
+    if np.any(np.isnan(a)):
+        raise ValueError("vector a contains NaN values")
+    if np.any(np.isnan(b)):
+        raise ValueError("vector b contains NaN values")
+
+    # Convert to float64 for numerical stability
+    a_float = a.astype(np.float64)
+    b_float = b.astype(np.float64)
+
+    # Compute norms
+    norm_a = np.linalg.norm(a_float)
+    norm_b = np.linalg.norm(b_float)
+
+    # Handle zero-vector cases
+    if norm_a == 0.0 and norm_b == 0.0:
+        # Both zero vectors - return 0.0 per contract
+        return 0.0
+    if norm_a == 0.0 or norm_b == 0.0:
+        # One zero, one non-zero - return 0.0 per contract
+        return 0.0
+
+    # Compute cosine similarity
+    similarity = float(np.dot(a_float, b_float) / (norm_a * norm_b))
+
+    # Clamp to [-1.0, 1.0] to handle floating-point errors
+    return max(-1.0, min(1.0, similarity))
 
 
 def _compute_tone_cache_key(tone_description: str) -> str:
@@ -180,14 +217,10 @@ def _compute_tone_cache_key(tone_description: str) -> str:
         - Key is unique with high probability for different tone descriptions.
         - Recommended: prefix with "tone:" to distinguish from painting hashes.
         - Implementation should use SHA-256 or similar stable hash.
-
-    Implementation Note:
-        This is a STUB for contract purposes.
     """
-    raise NotImplementedError(
-        "_compute_tone_cache_key is a contract stub. "
-        "Implementation will be provided by a future implementation step."
-    )
+    # Use SHA-256 for stable, collision-resistant hashing
+    hash_hex = hashlib.sha256(tone_description.encode("utf-8")).hexdigest()[:16]
+    return f"tone:{hash_hex}"
 
 
 async def select_painting(
@@ -260,12 +293,83 @@ async def select_painting(
         Cache Key Surface:
             - Painting embeddings use PaintingInfo.content_hash as key.
             - Tone embeddings use _compute_tone_cache_key(tone) as key.
-
-    Implementation Note:
-        This is a STUB. Actual implementation will be provided by
-        a future implementation step. The stub raises NotImplementedError.
     """
-    raise NotImplementedError(
-        "select_painting is a contract stub. "
-        "Implementation will be provided by a future implementation step."
-    )
+    # Validate: paintings list must not be empty
+    if not paintings:
+        raise MatcherError("Cannot select painting: paintings list is empty")
+
+    # Strategy: random - bypass all semantic logic
+    if strategy == "random":
+        selected = random.choice(paintings)
+        return (selected, 0.0)
+
+    # Strategy: semantic
+    if strategy != "semantic":
+        raise MatcherError(f"Unknown strategy: {strategy}. Use 'semantic' or 'random'.")
+
+    # Get or compute tone embedding
+    tone_key = _compute_tone_cache_key(news_tone)
+
+    if tone_key in embedding_cache:
+        tone_embedding = embedding_cache[tone_key]
+    else:
+        # Compute tone embedding
+        try:
+            embedding_result = await compute_embedding(news_tone, ai_config)
+            tone_embedding = embedding_result.vector
+        except EmbeddingError as e:
+            raise MatcherError(f"Failed to compute tone embedding: {e}") from e
+
+    # Collect valid painting candidates with their embeddings
+    candidates: list[tuple["PaintingInfo", np.ndarray, float]] = []
+
+    for painting in paintings:
+        content_hash = painting.content_hash
+
+        if content_hash not in embedding_cache:
+            # Skip paintings without cached embeddings
+            continue
+
+        painting_embedding = embedding_cache[content_hash]
+
+        # Check for zero-vector embedding
+        if np.all(painting_embedding == 0):
+            # Skip zero-vector embeddings
+            continue
+
+        # Check for NaN in embedding
+        if np.any(np.isnan(painting_embedding)):
+            # Skip invalid embeddings with NaN
+            continue
+
+        # Compute similarity
+        try:
+            similarity = cosine_similarity(tone_embedding, painting_embedding)
+        except ValueError:
+            # Skip if similarity computation fails
+            continue
+
+        candidates.append((painting, painting_embedding, similarity))
+
+    # Check if we have any valid candidates
+    if not candidates:
+        # Check why we have no candidates
+        paintings_with_keys = [
+            p for p in paintings if p.content_hash in embedding_cache
+        ]
+        if not paintings_with_keys:
+            raise MatcherError(
+                "Cannot select painting: no paintings have cached embeddings. "
+                "Compute painting embeddings before calling select_painting."
+            )
+
+        # All cached embeddings were invalid (zero or NaN)
+        raise MatcherError(
+            "Cannot select painting: all cached embeddings are invalid "
+            "(zero-vectors or contain NaN)"
+        )
+
+    # Find the painting with highest similarity
+    best_painting, _best_embedding, best_score = max(candidates, key=lambda x: x[2])
+
+    return (best_painting, best_score)

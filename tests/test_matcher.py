@@ -57,7 +57,7 @@ class ArtSource(Enum):
 
 
 @dataclass(frozen=True)
-class TestPaintingInfo:
+class MockPaintingInfo:
     """Test double for PaintingInfo - minimal fields for matcher tests."""
 
     image_path: Path
@@ -74,7 +74,7 @@ class TestPaintingInfo:
 
 
 @dataclass(frozen=True)
-class TestAiConfig:
+class MockAiConfig:
     """Test double for AiConfig."""
 
     cli: str = "gemini"
@@ -86,9 +86,9 @@ class TestAiConfig:
 # =============================================================================
 
 
-def make_painting(content_hash: str) -> TestPaintingInfo:
+def make_painting(content_hash: str) -> MockPaintingInfo:
     """Create a test painting with minimal required fields."""
-    return TestPaintingInfo(
+    return MockPaintingInfo(
         image_path=Path(f"/tmp/{content_hash}.jpg"),
         content_hash=content_hash,
         title=f"Painting {content_hash}",
@@ -114,9 +114,9 @@ def make_embedding(text: str, dimensions: int = 384) -> np.ndarray:
     return vec
 
 
-def make_ai_config() -> TestAiConfig:
+def make_ai_config() -> MockAiConfig:
     """Create a test AiConfig."""
-    return TestAiConfig()
+    return MockAiConfig()
 
 
 # =============================================================================
@@ -125,19 +125,19 @@ def make_ai_config() -> TestAiConfig:
 
 
 @pytest.fixture
-def ai_config() -> TestAiConfig:
+def ai_config() -> MockAiConfig:
     """Return a test AiConfig."""
-    return TestAiConfig()
+    return MockAiConfig()
 
 
 @pytest.fixture
-def sample_painting() -> TestPaintingInfo:
+def sample_painting() -> MockPaintingInfo:
     """Return a sample painting for testing."""
     return make_painting("hash_starry_night_001")
 
 
 @pytest.fixture
-def sample_paintings_list() -> list[TestPaintingInfo]:
+def sample_paintings_list() -> list[MockPaintingInfo]:
     """Return a list of sample paintings."""
     return [
         make_painting("hash_1"),
@@ -308,7 +308,7 @@ class TestSelectPaintingRandomStrategy:
     """
 
     @pytest.mark.asyncio
-    async def test_random_returns_score_zero(self, ai_config: TestAiConfig) -> None:
+    async def test_random_returns_score_zero(self, ai_config: MockAiConfig) -> None:
         """Random strategy must return score exactly 0.0."""
         paintings = [
             make_painting("hash_a"),
@@ -332,7 +332,7 @@ class TestSelectPaintingRandomStrategy:
         assert score == 0.0
 
     @pytest.mark.asyncio
-    async def test_random_ignores_news_tone(self, ai_config: TestAiConfig) -> None:
+    async def test_random_ignores_news_tone(self, ai_config: MockAiConfig) -> None:
         """Random strategy must ignore news_tone parameter entirely."""
         paintings = [make_painting(f"hash_{i}") for i in range(5)]
 
@@ -350,7 +350,7 @@ class TestSelectPaintingRandomStrategy:
 
     @pytest.mark.asyncio
     async def test_random_works_with_empty_embedding_cache(
-        self, ai_config: TestAiConfig
+        self, ai_config: MockAiConfig
     ) -> None:
         """Random strategy must work with empty embedding_cache."""
         paintings = [make_painting(f"hash_{i}") for i in range(3)]
@@ -369,7 +369,7 @@ class TestSelectPaintingRandomStrategy:
 
     @pytest.mark.asyncio
     async def test_random_distributes_uniformly_over_many_calls(
-        self, ai_config: TestAiConfig
+        self, ai_config: MockAiConfig
     ) -> None:
         """Random strategy should distribute selections uniformly (statistical test)."""
         paintings = [make_painting(f"hash_{i}") for i in range(10)]
@@ -395,7 +395,7 @@ class TestSelectPaintingRandomStrategy:
 
     @pytest.mark.asyncio
     async def test_random_with_single_painting_returns_that_painting(
-        self, ai_config: TestAiConfig
+        self, ai_config: MockAiConfig
     ) -> None:
         """Random with one painting must return that painting."""
         painting = make_painting("only_one")
@@ -431,7 +431,7 @@ class TestSelectPaintingSemanticStrategy:
 
     @pytest.mark.asyncio
     async def test_semantic_returns_highest_similarity_painting(
-        self, ai_config: TestAiConfig
+        self, ai_config: MockAiConfig
     ) -> None:
         """Semantic must return painting with highest similarity score."""
         # Create embeddings where hash_1 is most similar to tone
@@ -476,7 +476,7 @@ class TestSelectPaintingSemanticStrategy:
 
     @pytest.mark.asyncio
     async def test_semantic_skips_paintings_without_embeddings(
-        self, ai_config: TestAiConfig
+        self, ai_config: MockAiConfig
     ) -> None:
         """Semantic must skip paintings that don't have cached embeddings."""
         paintings = [
@@ -515,7 +515,7 @@ class TestSelectPaintingSemanticStrategy:
         assert painting.content_hash == "has_embedding"
 
     @pytest.mark.asyncio
-    async def test_semantic_score_in_valid_range(self, ai_config: TestAiConfig) -> None:
+    async def test_semantic_score_in_valid_range(self, ai_config: MockAiConfig) -> None:
         """Semantic similarity score must be in valid range."""
         paintings = [make_painting(f"hash_{i}") for i in range(3)]
 
@@ -552,7 +552,7 @@ class TestSelectPaintingErrorSemantics:
 
     @pytest.mark.asyncio
     async def test_empty_paintings_raises_matcher_error(
-        self, ai_config: TestAiConfig
+        self, ai_config: MockAiConfig
     ) -> None:
         """Empty paintings list must raise MatcherError."""
         with pytest.raises(MatcherError, match="empty|no paintings|cannot select"):
@@ -567,7 +567,7 @@ class TestSelectPaintingErrorSemantics:
 
     @pytest.mark.asyncio
     async def test_semantic_no_cached_embeddings_raises_error(
-        self, ai_config: TestAiConfig
+        self, ai_config: MockAiConfig
     ) -> None:
         """Semantic strategy with NO cached embeddings must raise MatcherError."""
         paintings = [
@@ -587,7 +587,7 @@ class TestSelectPaintingErrorSemantics:
 
     @pytest.mark.asyncio
     async def test_semantic_all_zero_embeddings_raises_error(
-        self, ai_config: TestAiConfig
+        self, ai_config: MockAiConfig
     ) -> None:
         """Semantic with all zero-vector embeddings must raise MatcherError."""
         paintings = [
@@ -616,7 +616,7 @@ class TestSelectPaintingFallbackBehavior:
 
     @pytest.mark.asyncio
     async def test_semantic_skips_individual_zero_embeddings(
-        self, ai_config: TestAiConfig
+        self, ai_config: MockAiConfig
     ) -> None:
         """Semantic must skip individual zero embeddings, not fail entirely."""
         paintings = [
@@ -689,7 +689,7 @@ class TestPaintingCacheKeySemantics:
     """Tests for painting cache key usage in select_painting."""
 
     @pytest.mark.asyncio
-    async def test_uses_content_hash_as_key(self, ai_config: TestAiConfig) -> None:
+    async def test_uses_content_hash_as_key(self, ai_config: MockAiConfig) -> None:
         """select_painting must use PaintingInfo.content_hash as cache key."""
         paintings = [make_painting("specific_hash_12345")]
 
@@ -728,7 +728,7 @@ class TestRegressionHighRiskPaths:
 
     @pytest.mark.asyncio
     async def test_regression_very_similar_embeddings(
-        self, ai_config: TestAiConfig
+        self, ai_config: MockAiConfig
     ) -> None:
         """Regression: very similar embeddings should not cause numerical instability."""
         base = make_embedding("base")
@@ -764,7 +764,7 @@ class TestRegressionHighRiskPaths:
 
     @pytest.mark.asyncio
     async def test_regression_all_negative_embeddings(
-        self, ai_config: TestAiConfig
+        self, ai_config: MockAiConfig
     ) -> None:
         """Regression: all-negative embeddings should still produce valid similarity."""
         # All negative components
@@ -795,7 +795,7 @@ class TestRegressionHighRiskPaths:
 
     @pytest.mark.asyncio
     async def test_regression_large_embedding_dimensions(
-        self, ai_config: TestAiConfig
+        self, ai_config: MockAiConfig
     ) -> None:
         """Regression: large embeddings (e.g., 1536 for OpenAI) should work."""
         # Simulate OpenAI embedding size
@@ -830,7 +830,7 @@ class TestRegressionHighRiskPaths:
 
     @pytest.mark.asyncio
     async def test_regression_empty_tone_description(
-        self, ai_config: TestAiConfig
+        self, ai_config: MockAiConfig
     ) -> None:
         """Regression: empty tone description should still compute embedding."""
         paintings = [make_painting("hash_1")]
@@ -867,7 +867,7 @@ class TestToneCacheKeyIntegration:
     """Tests for tone cache key integration with select_painting."""
 
     @pytest.mark.asyncio
-    async def test_semantic_uses_tone_cache_key(self, ai_config: TestAiConfig) -> None:
+    async def test_semantic_uses_tone_cache_key(self, ai_config: MockAiConfig) -> None:
         """Semantic should look up tone embedding using _compute_tone_cache_key."""
         paintings = [make_painting("hash_1")]
 
@@ -898,7 +898,7 @@ class TestToneCacheKeyIntegration:
 
     @pytest.mark.asyncio
     async def test_semantic_can_share_tone_across_calls(
-        self, ai_config: TestAiConfig
+        self, ai_config: MockAiConfig
     ) -> None:
         """Multiple calls with same tone can share cached embedding."""
         # This tests that the cache key is deterministic
