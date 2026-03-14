@@ -2838,3 +2838,30 @@ phases:
     depends_on:
     - production.scheduler.contract
     agent: python-executor
+  - id: production.watch.contract
+    name: Define daemon watch contract
+    status: pending
+    description: "step_type: contract\ncontract_purity: ENFORCED\ncontract_outputs:\n\
+      \  - signatures\n  - type_defs\n  - interfaces\n  - stubs\nspec_refs:\n  - ARCHITECTURE.md#2.12\n\
+      \  - ARCHITECTURE.md#2.13\ntouch_paths:\n  - src/sfumato/orchestrator.py\n \
+      \ - src/sfumato/cli.py\nharness_refs:\n  - pytest\n  - signal-handling harness\n\
+      agent: python-senior\n\nDefine the acceptance contract for the runnable `watch`\
+      \ surface without shipping daemon-loop implementation logic.\n\nContract scope:\n\
+      - `orchestrator.watch(config)` lifecycle from state load through loop, action\
+      \ dispatch, save, sleep, and shutdown\n- signal-handling obligations for SIGINT/SIGTERM,\
+      \ including save-before-exit expectations and idempotent shutdown\n- action-to-runtime\
+      \ mapping between scheduler outputs and orchestrator calls\n- startup/entrypoint\
+      \ expectation that `sfumato watch` reaches the real daemon path, not a stub\
+      \ handler\n- logging/error boundary for recoverable iteration failures vs fatal\
+      \ startup failures\n\nConstraints:\n- stubs, behavioral notes, and contract-oriented\
+      \ helper signatures only\n- no completed loop body, signal registration, or\
+      \ backfill implementation in this step"
+    verification: '- Contract defines the runnable watch entrypoint, lifecycle, and
+      action-dispatch surface clearly enough for downstream tests
+
+      - Main path semantics are explicit for startup, loop iteration, state save,
+      and sleep progression
+
+      - Highest-risk failure semantics are explicit for SIGTERM during active work,
+      repeated shutdown signals, and fatal startup failure before the loop begins'
+    agent: python-senior
