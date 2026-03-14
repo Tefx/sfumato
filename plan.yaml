@@ -2969,3 +2969,30 @@ phases:
       - Highest-risk failure semantics are explicit for missing runtime dependencies,
       broken mounts, and shutdown/healthcheck mismatch'
     agent: software-architect
+  - id: production.docker.tests
+    name: Author container deployment tests
+    status: pending
+    description: "step_type: test\nspec_refs:\n  - ARCHITECTURE.md#9\n  - ARCHITECTURE.md#2.12\n\
+      \  - ARCHITECTURE.md#2.13\ntouch_paths:\n  - Dockerfile\n  - docker-compose.yml\n\
+      \  - tests/test_docker_runtime.py\nharness_refs:\n  - docker build/runtime smoke\
+      \ harness\nagent: software-architect\n\nAuthor deployment tests and smoke checks\
+      \ for the runnable container surface before implementation.\n\nRequired coverage:\n\
+      - image build command and success criteria for the production image\n- container\
+      \ start path reaches the real `sfumato watch` entrypoint\n- config/state mounts\
+      \ persist across restart cycles\n- healthcheck and graceful-stop expectations\
+      \ match the watch runtime lifecycle\n\nConstraints:\n- tests may add smoke harness\
+      \ assets and fixtures only; no completed Dockerfile or compose implementation\
+      \ in this step\n- at least one named regression covers a broken-mount or startup-dependency\
+      \ failure path"
+    verification: '- Main path: smoke assets define image build, container start,
+      and persistence expectations
+
+      - Failure path: focused regressions define missing-runtime-dependency, broken-volume-mount,
+      and unhealthy-watch-entrypoint behavior
+
+      - Proof: explicit smoke command expectations exist for both startup and restart
+      persistence'
+    depends_on:
+    - production.watch
+    - production.docker.contract
+    agent: software-architect
