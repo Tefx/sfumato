@@ -299,8 +299,9 @@ async def curate(
             entry_count=0,
         )
 
-    # Split into batches of ~25 entries to keep prompts within LLM context limits
-    BATCH_SIZE = 25
+    # Split into batches of ~15 entries to keep LLM output within token limits
+    # (each story = ~200 output tokens for headline + summary in Chinese)
+    BATCH_SIZE = 15
     all_stories: list[Story] = []
     tone_descriptions: list[str] = []
 
@@ -317,7 +318,7 @@ async def curate(
             prompt=prompt,
             ai_config=ai_config,
             system_prompt=_get_system_prompt(language),
-            max_tokens=4000,
+            max_tokens=8000,  # 25 entries × ~200 tokens/story = ~5000 tokens output
             timeout_seconds=120,
         )
         try:
