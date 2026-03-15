@@ -417,9 +417,11 @@ Analyze and provide exactly these 10 items:
 
 5. **Whisper Zone**: Choose a secondary zone for art-fact whisper text.
    - Must not overlap the news zone or the subject zone
+   - Must not overlap the painting credit area (artist name + title + year shown in bottom-left for portrait, or bottom of painting for landscape)
    - Must remain readable at TV distance
    - Width must stay between 12% and 24% of screen width
    - Keep it visually subordinate to the main news block
+   - For portrait paintings: bottom-left is reserved for painting credit, choose a different zone
 
 6. **Art Facts**: Produce 1-3 whisper-ready art facts.
    - Short, factual, and display-ready

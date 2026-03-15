@@ -386,9 +386,17 @@ def build_template_variables(ctx: RenderContext) -> dict[str, str]:
     # These are derived from layout analysis and caller-provided index.
 
     # WHISPER_POSITION: CSS positioning derived from whisper_zone.position
+    # Collision avoidance: portrait templates show painting credit in bottom-left.
+    # If whisper also targets bottom-left, shift it to avoid overlap.
     whisper_zone = ctx.layout.whisper_zone
-    whisper_position_css = _position_to_css(whisper_zone.position)
-    # Add max-width constraint from whisper_zone.max_width_percent
+    whisper_pos = whisper_zone.position
+
+    # Detect collision with painting credit (always bottom-left in portrait templates)
+    if ctx.template_name == "portrait" and whisper_pos in ("bottom-left", "left-side"):
+        # Shift whisper to top-left or bottom-right to avoid credit
+        whisper_pos = "top-left"
+
+    whisper_position_css = _position_to_css(whisper_pos)
     whisper_max_width = f"max-width: {whisper_zone.max_width_percent}%;"
     variables["WHISPER_POSITION"] = f"{whisper_position_css} {whisper_max_width}"
 
