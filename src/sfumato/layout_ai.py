@@ -511,6 +511,8 @@ Output strict JSON (no markdown fence, no commentary):
   }
 }
 
+Note: Some museum photographs may include the physical painting frame (ornate border). If you detect a frame in the image, mention it in your analysis and adjust text placement to avoid the frame border area. The scrim gradient should also account for the frame.
+
 CRITICAL RULES:
 - Colors MUST harmonize with the painting's actual palette
 - text_zone, subject_zone, and whisper_zone MUST be mutually exclusive

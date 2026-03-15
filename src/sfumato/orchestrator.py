@@ -1558,6 +1558,7 @@ def _create_painting_info_from_path(painting_path: Path) -> PaintingsPaintingInf
         source=ArtSource.MET,  # Placeholder source for user-provided paintings
         source_id=content_hash[:12],
         source_url="",
+        has_museum_frame=False,
     )
 
 

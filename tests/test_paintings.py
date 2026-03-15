@@ -89,6 +89,7 @@ def _painting_info(source: ArtSource, source_id: str, image_path: Path) -> Paint
         orientation=Orientation.LANDSCAPE,
         width=20,
         height=10,
+        has_museum_frame=False,
     )
 
 

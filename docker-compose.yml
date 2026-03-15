@@ -13,6 +13,7 @@ services:
       SFUMATO_DATA_DIR: /data
       SFUMATO_HEALTH_MAX_AGE_SECONDS: 2100
       RIJKSMUSEUM_API_KEY: ${RIJKSMUSEUM_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
     network_mode: host
     stop_signal: SIGTERM
     stop_grace_period: 90s

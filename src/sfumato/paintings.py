@@ -95,6 +95,7 @@ class PaintingInfo:
     orientation: Orientation
     width: int
     height: int
+    has_museum_frame: bool
 
 
 # =============================================================================
@@ -715,6 +716,7 @@ async def _download_one(
         orientation=detect_orientation(image_path),
         width=width,
         height=height,
+        has_museum_frame=False,
     )
 
     sidecar_path = image_path.with_suffix(".json")
@@ -740,6 +742,7 @@ def _painting_to_sidecar_dict(painting: PaintingInfo) -> dict[str, str | int]:
         "orientation": painting.orientation.value,
         "width": painting.width,
         "height": painting.height,
+        "has_museum_frame": painting.has_museum_frame,
     }
 
 
@@ -762,6 +765,7 @@ def _painting_info_from_sidecar(
         orientation=Orientation(str(sidecar_data["orientation"])),
         width=int(str(sidecar_data["width"])),
         height=int(str(sidecar_data["height"])),
+        has_museum_frame=bool(sidecar_data.get("has_museum_frame", False)),
     )
 
 
