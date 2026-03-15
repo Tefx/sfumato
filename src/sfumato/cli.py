@@ -49,6 +49,7 @@ import typer
 
 from sfumato.config import ConfigError, generate_default_config, load_config
 from sfumato.orchestrator import RunOptions, init_project, run_once
+from sfumato.state import AppState as RealAppState
 
 if TYPE_CHECKING:
     from sfumato.layout_ai import LayoutParams
@@ -685,9 +686,11 @@ def run(
 
     _verbose_print(verbose, f"Run options: no_upload={no_upload}, no_news={no_news}")
 
-    # Initialize state
+    # Initialize state — use real state.py implementation with persistence
     try:
-        state = AppState.load(loaded_config.data_dir)
+        state_dir = loaded_config.data_dir / "state"
+        state_dir.mkdir(parents=True, exist_ok=True)
+        state = RealAppState.load(state_dir)
     except Exception as e:
         typer.echo(f"Failed to initialize state: {e}", err=True)
         raise typer.Exit(code=EXIT_STATE_ERROR) from e
@@ -739,6 +742,12 @@ def run(
 
                 typer.echo(traceback.format_exc(), err=True)
             raise typer.Exit(code=EXIT_GENERAL_ERROR) from e
+        finally:
+            # Always persist state after run (news queue, replay queue, caches)
+            try:
+                state.save_all()
+            except Exception:
+                pass  # Best-effort save
 
     asyncio.run(_run_pipeline())
 
