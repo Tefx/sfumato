@@ -6487,3 +6487,39 @@ phases:
     - tests/test_matcher.py
     - tests/test_render.py
     agent: python-executor
+  - id: stabilize.gate
+    name: 'Gate review: Stabilize phase completion'
+    status: pending
+    description: "As an INDEPENDENT REVIEWER (gate-reviewer), assess whether the stabilize\
+      \ phase\nmeets quality standards for declaring all known issues resolved.\n\n\
+      review_depth: THOROUGH\nreview_depth_rationale: |\n  - Phase touches runtime\
+      \ daemon surface (watch) — deployability-bearing\n  - Docker build is a deployability\
+      \ gate\n  - 6 implementation steps spanning multiple modules\n\nYOU ARE THE\
+      \ QUALITY GATE. Your job is to BLOCK progress if quality is\ninsufficient, not\
+      \ to rubber-stamp completion.\n\nReview criteria:\n1. **Watch daemon**: Integration\
+      \ tests prove scheduler + action dispatch + shutdown\n2. **Docker**: Build succeeds,\
+      \ container starts, healthcheck works\n3. **Painting frames**: Visual evidence\
+      \ of frame removal or documented mitigation\n4. **Docs**: No stale terminology\
+      \ in PROTOTYPING.md, README.md, ARCHITECTURE.md\n5. **Config compat**: Minimal\
+      \ config loads without error\n6. **Dead code**: Unused functions removed, match\
+      \ score documented\n\nCross-cutting focus:\n- All existing tests still pass\
+      \ (full suite)\n- No regressions introduced by any step"
+    verification: '- All 6 implementation steps completed with evidence
+
+      - Full test suite passes: pytest tests/ -v
+
+      - Docker build succeeds (or documented blocker with mitigation)
+
+      - Watch daemon has integration test coverage
+
+      - Documentation grep checks pass (no stale terms)
+
+      - No open blockers'
+    depends_on:
+    - stabilize.watch-daemon-e2e
+    - stabilize.docker-build-verify
+    - stabilize.painting-frame-crop
+    - stabilize.docs-sync
+    - stabilize.config-compat-and-tv-clean
+    - stabilize.dead-code-and-match-score
+    agent: gate-reviewer
