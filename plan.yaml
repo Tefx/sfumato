@@ -6180,3 +6180,10 @@ phases:
       Gaps/Notes:
 
       - No blockers or should-fix items.'
+- id: stabilize
+  name: 'Stabilize: Known Issues Fix'
+  status: pending
+  gate: All 9 known issues resolved or explicitly deferred with rationale
+  context: Fix and verify all known outstanding issues. Covers watch daemon E2E, Docker
+    build, painting frame cropping, doc sync, config compat, and dead code cleanup.
+    All prior phases done.
