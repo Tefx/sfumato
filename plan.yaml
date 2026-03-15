@@ -6413,3 +6413,77 @@ phases:
     - tests/test_tv.py
     - tests/test_cli.py
     agent: python-executor
+  - id: stabilize.dead-code-and-match-score
+    name: Dead code cleanup + match score cold-start investigation
+    status: pending
+    description: 'step_type: implementation
+
+      priority: LOW
+
+
+      Two related cleanup items.
+
+
+      ## 1. Dead code removal
+
+
+      Remove unused functions from src/sfumato/render.py:
+
+      - _hex_brightness() at line 535 — defined but never called anywhere
+
+      - _estimate_zone_brightness() at line 560 — defined but never called anywhere
+
+
+      Verification: grep -rn ''_hex_brightness\|_estimate_zone_brightness'' src/ returns
+
+      only the removal diff, no remaining callers.
+
+
+      ## 2. Match score cold-start investigation
+
+
+      When layout_cache is empty (first run or after cache clear), match_score is
+
+      always 0.000 because only 1 painting has layout analysis data. The matcher
+
+      needs multiple paintings with layout descriptions to compute meaningful scores.
+
+
+      Investigate and document:
+
+      - Is this expected behavior? (Probably yes — cold start has no data to compare)
+
+      - Should matcher return None instead of 0.0 when insufficient data?
+
+      - Should the first-run path skip match scoring entirely?
+
+
+      If the fix is simple (e.g., return None when < 2 candidates have layouts),
+
+      implement it. If it requires architecture discussion, document findings and
+
+      mark as deferred.
+
+
+      ## Files to touch
+
+      - src/sfumato/render.py (remove dead functions)
+
+      - src/sfumato/matcher.py (cold-start fix if simple)
+
+      - tests/test_matcher.py (add cold-start test if fix applied)'
+    verification: '- grep ''_hex_brightness\|_estimate_zone_brightness'' src/ returns
+      0 hits
+
+      - pytest tests/test_render.py -v passes (no regressions from removal)
+
+      - Match score cold-start: either fixed with test, or documented with rationale
+      for deferral
+
+      - All existing tests pass: pytest tests/ -v'
+    refs:
+    - src/sfumato/render.py
+    - src/sfumato/matcher.py
+    - tests/test_matcher.py
+    - tests/test_render.py
+    agent: python-executor
