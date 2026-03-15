@@ -559,15 +559,32 @@ def _substitute_template(template: str, variables: dict[str, str]) -> str:
     return result
 
 
+def _rgba_to_hex(color: str) -> str:
+    """Convert rgba(...) or any color to hex format for segno."""
+    import re as _re
+    # Already hex
+    if color.startswith('#'):
+        return color[:7]  # Strip alpha if #RRGGBBAA
+    # rgba(r, g, b, a) or rgb(r, g, b)
+    m = _re.match(r'rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)', color)
+    if m:
+        r, g, b = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        return f'#{r:02x}{g:02x}{b:02x}'
+    return '#888888'  # fallback
+
+
 def _make_qr_svg(url: str, display_size: int = 60, color: str = "#888888") -> str:
     """Generate inline SVG QR code for a URL."""
     import segno
     import io
     import re
 
+    # segno only accepts hex colors, not rgba
+    hex_color = _rgba_to_hex(color)
+
     qr = segno.make(url, error='m')
     buf = io.BytesIO()
-    qr.save(buf, kind='svg', scale=4, border=1, dark=color, light=None)
+    qr.save(buf, kind='svg', scale=4, border=1, dark=hex_color, light=None)
     svg = buf.getvalue().decode()
     if '<?xml' in svg:
         svg = svg[svg.index('<svg'):]
