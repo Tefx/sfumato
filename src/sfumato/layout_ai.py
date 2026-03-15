@@ -454,12 +454,12 @@ Analyze and provide exactly these 10 items:
 
 10. **Composition Notes**: Provide the remaining structured guidance:
    - painting_description: rich, evocative description of the painting's mood, atmosphere, colors, and subject matter for semantic matching. Write in the language most appropriate to the painting's origin or style.
-   - template_hint: Which template works best? Choose based on composition density:
-    - "painting_text": Full painting with text in quiet zone. ONLY use when the painting has clear, large quiet zones (>25% of area) with low visual complexity. NOT suitable for densely composed paintings.
-    - "portrait": Three-column layout with painting centered (for portrait orientation)
-    - "magazine": 72/28 split with painting left, text panel right. USE THIS when the painting is densely composed with no clear quiet zones — figures, details, or action fill most of the canvas. This is the SAFE choice for busy paintings.
-    - "art_overlay": Frosted glass cards over painting (rare)
-    IMPORTANT: If the BRIGHTNESS DATA shows all quadrants have high variance (>2000), the painting is too busy for "painting_text". Use "magazine" instead.
+   - template_hint: Which template works best?
+    - "painting_text": STRONGLY PREFERRED. Full painting with text in quiet zone. Use this whenever possible — even if the quiet zone is small, reduce story count instead of switching templates. The painting should fill the entire screen.
+    - "portrait": ONLY for portrait orientation paintings where painting_text truly cannot work.
+    - "magazine": LAST RESORT. Only use when the painting is extremely densely composed AND portrait orientation doesn't apply. Almost all paintings have at least one corner or edge with lower density — use that for painting_text instead.
+    - "art_overlay": Do not use.
+    DEFAULT TO "painting_text". Only switch to portrait/magazine if text would be completely unreadable on the painting.
    - portrait_layout (if orientation is "portrait"):
      - What percentage of screen should the painting occupy? (45-55)
      - Panel colors derived from painting edge colors

@@ -12,18 +12,21 @@
     height: 2160px;
     overflow: hidden;
     display: flex;
+    background: url('{{BG_IMAGE}}') center/cover no-repeat;
   }
 
   .painting-zone {
     flex: 0 0 72%;
     height: 100%;
-    background: url('{{BG_IMAGE}}') center/cover no-repeat;
+    /* Painting shows through the body background */
   }
 
   .text-zone {
     flex: 0 0 28%;
     height: 100%;
-    background: {{PANEL_BG}};
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(20px) saturate(0.7);
+    -webkit-backdrop-filter: blur(20px) saturate(0.7);
     padding: 80px 56px 60px;
     display: flex;
     flex-direction: column;
