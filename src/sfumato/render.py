@@ -391,9 +391,12 @@ def build_template_variables(ctx: RenderContext) -> dict[str, str]:
     subject_pos = ctx.layout.subject_zone.position
     occupied = {news_pos, subject_pos}
 
-    # Portrait: credit occupies bottom-left
+    # Portrait template: right side = news panel, bottom-left = credit
     if ctx.template_name == "portrait":
         occupied.add("bottom-left")
+        occupied.add("top-right")
+        occupied.add("bottom-right")
+        occupied.add("right-side")
 
     if whisper_pos in occupied:
         # Find first unoccupied zone

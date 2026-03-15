@@ -444,10 +444,13 @@ Analyze and provide exactly these 10 items:
    - Should be barely visible - just enough to improve text contrast
    - Position and size to protect the news zone only
 
-9. **Story Count**: How many news stories (2-5) fit comfortably? Consider:
+9. **Story Count**: How many news stories fit comfortably? Consider:
    - Visual complexity of the painting
    - Size of the available news zone
    - Balance between art and information
+   - For "painting_text" template: typically 2-4 stories (limited by quiet zone size)
+   - For "portrait" template: typically 4-6 stories (side panel has vertical space)
+   - For "magazine" template: typically 5-7 stories (dedicated text panel, most space)
 
 10. **Composition Notes**: Provide the remaining structured guidance:
    - painting_description: rich, evocative description of the painting's mood, atmosphere, colors, and subject matter for semantic matching. Write in the language most appropriate to the painting's origin or style.
