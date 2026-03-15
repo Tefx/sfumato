@@ -12,5 +12,6 @@ CLAUDE.md
 plan-dashboard.html
 .vectl/worktrees/
 src/sfumato.egg-info/
-*.jpg
+# Ignore stray jpg files but keep docs/
+/*.jpg
 ~/

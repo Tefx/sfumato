@@ -2,6 +2,8 @@
 
 Turn your Samsung The Frame TV into a living art + news terminal.
 
+![sfumato demo](docs/demo.jpg)
+
 Sfumato displays famous paintings full-screen on The Frame, with curated news text softly blended into the painting's natural quiet areas — sky, fog, water, shadows. An LLM analyzes each painting's composition to find the optimal text placement, colors, and density, so the information feels like part of the artwork, not overlaid on top of it.
 
 Named after Leonardo da Vinci's *sfumato* technique — the smoky, borderless blending of tones — because that's exactly how text meets canvas here.
