@@ -54,7 +54,6 @@ def _write_config(tmp_path: Path, feeds_toml: str) -> AppConfig:
                 "",
                 "[news]",
                 'language = "en"',
-                "stories_per_refresh = 3",
                 "max_age_days = 3",
                 "expire_days = 7",
                 feeds_toml,

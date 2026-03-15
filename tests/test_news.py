@@ -399,7 +399,6 @@ class TestCurateContract:
                 result = await curate(
                     raw_entries=raw_entries,
                     language="zh",
-                    stories_per_refresh=12,
                     ai_config=ai_config,
                 )
 
@@ -413,7 +412,6 @@ class TestCurateContract:
         result = await curate(
             raw_entries=[],
             language="zh",
-            stories_per_refresh=12,
             ai_config=ai_config,
         )
 
@@ -439,7 +437,6 @@ class TestRefreshNewsContract:
             FeedConfig(name="Test", url="https://test.com/rss", category="Tech")
         ]
         news_config.language = "zh"
-        news_config.stories_per_refresh = 12
         news_config.max_age_days = 3
 
         mock_curation_result = CurationResult(

@@ -259,19 +259,17 @@ async def fetch_feeds(
 async def curate(
     raw_entries: list[dict],
     language: str,
-    stories_per_refresh: int,
     ai_config: AiConfig,
 ) -> CurationResult:
-    """Invoke LLM to select, rank, summarize, translate, and describe tone.
+    """Invoke LLM to rank, summarize, translate, and describe tone.
 
-    The LLM is called once with all raw entries. It returns:
-    - Exactly `stories_per_refresh` curated stories (or fewer if not enough raw entries)
+    The LLM keeps all stories, only removing obvious spam. It returns:
+    - All non-spam curated stories
     - A tone_description summarizing the batch's overall mood/themes
 
     Args:
         raw_entries: List of entry dicts from fetch_feeds().
         language: Target language code (e.g. "zh" for Chinese, "en" for English).
-        stories_per_refresh: Maximum number of stories to return.
         ai_config: AI backend configuration.
 
     Returns:
@@ -282,8 +280,7 @@ async def curate(
         LlmParseError: If the LLM response cannot be parsed.
 
     Contract:
-        - Returns at most stories_per_refresh stories
-        - Returns fewer stories if not enough raw entries
+        - Keeps all stories, only filters obvious spam
         - Stories are ranked by importance (most important first)
         - Exactly one story has featured=True (if stories is non-empty)
         - tone_description is free-form text in the target language
@@ -307,13 +304,8 @@ async def curate(
 
     for batch_start in range(0, len(raw_entries), BATCH_SIZE):
         batch = raw_entries[batch_start:batch_start + BATCH_SIZE]
-        # For batched processing, each batch gets stories_per_refresh=0 (keep all)
-        # or proportional selection if stories_per_refresh > 0
-        batch_limit = stories_per_refresh
-        if stories_per_refresh > 0:
-            batch_limit = max(1, stories_per_refresh * len(batch) // len(raw_entries))
 
-        prompt = _build_curation_prompt(batch, language, batch_limit)
+        prompt = _build_curation_prompt(batch, language)
         response = await invoke_text(
             prompt=prompt,
             ai_config=ai_config,
@@ -379,7 +371,7 @@ async def refresh_news(
 
     Contract:
         - fetch_feeds(): Uses news_config.feeds and news_config.max_age_days
-        - curate(): Uses news_config.language and news_config.stories_per_refresh
+        - curate(): Uses news_config.language (always keeps all, filters spam only)
         - Returns CurationResult with feed_count and entry_count populated
         - Feed failures are non-fatal (logged, skipped)
     """
@@ -404,7 +396,6 @@ async def refresh_news(
     result = await curate(
         raw_entries=raw_entries,
         language=news_config.language,
-        stories_per_refresh=news_config.stories_per_refresh,
         ai_config=ai_config,
     )
 
@@ -444,7 +435,6 @@ def _strip_html_tags(text: str) -> str:
 def _build_curation_prompt(
     raw_entries: list[dict],
     language: str,
-    stories_per_refresh: int,
 ) -> str:
     """Build the curation prompt for the LLM.
 
@@ -481,14 +471,10 @@ def _build_curation_prompt(
         headline_constraint = "headlines max ~12 words"
         summary_constraint = "summaries 60-100 words"
 
-    select_instruction = ""
-    if stories_per_refresh > 0:
-        select_instruction = f"Select the {stories_per_refresh} most interesting/important stories."
-    else:
-        select_instruction = (
-            "Keep ALL stories. Only remove entries that are OBVIOUSLY spam, ads, "
-            "or completely unreadable (must be high confidence). When in doubt, KEEP the entry."
-        )
+    select_instruction = (
+        "Keep ALL stories. Only remove entries that are OBVIOUSLY spam, ads, "
+        "or completely unreadable (must be high confidence). When in doubt, KEEP the entry."
+    )
 
     prompt = f"""You are a news editor preparing a visual briefing for a large display.
 

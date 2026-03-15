@@ -1,6 +1,6 @@
 """Tests for orchestrator batching behavior and recommended_stories enforcement.
 
-Bug #7: stories_per_refresh=12 must produce multiple batches (not one giant batch)
+Bug #7: Large story counts must produce multiple batches (not one giant batch)
 Bug #8: recommended_stories from layout must limit stories rendered
 
 Spec sources:
@@ -20,11 +20,6 @@ import pytest
 
 from sfumato.config import (
     AppConfig,
-    AiConfig,
-    NewsConfig,
-    PaintingsConfig,
-    ScheduleConfig,
-    TvConfig,
 )
 from sfumato.orchestrator import (
     RunOptions,
@@ -47,34 +42,33 @@ from test_orchestrator import (  # noqa: E402
 
 
 # =============================================================================
-# BUG #7: stories_per_refresh batching behavior
+# BUG #7: batching behavior
 # =============================================================================
 
 
-class TestStoriesPerRefreshBatching:
-    """Tests for correct batching when stories_per_refresh is large.
+class TestStoryBatching:
+    """Tests for correct batching of curated stories.
 
     Contract:
-    - stories_per_refresh (~12) stories are curated per refresh
-    - They are split into batches of recommended_stories (3-4)
-    - Multiple batches should be created when stories_per_refresh > batch_size
-    - The batch_size is min(4, stories_per_refresh) per current implementation
+    - Curated stories are split into batches of 4
+    - Multiple batches should be created when story count > batch_size
+    - batch_size is a fixed constant of 4
 
-    Bug #7: When stories_per_refresh=12, should create multiple batches,
-    not one giant batch of 12 stories.
+    Bug #7: Large story counts should create multiple batches,
+    not one giant batch.
     """
 
     @pytest.mark.asyncio
-    async def test_stories_per_refresh_12_creates_multiple_batches(self) -> None:
-        """stories_per_refresh=12 creates 3 batches (not 1 giant batch).
+    async def test_12_stories_creates_multiple_batches(self) -> None:
+        """12 stories creates 3 batches (not 1 giant batch).
 
-        Default batch_size = min(4, 12) = 4
+        batch_size = 4
         12 stories / 4 per batch = 3 batches
         """
         mock_state = MockAppState()
         config = create_minimal_app_config()
 
-        # Create 12 stories (matching stories_per_refresh default)
+        # Create 12 stories
         stories = [
             Story(
                 headline=f"Story {i}",
@@ -109,10 +103,10 @@ class TestStoriesPerRefreshBatching:
         assert mock_state.news_queue.size == 3
 
     @pytest.mark.asyncio
-    async def test_stories_per_refresh_15_creates_four_batches(self) -> None:
-        """stories_per_refresh=15 creates 4 batches (not 1 giant batch).
+    async def test_15_stories_creates_four_batches(self) -> None:
+        """15 stories creates 4 batches (not 1 giant batch).
 
-        Default batch_size = min(4, 15) = 4
+        batch_size = 4
         15 stories / 4 per batch = 4 batches (3 full + 1 partial)
         """
         mock_state = MockAppState()
@@ -192,27 +186,10 @@ class TestStoriesPerRefreshBatching:
         assert batches_enqueued == 1
 
     @pytest.mark.asyncio
-    async def test_batch_size_never_exceeds_stories_per_refresh(self) -> None:
-        """Batch size is capped at stories_per_refresh even if internal logic tries larger."""
+    async def test_batch_size_is_fixed_at_4(self) -> None:
+        """Batch size is always 4 regardless of story count."""
         mock_state = MockAppState()
-
-        # Create config with low stories_per_refresh
-        config = AppConfig(
-            tv=TvConfig(ip="192.168.1.100"),
-            schedule=ScheduleConfig(),
-            news=NewsConfig(
-                language="en",
-                stories_per_refresh=2,  # Low limit
-                max_age_days=3,
-                expire_days=7,
-                feeds=[],
-            ),
-            paintings=PaintingsConfig(
-                cache_dir=Path("/tmp/sfumato-test/paintings"),
-            ),
-            ai=AiConfig(cli="test", model="test-model"),
-            data_dir=Path("/tmp/sfumato-test"),
-        )
+        config = create_minimal_app_config()
 
         stories = [
             Story(
@@ -224,7 +201,7 @@ class TestStoriesPerRefreshBatching:
                 published_at=datetime.now(),
                 featured=(i == 0),
             )
-            for i in range(5)  # More than stories_per_refresh
+            for i in range(5)
         ]
 
         mock_result = CurationResult(
@@ -242,9 +219,9 @@ class TestStoriesPerRefreshBatching:
 
             batches_enqueued = await run_news_refresh(config, mock_state)
 
-        # batch_size = min(4, 2) = 2
-        # 5 stories / 2 per batch = 3 batches (2, 2, 1)
-        assert batches_enqueued == 3
+        # batch_size = 4
+        # 5 stories / 4 per batch = 2 batches (4, 1)
+        assert batches_enqueued == 2
 
 
 # =============================================================================

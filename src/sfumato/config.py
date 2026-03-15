@@ -71,7 +71,6 @@ class NewsConfig:
     """
 
     language: str = "zh"
-    stories_per_refresh: int = 0  # 0 = keep all (only filter obvious spam). >0 = select top N.
     max_age_days: int = 3
     expire_days: int = 7
     replay_expire_days: int = 2
@@ -197,7 +196,6 @@ active_hours = [7, 23]
 
 [news]
 language = "zh"
-stories_per_refresh = 12
 max_age_days = 3
 expire_days = 7
 # Backward-compatible default for older configs that omit this field.
@@ -378,13 +376,6 @@ def _build_app_config(data: dict[str, Any], source_path: Path) -> AppConfig:
             news_data,
             "language",
             defaults.news.language,
-            source_path,
-            "news",
-        ),
-        stories_per_refresh=_expect_int_or_default(
-            news_data,
-            "stories_per_refresh",
-            defaults.news.stories_per_refresh,
             source_path,
             "news",
         ),

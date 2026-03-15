@@ -293,7 +293,7 @@ def test_replay_expire_days_defaults_to_2_when_omitted_from_config_file(
         config_path,
         (
             '[tv]\nip = "192.168.1.100"\n\n'
-            '[news]\nlanguage = "en"\nstories_per_refresh = 12\n'
+            '[news]\nlanguage = "en"\n'
             "max_age_days = 3\nexpire_days = 7\nfeeds = []\n"
         ),
     )

@@ -672,15 +672,15 @@ async def run_news_refresh(
         - Uses config.news.max_age_days for filtering old articles
         - Uses config.news.expire_days for expiring old queue batches
         - Uses config.news.replay_expire_days for expiring replay batches during refresh
-        - Uses config.news.stories_per_refresh as the target batch size default
+        - Uses a fixed batch size of 4 stories per rotation display
         - Skips primary curation enqueue when replay overlap exceeds
           RUN_NEWS_REFRESH_REPLAY_CURATION_SKIP_OVERLAP_RATIO
         - Individual feed fetch failures are non-fatal (logged, skipped)
         - State is NOT saved; caller must call state.save_all() if persistence needed
     """
     # Batch size = how many stories per rotation display (not total curated).
-    # stories_per_refresh is total curated (~12), we split into batches of 3-4.
-    batch_size = min(4, config.news.stories_per_refresh)
+    # We split curated stories into batches of 4.
+    batch_size = 4
 
     # Collect already-displayed URLs from replay queue to avoid re-curating
     exclude_urls: set[str] = set()

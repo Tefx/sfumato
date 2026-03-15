@@ -729,7 +729,7 @@ def create_minimal_app_config() -> AppConfig:
         ),
         news=NewsConfig(
             language="en",
-            stories_per_refresh=12,
+
             max_age_days=3,
             expire_days=7,
             feeds=[],
@@ -3159,7 +3159,7 @@ class TestRunNewsRefresh:
     Contract:
     - Fetches and curates news from configured feeds
     - Expires old batches before adding new ones
-    - Enqueues stories in batches using stories_per_refresh
+    - Enqueues stories in batches of 4
     - Returns number of batches enqueued
     - Does NOT persist state (caller must call save_all)
     """
@@ -5125,7 +5125,7 @@ class TestReplayDedupSkip:
             schedule=config.schedule,
             news=NewsConfig(
                 language="en",
-                stories_per_refresh=12,
+    
                 max_age_days=3,
                 expire_days=7,
                 feeds=[],
