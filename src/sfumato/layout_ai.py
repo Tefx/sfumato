@@ -416,12 +416,15 @@ Analyze and provide exactly these 10 items:
    This protected zone must not overlap the news zone or whisper zone.
 
 5. **Whisper Zone**: Choose a secondary zone for art-fact whisper text.
-   - Must not overlap the news zone or the subject zone
-   - Must not overlap the painting credit area (artist name + title + year shown in bottom-left for portrait, or bottom of painting for landscape)
+   - Must not overlap the news zone (text_zone) — MUST be in a DIFFERENT zone
+   - Must not overlap the subject zone
+   - Must not overlap the painting credit area:
+     * Portrait templates: bottom-left is reserved for painting credit (artist, title, year)
+     * Landscape templates: dateline appears above the news zone
    - Must remain readable at TV distance
    - Width must stay between 12% and 24% of screen width
    - Keep it visually subordinate to the main news block
-   - For portrait paintings: bottom-left is reserved for painting credit, choose a different zone
+   - CRITICAL: whisper_zone position must differ from BOTH text_zone AND subject_zone. All three must be in different zones.
 
 6. **Art Facts**: Produce 1-3 whisper-ready art facts.
    - Short, factual, and display-ready
