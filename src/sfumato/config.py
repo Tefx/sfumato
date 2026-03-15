@@ -75,6 +75,7 @@ class NewsConfig:
     expire_days: int = 7
     replay_expire_days: int = 2
     qr_size: int = 60
+    qr_enabled: bool = True
     feeds: list[FeedConfig] = field(default_factory=list)
 
 
@@ -202,6 +203,7 @@ max_age_days = 3
 expire_days = 7
 replay_expire_days = 2
 qr_size = 60
+qr_enabled = true
 
 # --- Tech ---
 [[news.feeds]]
@@ -455,6 +457,13 @@ def _build_app_config(data: dict[str, Any], source_path: Path) -> AppConfig:
             source_path,
             "news",
         ),
+        qr_enabled=_expect_bool_or_default(
+            news_data,
+            "qr_enabled",
+            defaults.news.qr_enabled,
+            source_path,
+            "news",
+        ),
         feeds=feeds,
     )
 
@@ -586,6 +595,21 @@ def _expect_int_or_default(
     if isinstance(value, bool) or not isinstance(value, int):
         raise ConfigError(
             f"Invalid type for '{section}.{key}' in '{source_path}': expected int, got {type(value).__name__}"
+        )
+    return value
+
+
+def _expect_bool_or_default(
+    data: dict[str, Any],
+    key: str,
+    default: bool,
+    source_path: Path,
+    section: str,
+) -> bool:
+    value = data.get(key, default)
+    if not isinstance(value, bool):
+        raise ConfigError(
+            f"Invalid type for '{section}.{key}' in '{source_path}': expected bool, got {type(value).__name__}"
         )
     return value
 
