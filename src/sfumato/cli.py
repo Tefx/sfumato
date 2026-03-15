@@ -108,6 +108,21 @@ def _verbose_print(verbose: bool, message: str) -> None:
         typer.echo(message)
 
 
+def _setup_logging(verbose: bool) -> None:
+    """Configure Python logging for CLI commands."""
+    import logging
+
+    log_level = logging.DEBUG if verbose else logging.INFO
+    logging.basicConfig(
+        level=log_level,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        datefmt="%H:%M:%S",
+    )
+    # Suppress noisy third-party loggers
+    for name in ("httpx", "litellm", "httpcore", "LiteLLM"):
+        logging.getLogger(name).setLevel(logging.WARNING)
+
+
 def _load_config_or_exit(config_path: Path | None, verbose: bool) -> Any:
     """Load config, printing user-friendly error on failure.
 
@@ -659,6 +674,7 @@ def run(
     Use --no-upload for local testing without TV connection.
     Use --painting to test with a specific image file.
     """
+    _setup_logging(verbose)
     loaded_config = _load_config_or_exit(config, verbose)
 
     # Apply CLI overrides
@@ -830,6 +846,9 @@ def watch(
             f"Warning: --model override not yet implemented. Using: {loaded_config.ai.model}",
             err=True,
         )
+
+    # Configure logging so orchestrator's logger output is visible
+    _setup_logging(verbose)
 
     # Import orchestrator.watch for actual implementation
     from sfumato.orchestrator import watch as orchestrator_watch
