@@ -300,9 +300,10 @@ docker compose logs -f sfumato
 [schedule]
 # active_hours: only push during this window
 # Examples:
-#   active_hours = [10, 2]    # 7am to 11pm
-#   active_hours = [10, 14]   # 10am to 2pm only
-#   active_hours = [0, 23]    # all day
+#   active_hours = [10, 2]    # 10am to 1:59am next day (wraps midnight)
+#   active_hours = [7, 23]    # 7am to 10:59pm
+#   active_hours = [10, 14]   # 10am to 1:59pm only
+#   active_hours = [0, 24]    # all day
 
 # quiet_hours: show pure paintings (no news overlay)
 # Examples:
