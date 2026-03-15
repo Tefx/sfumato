@@ -47,7 +47,7 @@ class ScheduleConfig:
     """Typed schedule configuration contract."""
 
     news_interval_hours: int = 6
-    rotate_interval_minutes: int = 15
+    rotate_interval_minutes: int = 5
     quiet_hours: tuple[int, int] = (0, 6)
     active_hours: tuple[int, int] = (7, 23)
 
@@ -191,7 +191,7 @@ max_uploads = 5
 
 [schedule]
 news_interval_hours = 6
-rotate_interval_minutes = 15
+rotate_interval_minutes = 5
 quiet_hours = [0, 6]
 active_hours = [7, 23]
 
@@ -199,14 +199,9 @@ active_hours = [7, 23]
 language = "zh"
 max_age_days = 3
 expire_days = 7
-# Backward-compatible default for older configs that omit this field.
 replay_expire_days = 2
 
-# [[news.feeds]]
-# name = "Example Feed"
-# url = "https://example.com/rss.xml"
-# category = "Tech"
-
+# --- Tech ---
 [[news.feeds]]
 name = "TLDR Tech"
 url = "https://tldr.tech/api/rss/tech"
@@ -228,14 +223,63 @@ url = "https://feeds.arstechnica.com/arstechnica/index"
 category = "Tech"
 
 [[news.feeds]]
+name = "TechCrunch"
+url = "https://techcrunch.com/feed/"
+category = "Tech"
+
+[[news.feeds]]
+name = "The Verge"
+url = "https://www.theverge.com/rss/index.xml"
+category = "Tech"
+
+# --- AI ---
+[[news.feeds]]
+name = "Import AI"
+url = "https://importai.substack.com/feed"
+category = "AI"
+
+[[news.feeds]]
+name = "Latent Space"
+url = "https://www.latent.space/feed"
+category = "AI"
+
+# --- World ---
+[[news.feeds]]
 name = "BBC News"
 url = "https://feeds.bbci.co.uk/news/rss.xml"
 category = "World"
 
 [[news.feeds]]
+name = "CNBC Economy"
+url = "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=20910258"
+category = "Economy"
+
+[[news.feeds]]
+name = "NYT Home"
+url = "https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml"
+category = "World"
+
+# --- Science ---
+[[news.feeds]]
 name = "Nature"
 url = "https://www.nature.com/nature.rss"
 category = "Science"
+
+[[news.feeds]]
+name = "MIT Tech Review"
+url = "https://www.technologyreview.com/feed/"
+category = "Science"
+
+[[news.feeds]]
+name = "Ars Technica Science"
+url = "https://feeds.arstechnica.com/arstechnica/science"
+category = "Science"
+
+# --- Economy ---
+[[news.feeds]]
+name = "Bloomberg Markets"
+url = "https://feeds.bloomberg.com/markets/news.rss"
+category = "Economy"
 
 [paintings]
 cache_dir = "~/.sfumato/paintings"
