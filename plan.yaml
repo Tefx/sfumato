@@ -6299,3 +6299,79 @@ phases:
     - src/sfumato/render.py
     - tests/test_paintings.py
     agent: python-senior
+  - id: stabilize.docs-sync
+    name: Sync documentation with current codebase
+    status: pending
+    description: 'step_type: implementation
+
+      priority: MEDIUM
+
+
+      Update all three documentation files to reflect current code state.
+
+
+      ## Known discrepancies to fix
+
+
+      ### PROTOTYPING.md
+
+      - References to embedding-based matching (deleted)
+
+      - References to stories_per_refresh (deleted)
+
+      - Scrim overlay terminology (now text-zone background)
+
+
+      ### README.md
+
+      - Embedding references
+
+      - Outdated CLI flags or options
+
+      - Outdated architecture description
+
+
+      ### ARCHITECTURE.md
+
+      - Embedding pipeline sections
+
+      - stories_per_refresh references
+
+      - Scrim terminology -> text-zone background
+
+      - Any section that references deleted modules or renamed concepts
+
+
+      ## Approach
+
+      1. grep for outdated terms: embedding, stories_per_refresh, scrim
+
+      2. Update each occurrence to match current code
+
+      3. Do NOT rewrite entire documents — surgical updates only
+
+      4. Preserve document structure and section numbering
+
+
+      ## Files to touch
+
+      - PROTOTYPING.md
+
+      - README.md
+
+      - ARCHITECTURE.md'
+    verification: '- grep -i ''embedding'' in all 3 docs returns 0 hits (or only valid
+      references)
+
+      - grep -i ''stories_per_refresh'' returns 0 hits
+
+      - grep -i ''scrim'' returns 0 hits (or updated to text-zone)
+
+      - No broken section references
+
+      - Documents still read coherently'
+    refs:
+    - PROTOTYPING.md
+    - README.md
+    - ARCHITECTURE.md
+    agent: python-executor
