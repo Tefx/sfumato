@@ -1250,18 +1250,24 @@ async def init_project(config: AppConfig) -> None:
                 break
             idx += 1
 
-            try:
-                print(f"  [{idx}] {painting.title} — {painting.artist}")
+            print(f"  [{idx}] {painting.title} — {painting.artist}")
 
-                # Layout analysis (cached)
+            # Layout analysis (cached) — independent of embedding
+            try:
                 if state.layout_cache.has(painting.content_hash):
                     print(f"      Layout cached, skipping")
                 else:
                     layout = await analyze_painting(painting.image_path, config.ai)
                     state.layout_cache.put(painting.content_hash, layout)
                     print(f"      Layout: {layout.template_hint}")
+                    state.save_all()  # Save layout immediately
+            except Exception as e:
+                print(f"      Layout error: {e}")
+                logger.warning("Layout failed for %s: %s", painting.content_hash, e)
+                # Continue — layout failed but don't skip embedding if layout was cached
 
-                # Embedding (cached)
+            # Embedding (cached) — separate try, won't lose layout on failure
+            try:
                 if state.embedding_cache.has(painting.content_hash):
                     print(f"      Embedding cached, skipping")
                 else:
@@ -1274,19 +1280,15 @@ async def init_project(config: AppConfig) -> None:
                             painting.content_hash, embedding_result.vector
                         )
                         print(f"      Embedded ({len(embedding_result.vector)}d)")
-
-                success_count += 1
-
-                # Incremental save after each painting — crash-safe
-                state.save_all()
-
+                        state.save_all()
             except Exception as e:
-                print(f"      Error: {e}")
-                logger.warning(
-                    "Failed to process painting %s: %s",
-                    painting.content_hash,
-                    e,
-                )
+                print(f"      Embedding error (non-fatal): {e}")
+                logger.warning("Embedding failed for %s: %s", painting.content_hash, e)
+                # Embedding failure is non-fatal — semantic matching falls back to random
+
+            # Count as success if layout exists (embedding is optional)
+            if state.layout_cache.has(painting.content_hash):
+                success_count += 1
 
     # Run producer and consumer concurrently
     await asyncio.gather(producer(), consumer())
