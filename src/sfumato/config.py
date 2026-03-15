@@ -48,7 +48,7 @@ class ScheduleConfig:
 
     news_interval_hours: int = 6
     rotate_interval_minutes: int = 5
-    quiet_hours: tuple[int, int] = (0, 6)
+    quiet_hours: tuple[int, int] = (2, 6)
     active_hours: tuple[int, int] = (7, 23)
 
 
@@ -194,7 +194,7 @@ max_uploads = 5
 [schedule]
 news_interval_hours = 6
 rotate_interval_minutes = 5
-quiet_hours = [0, 6]
+quiet_hours = [2, 6]
 active_hours = [7, 23]
 
 [news]
