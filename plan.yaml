@@ -6375,3 +6375,41 @@ phases:
     - README.md
     - ARCHITECTURE.md
     agent: python-executor
+  - id: stabilize.config-compat-and-tv-clean
+    name: Config backward compat + tv clean verification
+    status: pending
+    description: "step_type: implementation\npriority: LOW\n\nTwo related cleanup\
+      \ items bundled together.\n\n## 1. Config backward compatibility\n\nOld config.toml\
+      \ files may lack new fields added in recent phases:\n- replay_expire_days\n\
+      - backend (sdk vs cli)\n- pool_size\n- Other fields added in art-facts, replay,\
+      \ polish phases\n\nVerify that load_config() handles missing fields gracefully\
+      \ by using\ndataclass defaults. Add a test with a minimal config.toml (only\
+      \ [tv] section)\nto prove all other fields get sensible defaults.\n\nFile: src/sfumato/config.py\n\
+      Pattern: Follow existing test_config.py patterns.\n\nTest to add: tests/test_config.py::test_minimal_config_backward_compat\n\
+      \  - Input: TOML with only [tv] ip = \"1.2.3.4\"\n  - Expected: All other fields\
+      \ use dataclass defaults, no error\n\n## 2. tv clean verification\n\nThe `sfumato\
+      \ tv clean` command exists but has never been verified with\na real or mocked\
+      \ TV. Add a unit test using the existing TV mock pattern\nin test_tv.py to verify:\n\
+      - clean_old_uploads() keeps the right number of images\n- Ordering logic (by\
+      \ content_id) works correctly\n- Edge case: keep=0 deletes all, keep > total\
+      \ deletes none\n\nTest to add: tests/test_tv.py::test_clean_old_uploads_keeps_recent\n\
+      Test to add: tests/test_tv.py::test_clean_old_uploads_keep_zero\n\n## Files\
+      \ to touch\n- tests/test_config.py (add backward compat test)\n- tests/test_tv.py\
+      \ (add clean verification tests)\n- src/sfumato/config.py (fix if backward compat\
+      \ test fails)\n- src/sfumato/tv.py (fix if clean logic has bugs)"
+    verification: '- pytest tests/test_config.py::test_minimal_config_backward_compat
+      -v passes
+
+      - pytest tests/test_tv.py -k clean -v passes
+
+      - Minimal config with only [tv] section loads without error
+
+      - tv clean keeps correct number of images in mock test'
+    refs:
+    - src/sfumato/config.py
+    - src/sfumato/tv.py
+    - src/sfumato/cli.py
+    - tests/test_config.py
+    - tests/test_tv.py
+    - tests/test_cli.py
+    agent: python-executor
