@@ -398,6 +398,12 @@ def build_template_variables(ctx: RenderContext) -> dict[str, str]:
         occupied.add("bottom-right")
         occupied.add("right-side")
 
+    # Magazine template: right 28% = news panel. Whisper goes on painting area (left side)
+    if ctx.template_name == "magazine":
+        occupied.add("top-right")
+        occupied.add("bottom-right")
+        occupied.add("right-side")
+
     if whisper_pos in occupied:
         # Find first unoccupied zone
         all_zones = ["bottom-right", "bottom-left", "top-left", "top-right"]
