@@ -6229,3 +6229,40 @@ phases:
     - src/sfumato/cli.py
     - tests/test_scheduler.py
     agent: python-senior
+  - id: stabilize.docker-build-verify
+    name: Docker build and runtime verification
+    status: pending
+    description: "step_type: implementation\npriority: HIGH\n\nVerify the Docker build\
+      \ pipeline works end-to-end and fix any issues found.\n\n## Scope\n\n1. **Build\
+      \ test**: Run `docker build -t sfumato-test .` and verify it completes\n   without\
+      \ errors. Check all COPY targets exist and the wheel installs correctly.\n\n\
+      2. **Entrypoint test**: Verify docker/entrypoint.sh creates required directories\n\
+      \   and fails with clear error when config.toml is missing.\n\n3. **Healthcheck\
+      \ test**: Verify docker/healthcheck.py runs correctly inside the\n   container\
+      \ and checks watch_health.json properly.\n\n4. **Runtime test**: Start the container\
+      \ with a valid config.toml mounted and\n   verify `sfumato watch` starts (check\
+      \ first log lines). Can use\n   `docker run --rm -v config.toml:/data/config.toml\
+      \ sfumato-test` with a\n   short timeout.\n\n5. **Dependency audit**: Verify\
+      \ pyproject.toml dependencies match what the\n   Dockerfile installs. Check\
+      \ playwright chromium is available for render.\n\n## Files to touch\n- Dockerfile\
+      \ (fix if needed)\n- docker/entrypoint.sh (fix if needed)\n- docker/healthcheck.py\
+      \ (fix if needed)\n- docker-compose.yml (fix if needed)\n- pyproject.toml (dependency\
+      \ fixes if needed)\n\n## Known risks\n- Playwright chromium install is large\
+      \ and may have architecture-specific issues\n- SFUMATO_AI_BACKEND=sdk env var\
+      \ must be respected by config loading\n- /data volume mount paths must match\
+      \ SFUMATO_DATA_DIR"
+    verification: '- docker build completes without errors
+
+      - Container starts and sfumato watch produces first log line
+
+      - Healthcheck script runs successfully inside container
+
+      - entrypoint.sh fails cleanly when config.toml is missing
+
+      - All pyproject.toml dependencies are available in the container'
+    refs:
+    - Dockerfile
+    - docker/entrypoint.sh
+    - docker/healthcheck.py
+    - docker-compose.yml
+    agent: python-senior
