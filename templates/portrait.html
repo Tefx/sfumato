@@ -12,11 +12,10 @@
     height: 2160px;
     overflow: hidden;
     display: flex;
-    background: url('{{BG_IMAGE}}') center/cover no-repeat;
-    position: relative;
+    background: {{BG_COLOR}};
   }
 
-  /* Left panel — metadata (frosted glass over painting) */
+  /* Left panel — metadata */
   .left-panel {
     flex: 0 0 {{LEFT_WIDTH}};
     height: 100%;
@@ -24,9 +23,6 @@
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    background: rgba(0, 0, 0, 0.55);
-    backdrop-filter: blur(20px) saturate(0.7);
-    -webkit-backdrop-filter: blur(20px) saturate(0.7);
   }
 
   .left-top .dateline {
@@ -82,7 +78,7 @@
     object-fit: cover;
   }
 
-  /* Right panel — news (frosted glass over painting) */
+  /* Right panel — news */
   .right-panel {
     flex: 1;
     height: 100%;
@@ -90,9 +86,6 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    background: rgba(0, 0, 0, 0.55);
-    backdrop-filter: blur(20px) saturate(0.7);
-    -webkit-backdrop-filter: blur(20px) saturate(0.7);
   }
 
   .right-panel .section-label {
