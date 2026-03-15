@@ -289,7 +289,6 @@ def test_watch_scheduler_action_mapping_and_order_are_explicit() -> None:
         "ROTATE": "run_once(config, state, RunOptions())",
         "BACKFILL": "run_backfill(config, state)",
         "QUIET_ART": "run_once(config, state, RunOptions(no_news=True))",
-        "IDLE": "no-op (only state save + sleep)",
     }
 
 
@@ -724,7 +723,6 @@ def create_minimal_app_config() -> AppConfig:
         schedule=ScheduleConfig(
             news_interval_hours=6,
             rotate_interval_minutes=15,
-            quiet_hours=(0, 6),
             active_hours=(7, 23),
         ),
         news=NewsConfig(
@@ -3481,12 +3479,11 @@ class TestWatchSchedulerActionMappingContract:
     - ROTATE maps to run_once with default options
     - BACKFILL maps to run_backfill
     - QUIET_ART maps to run_once with no_news=True
-    - IDLE maps to no-op (only state save + sleep)
     """
 
     def test_action_mapping_has_all_scheduler_actions(self) -> None:
         """All scheduler Action enum values must have mappings."""
-        required_actions = {"REFRESH_NEWS", "ROTATE", "BACKFILL", "QUIET_ART", "IDLE"}
+        required_actions = {"REFRESH_NEWS", "ROTATE", "BACKFILL", "QUIET_ART"}
         assert set(WATCH_SCHEDULER_ACTION_MAPPING.keys()) == required_actions
 
     def test_refresh_news_maps_to_run_news_refresh(self) -> None:
@@ -3514,11 +3511,6 @@ class TestWatchSchedulerActionMappingContract:
         mapping = WATCH_SCHEDULER_ACTION_MAPPING["QUIET_ART"]
         assert "no_news=True" in mapping
         assert "run_once" in mapping
-
-    def test_idle_maps_to_noop(self) -> None:
-        """IDLE must map to no-op with state save + sleep."""
-        mapping = WATCH_SCHEDULER_ACTION_MAPPING["IDLE"]
-        assert "no-op" in mapping or "state save" in mapping
 
     def test_action_dispatch_order_is_deterministic(self) -> None:
         """Combined actions must dispatch in deterministic order."""
@@ -3852,10 +3844,10 @@ class TestSchedulerContract:
     """
 
     def test_scheduler_action_types_defined(self) -> None:
-        """Scheduler must define REFRESH_NEWS, ROTATE, BACKFILL, QUIET_ART, IDLE."""
+        """Scheduler must define REFRESH_NEWS, ROTATE, BACKFILL, QUIET_ART."""
         # These are the actions that the scheduler can return
         # and must be handled by the orchestrator dispatch
-        expected_actions = {"REFRESH_NEWS", "ROTATE", "BACKFILL", "QUIET_ART", "IDLE"}
+        expected_actions = {"REFRESH_NEWS", "ROTATE", "BACKFILL", "QUIET_ART"}
         assert set(WATCH_SCHEDULER_ACTION_MAPPING.keys()) == expected_actions
 
     def test_scheduler_dispatch_order_matches_action_order(self) -> None:
@@ -3865,14 +3857,6 @@ class TestSchedulerContract:
         assert WATCH_ACTION_DISPATCH_ORDER[1] == "ROTATE"
         assert WATCH_ACTION_DISPATCH_ORDER[2] == "BACKFILL"
         assert WATCH_ACTION_DISPATCH_ORDER[3] == "QUIET_ART"
-
-    def test_idle_action_has_no_pipeline_work(self) -> None:
-        """IDLE action must be documented as no-op."""
-        idle_mapping = WATCH_SCHEDULER_ACTION_MAPPING["IDLE"]
-        assert (
-            "no-op" in idle_mapping.lower() or "only state save" in idle_mapping.lower()
-        )
-
 
 class TestWatchDaemonIntegrationContract:
     """Tests for watch daemon integration with run_once and run_news_refresh.
@@ -3953,13 +3937,6 @@ class TestWatchDaemonConfigIntegration:
 
         default_schedule = ScheduleConfig()
         assert hasattr(default_schedule, "active_hours")
-
-    def test_config_schedule_has_quiet_hours(self) -> None:
-        """ScheduleConfig must have quiet_hours for silent periods."""
-        from sfumato.config import ScheduleConfig
-
-        default_schedule = ScheduleConfig()
-        assert hasattr(default_schedule, "quiet_hours")
 
     def test_config_paintings_has_pool_size(self) -> None:
         """PaintingsConfig must have pool_size for backfill target."""
@@ -4053,26 +4030,22 @@ class TestWatchDaemonStartupBehavior:
         ) < WATCH_LOOP_STAGE_ORDER.index("state_save")
 
 
-class TestWatchDaemonQuietHoursContract:
-    """Tests for quiet hours behavior in watch daemon.
+class TestWatchDaemonQuietArtContract:
+    """Tests for QUIET_ART behavior in watch daemon.
 
     Contract:
-    - During quiet_hours, daemon may push QUIET_ART or do nothing
-    - Outside active_hours and quiet_hours, daemon is IDLE
+    - Outside active_hours, daemon shows QUIET_ART (pure paintings, no news)
+    - The TV always shows something -- never idle
     """
 
     def test_quiet_art_action_defined(self) -> None:
-        """QUIET_ART action must be defined for quiet hours."""
+        """QUIET_ART action must be defined for outside active hours."""
         assert "QUIET_ART" in WATCH_SCHEDULER_ACTION_MAPPING
 
     def test_quiet_art_uses_no_news_flag(self) -> None:
         """QUIET_ART must pass no_news=True to run_once."""
         mapping = WATCH_SCHEDULER_ACTION_MAPPING["QUIET_ART"]
         assert "no_news=True" in mapping
-
-    def test_idle_action_defined(self) -> None:
-        """IDLE action must be defined for outside active hours."""
-        assert "IDLE" in WATCH_SCHEDULER_ACTION_MAPPING
 
 
 # =============================================================================

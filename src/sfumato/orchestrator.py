@@ -253,7 +253,6 @@ WATCH_SCHEDULER_ACTION_MAPPING: Final[dict[str, str]] = {
     "ROTATE": "run_once(config, state, RunOptions())",
     "BACKFILL": "run_backfill(config, state)",
     "QUIET_ART": "run_once(config, state, RunOptions(no_news=True))",
-    "IDLE": "no-op (only state save + sleep)",
 }
 """Scheduler action to orchestrator operation mapping.
 
@@ -920,7 +919,6 @@ async def watch(config: AppConfig) -> None:
     - ``ROTATE`` -> ``run_once(..., RunOptions())``
     - ``BACKFILL`` -> ``run_backfill``
     - ``QUIET_ART`` -> ``run_once(..., RunOptions(no_news=True))``
-    - ``IDLE`` -> no pipeline action
 
     Graceful shutdown semantics:
     - Handle ``SIGINT`` and ``SIGTERM``.
@@ -1013,9 +1011,6 @@ async def watch(config: AppConfig) -> None:
             actions_to_dispatch = [Action.BACKFILL]
         elif Action.QUIET_ART in action:
             actions_to_dispatch = [Action.QUIET_ART]
-        elif Action.IDLE in action:
-            # IDLE: no pipeline action, just state save + sleep
-            logger.debug("Scheduler returned IDLE, skipping to sleep")
         else:
             # NONE: no scheduled action. Check if backfill is needed.
             # Scheduler can't check pool size (not in SchedulerState),

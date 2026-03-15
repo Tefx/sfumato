@@ -48,8 +48,7 @@ class ScheduleConfig:
 
     news_interval_hours: int = 6
     rotate_interval_minutes: int = 5
-    quiet_hours: tuple[int, int] = (2, 6)
-    active_hours: tuple[int, int] = (7, 23)
+    active_hours: tuple[int, int] = (10, 2)
 
 
 @dataclass(frozen=True)
@@ -194,8 +193,7 @@ max_uploads = 5
 [schedule]
 news_interval_hours = 6
 rotate_interval_minutes = 5
-quiet_hours = [2, 6]
-active_hours = [7, 23]
+active_hours = [10, 2]
 
 [news]
 language = "zh"
@@ -398,13 +396,6 @@ def _build_app_config(data: dict[str, Any], source_path: Path) -> AppConfig:
             schedule_data,
             "rotate_interval_minutes",
             defaults.schedule.rotate_interval_minutes,
-            source_path,
-            "schedule",
-        ),
-        quiet_hours=_expect_hours_tuple_or_default(
-            schedule_data,
-            "quiet_hours",
-            defaults.schedule.quiet_hours,
             source_path,
             "schedule",
         ),

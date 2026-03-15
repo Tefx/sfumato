@@ -3,7 +3,7 @@
 Implements the contract from ARCHITECTURE.md#2.11:
 - Action enum for scheduling decisions
 - SchedulerState for tracking last action timestamps
-- Scheduler class enforcing quiet_hours/active_hours and interval logic
+- Scheduler class enforcing active_hours and interval logic
 """
 
 from __future__ import annotations
@@ -29,8 +29,7 @@ class Action(Flag):
         REFRESH_NEWS: Fetch RSS feeds, curate via LLM, enqueue story batches.
         ROTATE:     Dequeue news, select painting, render 4K PNG, push to TV.
         BACKFILL:   Background painting pool expansion; fetch + analyze + embed.
-        QUIET_ART:  Display pure painting (no news overlay); used in quiet_hours.
-        IDLE:       Outside active hours; no rendering, no pushing, no network.
+        QUIET_ART:  Display pure painting (no news overlay); outside active_hours.
     """
 
     NONE = 0
@@ -38,7 +37,6 @@ class Action(Flag):
     ROTATE = auto()
     BACKFILL = auto()
     QUIET_ART = auto()
-    IDLE = auto()
 
 
 @dataclass
@@ -67,36 +65,26 @@ class Scheduler:
 
     Responsibility:
         Determine which actions should run at a given time, respecting
-        quiet_hours and active_hours configuration, and calculating sleep
-        durations between actions.
+        active_hours configuration, and calculating sleep durations
+        between actions.
 
     Non-Responsibility:
         Does not execute actions (orchestrator does that).
         Does not persist state (caller is responsible).
         Does not know about painting pool status (passed as context).
 
-    Time Window Precedence (ARCHITECTURE.md#6.2):
-        The scheduler processes time windows in this order:
+    Time Window Logic:
+        The TV always shows something -- never idle.
 
-        1. OUTSIDE ACTIVE HOURS (and NOT IN QUIET HOURS) → IDLE
-           No rendering, no pushing, no network calls.
+        1. OUTSIDE ACTIVE HOURS → QUIET_ART
+           Display pure painting without news overlay.
 
-        2. WITHIN QUIET HOURS (and outside active_hours) → QUIET_ART
-           Display pure painting without news overlay. TV may still be
-           in Art mode during these hours.
-
-        3. WITHIN ACTIVE HOURS (and outside quiet_hours) → Normal operation
+        2. WITHIN ACTIVE HOURS → Normal operation
            Check intervals for ROTATE, REFRESH_NEWS, and BACKFILL.
 
-    IMPORTANT: With default configuration where quiet_hours=(0,6) and
-    active_hours=(7,23), these ranges DO NOT OVERLAP. This means:
-        - Hours 0-5: outside active_hours → falls through to check quiet_hours
-        - Hour 6: outside both → IDLE
-        - Hours 7-23: within active_hours, outside quiet_hours → normal operation
-
-    For QUIET_ART to activate, configure overlapping ranges such as:
-        quiet_hours = (0, 6)
-        active_hours = (0, 23)  # Covers entire day including quiet hours
+    With default active_hours=(10, 2):
+        - Hours 2-9: outside active_hours → QUIET_ART
+        - Hours 10-1: within active_hours → normal operation
     """
 
     def __init__(self, config: "ScheduleConfig") -> None:
@@ -106,13 +94,11 @@ class Scheduler:
             config: ScheduleConfig containing:
                 - news_interval_hours: Hours between news refreshes (default 6)
                 - rotate_interval_minutes: Minutes between rotations (default 15)
-                - quiet_hours: (start, end) tuple in 24h, [start, end) interval
-                - active_hours: (start, end) tuple in 24h, [start, end] interval
+                - active_hours: (start, end) tuple in 24h, [start, end) interval
         """
         self._config = config
         self._news_interval = timedelta(hours=config.news_interval_hours)
         self._rotate_interval = timedelta(minutes=config.rotate_interval_minutes)
-        self._quiet_hours = config.quiet_hours
         self._active_hours = config.active_hours
 
     def what_to_do(self, now: datetime, state: SchedulerState) -> Action:
@@ -125,9 +111,8 @@ class Scheduler:
         Decision Logic (in order of precedence):
 
         1. CHECK ACTIVE HOURS
-           If `now` is NOT within active_hours:
-               a. If `now` IS within quiet_hours: return QUIET_ART
-               b. Else: return IDLE
+           If `now` is NOT within active_hours: return QUIET_ART
+           The TV always shows something -- never idle.
 
         2. CHECK NEWS INTERVAL
            If `state.last_news_refresh` is None OR
@@ -164,30 +149,14 @@ class Scheduler:
             - REFRESH_NEWS | ROTATE (first run after news interval)
             - ROTATE (regular rotation)
             - BACKFILL (background painting expansion)
-            - QUIET_ART (during quiet hours)
-            - IDLE (outside active hours, not in quiet hours)
+            - QUIET_ART (outside active hours)
             - NONE (within active hours, intervals not elapsed)
         """
         # Step 1: Check active hours
         if not self.is_active_hour(now):
-            # Outside active hours: check if in quiet hours
-            if self.is_quiet_hour(now):
-                return Action.QUIET_ART
-            else:
-                return Action.IDLE
-
-        # Step 2: In active hours - check news interval
-        # Note: is_quiet_hour should be False here if ranges don't overlap
-        # but if they do overlap (e.g., quiet=(0,23), active=(0,23)),
-        # QUIET_ART takes precedence via the first check
-        # However, since we passed is_active_hour, we're in normal operation
-
-        # Actually, re-check: if in active AND quiet hours, prioritize quiet
-        # This handles the edge case where ranges overlap
-        if self.is_quiet_hour(now):
             return Action.QUIET_ART
 
-        # Step 3: Check news interval
+        # Step 2: Check news interval
         news_due = self._is_interval_due(
             now, state.last_news_refresh, self._news_interval
         )
@@ -221,7 +190,7 @@ class Scheduler:
            - Time until news is due
            - Time until rotation is due
            - Time until active_hours starts (if outside active)
-           - Time until quiet_hours ends (if currently in quiet)
+           - Time until active_hours starts (if currently outside)
 
         2. Return the minimum of all applicable wait times.
 
@@ -239,9 +208,9 @@ class Scheduler:
             Floating-point seconds until the next action. Returns 0.0
             if an action is already due. Guarantees non-negative result.
         """
-        # Check if we need to act now (any action other than NONE, IDLE, or QUIET_ART)
+        # Check if we need to act now (any action other than NONE or QUIET_ART)
         action = self.what_to_do(now, state)
-        if action not in (Action.NONE, Action.IDLE, Action.QUIET_ART):
+        if action not in (Action.NONE, Action.QUIET_ART):
             return 0.0
 
         # Collect all relevant wait times
@@ -251,11 +220,6 @@ class Scheduler:
         if not self.is_active_hour(now):
             # Outside active hours - wait until active starts
             wait_times.append(self._seconds_until_hour(now, self._active_hours[0]))
-
-            # If in quiet hours, also compute time until quiet ends
-            if self.is_quiet_hour(now):
-                # Time until end of quiet hours
-                wait_times.append(self._seconds_until_hour(now, self._quiet_hours[1]))
         else:
             # In active hours (and not in quiet): compute wait times for intervals
 
@@ -292,36 +256,6 @@ class Scheduler:
 
         return max(0.0, min(wait_times))
 
-    def is_quiet_hour(self, now: datetime) -> bool:
-        """Check if the given time falls within quiet_hours.
-
-        Quiet hours are typically late night (e.g., 0:00-6:00) where the
-        TV may still be on in Art Mode, but full operation is not desired.
-        During quiet hours, the scheduler returns QUIET_ART, displaying
-        paintings without news overlays.
-
-        Interval Semantics:
-           - quiet_hours[0] is the start hour (inclusive)
-           - quiet_hours[1] is the end hour (exclusive)
-           - Hour values are in 24-hour format (0-23)
-           - Example: (0, 6) means hours 0, 1, 2, 3, 4, 5 are quiet
-
-        Edge Cases:
-           - Crossing midnight: quiet_hours=(22, 2) means 22:00-23:59 and 0:00-1:59.
-           - Quiet hours of (0, 0) or (x, x) is an empty interval → always False.
-           - Hour boundary: is_quiet_hour(5:59:59) should return True for (0, 6).
-           - Hour boundary: is_quiet_hour(6:00:00) should return False for (0, 6).
-
-        Args:
-            now: Current datetime. Uses the hour component only.
-
-        Returns:
-            True if the hour falls within [start, end), False otherwise.
-        """
-        return self._is_time_in_range(
-            now, self._quiet_hours[0], self._quiet_hours[1], end_inclusive=False
-        )
-
     def is_active_hour(self, now: datetime) -> bool:
         """Check if the given time falls within active_hours.
 
@@ -333,7 +267,7 @@ class Scheduler:
            - active_hours[0] is the start hour (inclusive)
            - active_hours[1] is the end hour (exclusive)
            - Hour values are in 24-hour format (0-23)
-           - Same semantics as quiet_hours (both use exclusive end)
+           - Uses exclusive end
            - Example: (7, 23) means hours 7, 8, ..., 21, 22 are active
            - Example: (10, 2) means 10, 11, ..., 23, 0, 1 are active (wraps midnight)
            - Example: (0, 24) means all day active

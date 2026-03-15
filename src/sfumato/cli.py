@@ -740,7 +740,7 @@ def run(
                 if result.match_score is not None:
                     _verbose_print(verbose, f"Match score: {result.match_score:.3f}")
             else:
-                typer.echo("No render produced (IDLE or skipped)")
+                typer.echo("No render produced (skipped)")
 
         except ValueError as e:
             typer.echo(f"Input error: {e}", err=True)
@@ -801,7 +801,7 @@ def watch(
     BEHAVIOR CONTRACT:
         - Runs indefinitely until SIGINT/SIGTERM
         - Handles graceful shutdown on interrupt
-        - Respects quiet_hours and active_hours from config
+        - Respects active_hours from config
         - Outputs status messages to stdout (one per action)
         - Errors go to stderr
 

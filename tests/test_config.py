@@ -235,7 +235,7 @@ def test_selected_source_values_win_and_unspecified_fields_use_defaults(
     assert result.tv.ip == "192.168.88.22"
     assert result.news.language == "en"
     assert result.tv.port == 8002
-    assert result.schedule.rotate_interval_minutes == 15
+    assert result.schedule.rotate_interval_minutes == 5
     assert len(result.news.feeds) == 1
     assert result.news.feeds[0].name == "Example"
 
@@ -334,7 +334,7 @@ def test_generate_default_config_round_trips_through_load_config(
 
     # Basic validation
     assert isinstance(config, AppConfig)
-    assert len(config.news.feeds) == 6  # Default config has 6 feeds
+    assert len(config.news.feeds) == 15  # Default config has 15 feeds
 
 
 def test_empty_feeds_array_is_accepted(
@@ -458,9 +458,8 @@ def test_minimal_tv_only_toml_fills_all_defaults(
 
     # Schedule: all defaults
     assert config.schedule.news_interval_hours == 6
-    assert config.schedule.rotate_interval_minutes == 15
-    assert config.schedule.quiet_hours == (0, 6)
-    assert config.schedule.active_hours == (7, 23)
+    assert config.schedule.rotate_interval_minutes == 5
+    assert config.schedule.active_hours == (10, 2)
 
     # News: all defaults including replay_expire_days
     assert config.news.language == "zh"

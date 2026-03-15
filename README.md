@@ -40,7 +40,7 @@ Every 15 minutes, sfumato selects a painting that matches the current news mood,
 - **Layout caching** — Each painting's composition analysis and description are cached by content hash. One LLM call per painting, forever.
 - **Seed art library** — `sfumato init` pre-fetches 50 paintings from cloud APIs covering diverse styles and moods, then analyzes them all. The daemon continues backfilling to 200+ in the background.
 - **TV-aware** — Detects if the TV is off or not in Art Mode before pushing. Auto-cleans old uploads.
-- **Quiet hours** — Configurable time range (e.g., midnight to 6am) where only pure artwork is displayed, no news.
+- **Always-on display** — The TV always shows something. Inside active hours: paintings with news overlay. Outside active hours: pure artwork, no news.
 - **Multi-template** — Landscape paintings with whitespace get text blended in. Portrait paintings get a side-panel layout. Dense compositions get a magazine split.
 - **Container-ready** — Runs as a long-lived `watch` daemon. Deploy on Synology NAS, Mac Mini, or any Docker host.
 
@@ -84,8 +84,7 @@ max_uploads = 5                     # Auto-clean older uploads
 [schedule]
 news_interval_hours = 6             # How often to fetch + curate news
 rotate_interval_minutes = 15        # How often to switch painting + news batch
-quiet_hours = [0, 6]                # Pure art mode, no news overlay
-active_hours = [10, 2]              # Only push during these hours
+active_hours = [10, 2]              # Inside: news + art. Outside: pure art, no news
 
 [news]
 language = "zh"                     # Display language (zh, en, ja, ...)
@@ -256,8 +255,7 @@ port = 8002
 [schedule]
 news_interval_hours = 6     # How often to fetch new RSS
 rotate_interval_minutes = 15 # How often to switch painting + news
-quiet_hours = [0, 6]        # Pure art mode (no news), e.g. midnight to 6am
-active_hours = [10, 2]      # Only push during these hours
+active_hours = [10, 2]      # Inside: news + art. Outside: pure art, no news
 
 [news]
 language = "zh"             # Display language (zh/en/ja/...)
@@ -298,18 +296,13 @@ docker compose logs -f sfumato
 
 ```toml
 [schedule]
-# active_hours: only push during this window
+# active_hours: inside this window, news + art. Outside, pure art (no news).
+# The TV always shows something -- never idle.
 # Examples:
 #   active_hours = [10, 2]    # 10am to 1:59am next day (wraps midnight)
 #   active_hours = [7, 23]    # 7am to 10:59pm
 #   active_hours = [10, 14]   # 10am to 1:59pm only
-#   active_hours = [0, 24]    # all day
-
-# quiet_hours: show pure paintings (no news overlay)
-# Examples:
-#   quiet_hours = [0, 6]      # midnight to 6am
-#   quiet_hours = [22, 6]     # 10pm to 6am (wraps midnight)
-#   quiet_hours = [99, 99]    # never quiet
+#   active_hours = [0, 24]    # all day (news always on)
 ```
 
 ### Volumes

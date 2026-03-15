@@ -4,7 +4,7 @@ Implements test stubs that will be filled with verification logic
 once the scheduler implementation is complete. Tests cover:
 
 - Action enum and flag behavior
-- Time window logic (quiet_hours, active_hours)
+- Time window logic (active_hours)
 - Interval calculations
 - Edge cases: midnight wrapping, None timestamps, first run
 """
@@ -37,7 +37,6 @@ def custom_config() -> ScheduleConfig:
     return ScheduleConfig(
         news_interval_hours=4,
         rotate_interval_minutes=10,
-        quiet_hours=(22, 6),  # 22:00-6:00 (crosses midnight)
         active_hours=(7, 23),
     )
 
@@ -48,7 +47,6 @@ def all_day_active_config() -> ScheduleConfig:
     return ScheduleConfig(
         news_interval_hours=6,
         rotate_interval_minutes=15,
-        quiet_hours=(0, 0),  # No quiet hours
         active_hours=(0, 23),  # All day
     )
 
@@ -108,7 +106,6 @@ class TestActionEnum:
         assert Action.ROTATE
         assert Action.BACKFILL
         assert Action.QUIET_ART
-        assert Action.IDLE
 
     def test_action_can_combine_with_or(self) -> None:
         """Actions should combine with bitwise OR."""
@@ -133,7 +130,6 @@ class TestActionEnum:
         assert Action.ROTATE in combined
         assert Action.BACKFILL in combined
         assert Action.QUIET_ART not in combined
-        assert Action.IDLE not in combined
 
     def test_action_unique_bit_values(self) -> None:
         """Each action should have a unique bit position."""
@@ -143,7 +139,6 @@ class TestActionEnum:
             Action.ROTATE.value,
             Action.BACKFILL.value,
             Action.QUIET_ART.value,
-            Action.IDLE.value,
         ]
         # All non-NONE values should be distinct powers of 2
         non_zero = [v for v in values if v != 0]
@@ -199,82 +194,6 @@ class TestSchedulerInit:
 
 
 # ---------------------------------------------------------------------------
-# is_quiet_hour Tests
-# ---------------------------------------------------------------------------
-
-
-class TestIsQuietHour:
-    """Tests for is_quiet_hour time window logic."""
-
-    def test_quiet_hour_default_range(self, default_config: ScheduleConfig) -> None:
-        """Default quiet_hours=(0, 6) should cover hours 0-5."""
-        scheduler = Scheduler(default_config)
-
-        # Hours within quiet period
-        for hour in [0, 1, 2, 3, 4, 5]:
-            now = datetime(2024, 1, 15, hour, 30, 0)
-            assert scheduler.is_quiet_hour(now), f"Hour {hour} should be quiet"
-
-        # Hours outside quiet period
-        for hour in [6, 7, 12, 18, 22, 23]:
-            now = datetime(2024, 1, 15, hour, 30, 0)
-            assert not scheduler.is_quiet_hour(now), f"Hour {hour} should NOT be quiet"
-
-    def test_quiet_hour_crossing_midnight(self, custom_config: ScheduleConfig) -> None:
-        """quiet_hours=(22, 6) crosses midnight; hours 22-23 and 0-5 are quiet."""
-        scheduler = Scheduler(custom_config)
-
-        # Hours in evening part (22-23)
-        for hour in [22, 23]:
-            now = datetime(2024, 1, 15, hour, 30, 0)
-            assert scheduler.is_quiet_hour(now), f"Hour {hour} should be quiet"
-
-        # Hours in morning part (0-5)
-        for hour in [0, 1, 2, 3, 4, 5]:
-            now = datetime(2024, 1, 15, hour, 30, 0)
-            assert scheduler.is_quiet_hour(now), f"Hour {hour} should be quiet"
-
-        # Hours outside
-        for hour in [6, 7, 12, 15, 20, 21]:
-            now = datetime(2024, 1, 15, hour, 30, 0)
-            assert not scheduler.is_quiet_hour(now), f"Hour {hour} should NOT be quiet"
-
-    def test_quiet_hour_boundary_start(self, default_config: ScheduleConfig) -> None:
-        """At the start of quiet_hours boundary."""
-        scheduler = Scheduler(default_config)
-
-        # Just before quiet_hours start (hour 23:59:59 -> 0)
-        before_start = datetime(2024, 1, 15, 23, 59, 59)
-        assert not scheduler.is_quiet_hour(before_start)
-
-        # At start of quiet_hours (hour 0)
-        at_start = datetime(2024, 1, 16, 0, 0, 0)
-        assert scheduler.is_quiet_hour(at_start)
-
-    def test_quiet_hour_boundary_end(self, default_config: ScheduleConfig) -> None:
-        """At the end of quiet_hours boundary (exclusive)."""
-        scheduler = Scheduler(default_config)
-
-        # Just before end of quiet_hours (5:59:59)
-        before_end = datetime(2024, 1, 16, 5, 59, 59)
-        assert scheduler.is_quiet_hour(before_end)
-
-        # At end of quiet_hours (hour 6, exclusive)
-        at_end = datetime(2024, 1, 16, 6, 0, 0)
-        assert not scheduler.is_quiet_hour(at_end)
-
-    def test_quiet_hour_no_quiet_hours(
-        self, all_day_active_config: ScheduleConfig
-    ) -> None:
-        """quiet_hours=(0, 0) is empty; no time should be quiet."""
-        scheduler = Scheduler(all_day_active_config)
-
-        for hour in range(24):
-            now = datetime(2024, 1, 15, hour, 30, 0)
-            assert not scheduler.is_quiet_hour(now), f"Hour {hour} should NOT be quiet"
-
-
-# ---------------------------------------------------------------------------
 # is_active_hour Tests
 # ---------------------------------------------------------------------------
 
@@ -283,16 +202,16 @@ class TestIsActiveHour:
     """Tests for is_active_hour time window logic."""
 
     def test_active_hour_default_range(self, default_config: ScheduleConfig) -> None:
-        """Default active_hours=(7, 23) should cover hours 7-23 (inclusive)."""
+        """Default active_hours=(10, 2) should cover hours 10-1 (wraps midnight)."""
         scheduler = Scheduler(default_config)
 
-        # Hours within active period (7-23 inclusive)
-        for hour in [7, 8, 12, 15, 22, 23]:
+        # Hours within active period (10-1 wrapping midnight)
+        for hour in [10, 11, 12, 15, 22, 23, 0, 1]:
             now = datetime(2024, 1, 15, hour, 30, 0)
             assert scheduler.is_active_hour(now), f"Hour {hour} should be active"
 
-        # Hours outside active period (0-6)
-        for hour in [0, 1, 2, 3, 4, 5, 6]:
+        # Hours outside active period (2-9)
+        for hour in [2, 3, 4, 5, 6, 7, 8, 9]:
             now = datetime(2024, 1, 15, hour, 30, 0)
             assert not scheduler.is_active_hour(now), (
                 f"Hour {hour} should NOT be active"
@@ -302,33 +221,38 @@ class TestIsActiveHour:
         """At the start of active_hours boundary (inclusive)."""
         scheduler = Scheduler(default_config)
 
-        # Just before active_hours (6:59:59)
-        before_start = datetime(2024, 1, 15, 6, 59, 59)
+        # Just before active_hours (9:59:59)
+        before_start = datetime(2024, 1, 15, 9, 59, 59)
         assert not scheduler.is_active_hour(before_start)
 
-        # At start of active_hours (7:00)
-        at_start = datetime(2024, 1, 15, 7, 0, 0)
+        # At start of active_hours (10:00)
+        at_start = datetime(2024, 1, 15, 10, 0, 0)
         assert scheduler.is_active_hour(at_start)
 
     def test_active_hour_boundary_end(self, default_config: ScheduleConfig) -> None:
-        """At the end of active_hours boundary (inclusive)."""
+        """At the end of active_hours boundary (exclusive at hour 2)."""
         scheduler = Scheduler(default_config)
 
-        # At end of active_hours (23:00 inclusive)
-        at_end = datetime(2024, 1, 15, 23, 30, 0)
-        assert scheduler.is_active_hour(at_end)
+        # At hour 1 (still active, wraps midnight)
+        at_1 = datetime(2024, 1, 16, 1, 30, 0)
+        assert scheduler.is_active_hour(at_1)
 
-        # Just after active_hours (0:00)
-        after_end = datetime(2024, 1, 16, 0, 0, 0)
-        assert not scheduler.is_active_hour(after_end)
+        # At hour 2 (exclusive end, no longer active)
+        at_end = datetime(2024, 1, 16, 2, 0, 0)
+        assert not scheduler.is_active_hour(at_end)
 
     def test_active_hour_all_day(self, all_day_active_config: ScheduleConfig) -> None:
-        """active_hours=(0, 23) should be active all day."""
+        """active_hours=(0, 23) should be active hours 0-22 (exclusive end)."""
         scheduler = Scheduler(all_day_active_config)
 
-        for hour in range(24):
+        # Hours 0-22 are active (end is exclusive)
+        for hour in range(23):
             now = datetime(2024, 1, 15, hour, 30, 0)
             assert scheduler.is_active_hour(now), f"Hour {hour} should be active"
+
+        # Hour 23 is NOT active (exclusive end)
+        now = datetime(2024, 1, 15, 23, 30, 0)
+        assert not scheduler.is_active_hour(now), "Hour 23 should NOT be active (exclusive end)"
 
 
 # ---------------------------------------------------------------------------
@@ -339,27 +263,25 @@ class TestIsActiveHour:
 class TestWhatToDo:
     """Tests for the what_to_do scheduling decision function."""
 
-    def test_what_to_do_outside_active_unless_quiet(
+    def test_what_to_do_outside_active_returns_quiet_art(
         self, default_config: ScheduleConfig, recent_state: SchedulerState
     ) -> None:
-        """Outside active_hours and not in quiet_hours should return IDLE."""
+        """Outside active_hours should return QUIET_ART (TV always shows something)."""
         scheduler = Scheduler(default_config)
 
-        # Hour 6 is outside active_hours (7-23) and not in quiet_hours (0-6)
-        now = datetime(2024, 1, 15, 6, 30, 0)
+        # Hour 5 is outside active_hours (10-2)
+        now = datetime(2024, 1, 15, 5, 30, 0)
         action = scheduler.what_to_do(now, recent_state)
-        assert action == Action.IDLE
+        assert action == Action.QUIET_ART
 
-    def test_what_to_do_in_quiet_hours(
+    def test_what_to_do_outside_active_morning(
         self, default_config: ScheduleConfig, recent_state: SchedulerState
     ) -> None:
-        """Within quiet_hours should return QUIET_ART."""
+        """Morning hours outside active_hours should return QUIET_ART."""
         scheduler = Scheduler(default_config)
 
-        # Hour 3 is in quiet_hours (0-6)
-        # Note: With default config, hour 3 is also outside active_hours
-        # The contract says: outside active_hours -> check quiet_hours -> QUIET_ART
-        now = datetime(2024, 1, 15, 3, 30, 0)
+        # Hour 8 is outside active_hours (10-2)
+        now = datetime(2024, 1, 15, 8, 30, 0)
         action = scheduler.what_to_do(now, recent_state)
         assert action == Action.QUIET_ART
 
@@ -475,30 +397,29 @@ class TestSecondsUntilNextAction:
         scheduler = Scheduler(default_config)
         now = datetime(2024, 1, 15, 12, 0, 0)
 
-        # Rotation was 5 minutes ago (10 minutes remaining for 15-minute interval)
+        # Rotation was 2 minutes ago (3 minutes remaining for 5-minute interval)
         state = SchedulerState(
             last_news_refresh=now - timedelta(hours=1),
-            last_rotation=now - timedelta(minutes=5),
+            last_rotation=now - timedelta(minutes=2),
             last_backfill=None,
         )
 
         seconds = scheduler.seconds_until_next_action(now, state)
-        # Should return roughly 10 minutes (600 seconds)
-        assert 590 <= seconds <= 610  # Allow small tolerance
+        # Should return roughly 3 minutes (180 seconds)
+        assert 170 <= seconds <= 190  # Allow small tolerance
 
     def test_seconds_until_active_start(self) -> None:
         """Outside active hours, should compute time until active start."""
         config = ScheduleConfig(
             news_interval_hours=6,
             rotate_interval_minutes=15,
-            quiet_hours=(0, 6),
-            active_hours=(7, 23),
+            active_hours=(10, 2),
         )
         scheduler = Scheduler(config)
 
-        # Hour 6: outside active active_hours, not in quiet_hours
-        # Time until active_hours start (7:00) = 1 hour
-        now = datetime(2024, 1, 15, 6, 0, 0)
+        # Hour 5: outside active_hours (10-2)
+        # Time until active_hours start (10:00) = 5 hours
+        now = datetime(2024, 1, 15, 5, 0, 0)
         state = SchedulerState(
             last_news_refresh=now - timedelta(hours=1),
             last_rotation=now - timedelta(minutes=5),
@@ -506,8 +427,8 @@ class TestSecondsUntilNextAction:
         )
 
         seconds = scheduler.seconds_until_next_action(now, state)
-        # Should return time until hour 7
-        assert 3590 <= seconds <= 3610  # ~1 hour (allow tolerance)
+        # Should return time until hour 10 (~5 hours = 18000 seconds)
+        assert 17990 <= seconds <= 18010
 
     def test_seconds_never_negative(self, default_config: ScheduleConfig) -> None:
         """Should never return negative seconds."""
@@ -531,58 +452,63 @@ class TestSecondsUntilNextAction:
 class TestSchedulerEdgeCases:
     """Tests for edge cases and complex scenarios."""
 
-    def test_midnight_wrapping_in_quiet_hours(
-        self, custom_config: ScheduleConfig
-    ) -> None:
-        """quiet_hours crossing midnight should work correctly."""
-        scheduler = Scheduler(custom_config)  # (22, 6)
-
-        # Test evening hours
-        for hour in [22, 23]:
-            now = datetime(2024, 1, 15, hour, 30, 0)
-            assert scheduler.is_quiet_hour(now)
-
-        # Test early morning hours
-        for hour in [0, 1, 2, 3, 4, 5]:
-            now = datetime(2024, 1, 15, hour, 30, 0)
-            assert scheduler.is_quiet_hour(now)
-
-    def test_transition_quiet_to_active(self) -> None:
-        """Transition from quiet_hours to active_hours should trigger correctly."""
-        # Custom config where quiet_hours and active_hours don't overlap
-        # (default config: quiet=(0,6), active=(7,23))
+    def test_midnight_wrapping_in_active_hours(self) -> None:
+        """active_hours crossing midnight should work correctly."""
         config = ScheduleConfig(
             news_interval_hours=6,
             rotate_interval_minutes=15,
-            quiet_hours=(0, 6),
+            active_hours=(22, 6),
+        )
+        scheduler = Scheduler(config)
+
+        # Test evening hours (active)
+        for hour in [22, 23]:
+            now = datetime(2024, 1, 15, hour, 30, 0)
+            assert scheduler.is_active_hour(now), f"Hour {hour} should be active"
+
+        # Test early morning hours (active)
+        for hour in [0, 1, 2, 3, 4, 5]:
+            now = datetime(2024, 1, 15, hour, 30, 0)
+            assert scheduler.is_active_hour(now), f"Hour {hour} should be active"
+
+        # Test daytime hours (not active -> QUIET_ART)
+        for hour in [6, 7, 12, 15, 20, 21]:
+            now = datetime(2024, 1, 15, hour, 30, 0)
+            assert not scheduler.is_active_hour(now), f"Hour {hour} should NOT be active"
+
+    def test_transition_inactive_to_active(self) -> None:
+        """Transition from outside active_hours to inside should work."""
+        config = ScheduleConfig(
+            news_interval_hours=6,
+            rotate_interval_minutes=15,
             active_hours=(7, 23),
         )
         scheduler = Scheduler(config)
 
-        # Hour 6: outside both (IDLE)
+        # Hour 6: outside active (QUIET_ART)
         now_6 = datetime(2024, 1, 15, 6, 30, 0)
-        assert scheduler.is_quiet_hour(now_6) is False
         assert scheduler.is_active_hour(now_6) is False
 
-    def test_quiet_art_overlaps_with_active(
-        self, all_day_active_config: ScheduleConfig
-    ) -> None:
-        """When active_hours covers entire day, quiet_hours can activate within."""
-        # active_hours=(0, 23), quiet_hours=(0, 0) = none
-        # Let's test with overlapping config
-        config = ScheduleConfig(
-            news_interval_hours=6,
-            rotate_interval_minutes=15,
-            quiet_hours=(0, 6),
-            active_hours=(0, 23),  # All day active
-        )
-        scheduler = Scheduler(config)
+        # Hour 7: inside active
+        now_7 = datetime(2024, 1, 15, 7, 30, 0)
+        assert scheduler.is_active_hour(now_7) is True
 
-        # Hour 3: within both active_hours and quiet_hours
-        now = datetime(2024, 1, 15, 3, 30, 0)
-        assert scheduler.is_active_hour(now)  # Active
-        # what_to_do should respect precedence:
-        # - Within active AND within quiet -> QUIET_ART
+    def test_outside_active_always_quiet_art(
+        self, default_config: ScheduleConfig
+    ) -> None:
+        """Outside active hours, what_to_do always returns QUIET_ART, never IDLE."""
+        scheduler = Scheduler(default_config)
+        state = SchedulerState(
+            last_news_refresh=None,
+            last_rotation=None,
+            last_backfill=None,
+        )
+
+        # Hours outside active_hours (10-2) should all be QUIET_ART
+        for hour in [2, 3, 4, 5, 6, 7, 8, 9]:
+            now = datetime(2024, 1, 15, hour, 30, 0)
+            action = scheduler.what_to_do(now, state)
+            assert action == Action.QUIET_ART, f"Hour {hour} should be QUIET_ART"
 
 
 class TestSchedulerContractCompliance:
@@ -602,11 +528,9 @@ class TestSchedulerContractCompliance:
         scheduler = Scheduler(default_config)
         assert hasattr(scheduler, "what_to_do")
         assert hasattr(scheduler, "seconds_until_next_action")
-        assert hasattr(scheduler, "is_quiet_hour")
         assert hasattr(scheduler, "is_active_hour")
         assert callable(scheduler.what_to_do)
         assert callable(scheduler.seconds_until_next_action)
-        assert callable(scheduler.is_quiet_hour)
         assert callable(scheduler.is_active_hour)
 
     def test_scheduler_state_dataclass(self) -> None:
@@ -619,12 +543,11 @@ class TestSchedulerContractCompliance:
         assert "last_backfill" in field_names
 
     def test_default_config_values(self) -> None:
-        """Verify default ScheduleConfig matches ARCHITECTURE.md."""
+        """Verify default ScheduleConfig values."""
         config = ScheduleConfig()
         assert config.news_interval_hours == 6
-        assert config.rotate_interval_minutes == 15
-        assert config.quiet_hours == (0, 6)
-        assert config.active_hours == (7, 23)
+        assert config.rotate_interval_minutes == 5
+        assert config.active_hours == (10, 2)
 
 
 # ---------------------------------------------------------------------------
@@ -750,20 +673,20 @@ class TestDualTimerDecisions:
     def test_first_rotation_of_day_after_quiet(
         self, default_config: ScheduleConfig
     ) -> None:
-        """First action of day after quiet hours may trigger immediate refresh."""
+        """First action of day after quiet art period triggers immediate refresh."""
         scheduler = Scheduler(default_config)
-        # 7:00 AM - first active hour, coming from quiet hours
-        now = datetime(2024, 1, 15, 7, 0, 0)
+        # 10:00 AM - first active hour with default active_hours=(10, 2)
+        now = datetime(2024, 1, 15, 10, 0, 0)
 
         # Last actions were during previous day's active hours
         state = SchedulerState(
-            last_news_refresh=datetime(2024, 1, 14, 20, 0, 0),  # 11h overnight gap
-            last_rotation=datetime(2024, 1, 14, 23, 0, 0),  # 8h overnight gap
+            last_news_refresh=datetime(2024, 1, 14, 20, 0, 0),  # 14h overnight gap
+            last_rotation=datetime(2024, 1, 14, 23, 0, 0),  # 11h overnight gap
             last_backfill=None,
         )
         action = scheduler.what_to_do(now, state)
 
-        # News is overdue (11h > 6h), rotation is overdue (8h > any interval)
+        # News is overdue (14h > 6h), rotation is overdue (11h > any interval)
         assert Action.REFRESH_NEWS in action
         assert Action.ROTATE in action
 
@@ -779,7 +702,7 @@ class TestBackfillConditions:
     BACKFILL should only trigger when:
     - Pool has room for more paintings
     - No heavy action (REFRESH_NEWS or ROTATE) is scheduled
-    - System is within active_hours and outside quiet_hours
+    - System is within active_hours
 
     Note: Current contract stub does NOT include pool status in SchedulerState.
     Implementation may need additional context or method signature extension.
@@ -823,32 +746,13 @@ class TestBackfillConditions:
         assert Action.ROTATE in action
         assert Action.BACKFILL not in action
 
-    def test_backfill_not_possible_during_quiet_hours(
-        self, default_config: ScheduleConfig
-    ) -> None:
-        """BACKFILL should not run during quiet hours."""
-        scheduler = Scheduler(default_config)
-        # Hour 3 is in quiet_hours (0-6)
-        now = datetime(2024, 1, 15, 3, 30, 0)
-
-        state = SchedulerState(
-            last_news_refresh=now - timedelta(hours=12),
-            last_rotation=now - timedelta(hours=8),
-            last_backfill=now - timedelta(hours=24),
-        )
-        action = scheduler.what_to_do(now, state)
-
-        # In quiet hours, no backfill
-        assert action == Action.QUIET_ART
-        assert Action.BACKFILL not in action
-
     def test_backfill_not_possible_outside_active_hours(
         self, default_config: ScheduleConfig
     ) -> None:
         """BACKFILL should not run outside active hours."""
         scheduler = Scheduler(default_config)
-        # Hour 6 is outside active_hours (7-23) and not in quiet_hours
-        now = datetime(2024, 1, 15, 6, 30, 0)
+        # Hour 5 is outside active_hours (10-2)
+        now = datetime(2024, 1, 15, 5, 30, 0)
 
         state = SchedulerState(
             last_news_refresh=now - timedelta(hours=12),
@@ -857,8 +761,8 @@ class TestBackfillConditions:
         )
         action = scheduler.what_to_do(now, state)
 
-        # Outside active hours but not in quiet -> IDLE
-        assert action == Action.IDLE
+        # Outside active hours -> QUIET_ART
+        assert action == Action.QUIET_ART
         assert Action.BACKFILL not in action
 
     def test_no_heavy_work_but_no_backfill_yet(
@@ -876,7 +780,7 @@ class TestBackfillConditions:
         # All actions recent - no heavy work due
         state = SchedulerState(
             last_news_refresh=now - timedelta(hours=1),
-            last_rotation=now - timedelta(minutes=5),
+            last_rotation=now - timedelta(minutes=2),  # Well within 5-min interval
             last_backfill=now - timedelta(hours=2),
         )
         action = scheduler.what_to_do(now, state)
@@ -908,12 +812,12 @@ class TestSecondsUntilNextActionBoundaries:
 
         state = SchedulerState(
             last_news_refresh=now - timedelta(hours=1),
-            last_rotation=now - timedelta(minutes=14, seconds=30),
+            last_rotation=now - timedelta(minutes=4, seconds=30),
             last_backfill=None,
         )
 
         seconds = scheduler.seconds_until_next_action(now, state)
-        # Rotation due in 30 seconds (interval is 15 min)
+        # Rotation due in 30 seconds (interval is 5 min)
         assert 25 <= seconds <= 35  # Allow some tolerance
 
     def test_seconds_at_hour_boundary(self, default_config: ScheduleConfig) -> None:
@@ -925,7 +829,6 @@ class TestSecondsUntilNextActionBoundaries:
         config = ScheduleConfig(
             news_interval_hours=6,
             rotate_interval_minutes=15,
-            quiet_hours=(0, 6),
             active_hours=(8, 22),  # Active starts at 8
         )
         scheduler = Scheduler(config)
@@ -947,7 +850,6 @@ class TestSecondsUntilNextActionBoundaries:
         config = ScheduleConfig(
             news_interval_hours=6,
             rotate_interval_minutes=15,
-            quiet_hours=(22, 6),  # Active: 22-23, then 6->7 is IDLE
             active_hours=(7, 21),
         )
         scheduler = Scheduler(config)
@@ -961,7 +863,6 @@ class TestSecondsUntilNextActionBoundaries:
 
         seconds = scheduler.seconds_until_next_action(now, state)
         # Should compute time until 7:00 next day = 7.5 hours = 27000 seconds
-        # or until end of quiet_hours at 6:00 = 6.5 hours
         assert seconds > 0
 
     def test_seconds_rotation_due_after_just_completed(
@@ -979,25 +880,25 @@ class TestSecondsUntilNextActionBoundaries:
         )
 
         seconds = scheduler.seconds_until_next_action(now, state)
-        # ~14 minutes remaining
-        assert 830 <= seconds <= 870
+        # ~4 minutes remaining (5 min interval - 1 min elapsed)
+        assert 230 <= seconds <= 250
 
     def test_seconds_news_rotation_race(self, default_config: ScheduleConfig) -> None:
         """When both intervals matter, return minimum time."""
         scheduler = Scheduler(default_config)
         now = datetime(2024, 1, 15, 12, 0, 0)
 
-        # News due in 1 hour, rotation due in 5 minutes
-        # Should return 5 minutes (300 seconds)
+        # News due in 4 hours, rotation due in 2 minutes
+        # Should return 2 minutes (120 seconds)
         state = SchedulerState(
-            last_news_refresh=now - timedelta(hours=5),  # Due in 1 hour
-            last_rotation=now - timedelta(minutes=10),  # Due in 5 min
+            last_news_refresh=now - timedelta(hours=2),  # Due in 4 hours
+            last_rotation=now - timedelta(minutes=3),  # Due in 2 min
             last_backfill=None,
         )
 
         seconds = scheduler.seconds_until_next_action(now, state)
-        # Rotation wins - ~300 seconds
-        assert 290 <= seconds <= 310
+        # Rotation wins - ~120 seconds
+        assert 110 <= seconds <= 130
 
     def test_seconds_with_state_timestamps_in_future(
         self, default_config: ScheduleConfig
@@ -1027,10 +928,10 @@ class TestSecondsUntilNextActionBoundaries:
         scheduler = Scheduler(default_config)
         now = datetime(2024, 1, 15, 12, 0, 0)
 
-        # Rotation was exactly 14:59 ago (15 min interval - 1 second)
+        # Rotation was exactly 4:59 ago (5 min interval - 1 second)
         state = SchedulerState(
             last_news_refresh=now - timedelta(hours=3),
-            last_rotation=now - timedelta(minutes=14, seconds=59),
+            last_rotation=now - timedelta(minutes=4, seconds=59),
             last_backfill=None,
         )
 
@@ -1043,7 +944,6 @@ class TestSecondsUntilNextActionBoundaries:
         config = ScheduleConfig(
             news_interval_hours=24,  # Very long interval
             rotate_interval_minutes=60,  # 1 hour interval
-            quiet_hours=(22, 6),
             active_hours=(7, 21),
         )
         scheduler = Scheduler(config)
@@ -1062,12 +962,12 @@ class TestSecondsUntilNextActionBoundaries:
 
 
 # ---------------------------------------------------------------------------
-# Active/Quiet Hour Boundary and Edge Cases
+# Active Hour Boundary and Edge Cases
 # ---------------------------------------------------------------------------
 
 
-class TestActiveQuietHourBoundaries:
-    """Tests for boundary conditions in time window logic."""
+class TestActiveHourBoundaries:
+    """Tests for boundary conditions in active_hours time window logic."""
 
     def test_exact_hour_start_is_active(self) -> None:
         """At exactly active_hours[0], should be active."""
@@ -1078,22 +978,21 @@ class TestActiveQuietHourBoundaries:
         now = datetime(2024, 1, 15, 7, 0, 0)
         assert scheduler.is_active_hour(now)
 
-    def test_exact_hour_end_is_active(self) -> None:
-        """At exactly active_hours[1], should be active (inclusive)."""
+    def test_exact_hour_end_is_not_active(self) -> None:
+        """At exactly active_hours[1], should NOT be active (exclusive end)."""
         config = ScheduleConfig(active_hours=(7, 23))
         scheduler = Scheduler(config)
 
-        # Exactly 23:00:00 (hour 23, not hour 24)
-        # active_hours=(7, 23) means hours 7-23 are active, inclusive
+        # Exactly 23:00:00 - end is exclusive, so hour 23 is NOT active
         now = datetime(2024, 1, 15, 23, 0, 0)
-        assert scheduler.is_active_hour(now)
+        assert not scheduler.is_active_hour(now)
 
-        # 23:59:59 is also active
-        now_edge = datetime(2024, 1, 15, 23, 59, 59)
-        assert scheduler.is_active_hour(now_edge)
+        # Hour 22 is the last active hour
+        now_last = datetime(2024, 1, 15, 22, 59, 59)
+        assert scheduler.is_active_hour(now_last)
 
-    def test_midnight_is_not_active_default(self) -> None:
-        """Hour 0 (midnight) is not active with default config."""
+    def test_midnight_is_not_active_with_non_wrapping_config(self) -> None:
+        """Hour 0 (midnight) is not active with active_hours=(7, 23)."""
         config = ScheduleConfig(active_hours=(7, 23))
         scheduler = Scheduler(config)
 
@@ -1103,77 +1002,19 @@ class TestActiveQuietHourBoundaries:
         now_with_minutes = datetime(2024, 1, 15, 0, 30, 0)
         assert not scheduler.is_active_hour(now_with_minutes)
 
-    def test_quiet_hour_exact_start(self) -> None:
-        """At exactly quiet_hours[0], should be quiet."""
-        config = ScheduleConfig(quiet_hours=(0, 6))
-        scheduler = Scheduler(config)
-
-        now = datetime(2024, 1, 15, 0, 0, 0)
-        assert scheduler.is_quiet_hour(now)
-
-    def test_quiet_hour_exact_end_exclusive(self) -> None:
-        """At exactly quiet_hours[1], should NOT be quiet (exclusive end)."""
-        config = ScheduleConfig(quiet_hours=(0, 6))
-        scheduler = Scheduler(config)
-
-        # Hour 6 is NOT quiet (end is exclusive)
-        now = datetime(2024, 1, 15, 6, 0, 0)
-        assert not scheduler.is_quiet_hour(now)
-
-        # Hour 5:59:59 is still quiet
-        now_before_end = datetime(2024, 1, 15, 5, 59, 59)
-        assert scheduler.is_quiet_hour(now_before_end)
-
-    def test_quiet_hour_same_hour_in_range(self) -> None:
-        """quiet_hours=(x, x) means empty range - never quiet."""
-        config = ScheduleConfig(quiet_hours=(12, 12))
-        scheduler = Scheduler(config)
-
-        for hour in range(24):
-            now = datetime(2024, 1, 15, hour, 30, 0)
-            assert not scheduler.is_quiet_hour(now), f"Hour {hour} should not be quiet"
-
     def test_active_hour_all_hours(self) -> None:
-        """active_hours=(0, 23) means all hours active."""
+        """active_hours=(0, 0) with same start/end is empty. Use wrapping for all day."""
+        # (0, 23) with exclusive end means hours 0-22 are active
         config = ScheduleConfig(active_hours=(0, 23))
         scheduler = Scheduler(config)
 
-        for hour in range(24):
+        for hour in range(23):
             now = datetime(2024, 1, 15, hour, 0, 0)
             assert scheduler.is_active_hour(now), f"Hour {hour} should be active"
 
-    def test_quiet_hour_crossing_midnight_evening_first(self) -> None:
-        """quiet_hours=(22, 2): 22-23 is quiet, then 0-1 is quiet."""
-        config = ScheduleConfig(quiet_hours=(22, 2))
-        scheduler = Scheduler(config)
-
-        # Evening portion: 22, 23
-        for hour in [22, 23]:
-            now = datetime(2024, 1, 15, hour, 30, 0)
-            assert scheduler.is_quiet_hour(now), f"Hour {hour} should be quiet"
-
-        # Early morning portion: 0, 1
-        for hour in [0, 1]:
-            now = datetime(2024, 1, 15, hour, 30, 0)
-            assert scheduler.is_quiet_hour(now), f"Hour {hour} should be quiet"
-
-        # NOT quiet: 2-21
-        for hour in range(2, 22):
-            now = datetime(2024, 1, 15, hour, 30, 0)
-            assert not scheduler.is_quiet_hour(now), f"Hour {hour} should NOT be quiet"
-
-    def test_quiet_hour_crossing_midnight_morning_first(self) -> None:
-        """quiet_hours=(23, 1): 23 is quiet, then 0 is quiet."""
-        config = ScheduleConfig(quiet_hours=(23, 1))
-        scheduler = Scheduler(config)
-
-        # Hour 23
-        assert scheduler.is_quiet_hour(datetime(2024, 1, 15, 23, 30, 0))
-        # Hour 0
-        assert scheduler.is_quiet_hour(datetime(2024, 1, 15, 0, 30, 0))
-        # Hour 1 and beyond: not quiet
-        assert not scheduler.is_quiet_hour(datetime(2024, 1, 15, 1, 30, 0))
-        assert not scheduler.is_quiet_hour(datetime(2024, 1, 15, 22, 30, 0))
+        # Hour 23 is NOT active (exclusive end)
+        now = datetime(2024, 1, 15, 23, 0, 0)
+        assert not scheduler.is_active_hour(now)
 
 
 # ---------------------------------------------------------------------------
@@ -1202,28 +1043,13 @@ class TestNoneTimestampEdgeCases:
         assert Action.REFRESH_NEWS in action
         assert Action.ROTATE in action
 
-    def test_first_run_during_quiet_hours(self, default_config: ScheduleConfig) -> None:
-        """First run during quiet hours returns QUIET_ART."""
-        scheduler = Scheduler(default_config)
-        now = datetime(2024, 1, 15, 3, 0, 0)  # Quiet hour (0-6)
-
-        state = SchedulerState(
-            last_news_refresh=None,
-            last_rotation=None,
-            last_backfill=None,
-        )
-        action = scheduler.what_to_do(now, state)
-
-        # Even on first run, quiet hours take precedence
-        assert action == Action.QUIET_ART
-
-    def test_first_run_outside_active_not_quiet(
+    def test_first_run_outside_active_hours(
         self, default_config: ScheduleConfig
     ) -> None:
-        """First run outside active hours (not quiet) returns IDLE."""
+        """First run outside active hours returns QUIET_ART."""
         scheduler = Scheduler(default_config)
-        # Hour 6 is outside active (7-23) and not in quiet (0-6)
-        now = datetime(2024, 1, 15, 6, 30, 0)
+        # Hour 5 is outside active (10-2)
+        now = datetime(2024, 1, 15, 5, 0, 0)
 
         state = SchedulerState(
             last_news_refresh=None,
@@ -1232,8 +1058,8 @@ class TestNoneTimestampEdgeCases:
         )
         action = scheduler.what_to_do(now, state)
 
-        # Outside active hours, not in quiet -> IDLE
-        assert action == Action.IDLE
+        # Outside active hours -> QUIET_ART (TV always shows something)
+        assert action == Action.QUIET_ART
 
     def test_partial_none_rotation_only(self, default_config: ScheduleConfig) -> None:
         """Only last_rotation is None: should trigger ROTATE."""
@@ -1277,41 +1103,14 @@ class TestNoneTimestampEdgeCases:
 class TestActionPrecedence:
     """Tests for action precedence in what_to_do decisions."""
 
-    def test_quiet_hours_overrides_active_inside_check(self) -> None:
-        """Time in both quiet and active hours: QUIET_ART takes precedence."""
-        # Config where quiet_hours overlap with active_hours
+    def test_outside_active_always_quiet_art_precedence(self) -> None:
+        """Outside active hours always returns QUIET_ART."""
         config = ScheduleConfig(
-            quiet_hours=(0, 8),
-            active_hours=(0, 23),
-        )
-        scheduler = Scheduler(config)
-
-        # Hour 3: in both quiet (0-8) and active (0-23)
-        now = datetime(2024, 1, 15, 3, 0, 0)
-        state = SchedulerState(
-            last_news_refresh=now - timedelta(hours=10),
-            last_rotation=now - timedelta(hours=2),
-            last_backfill=None,
-        )
-        action = scheduler.what_to_do(now, state)
-
-        # QUIET_ART should be returned (not REFRESH_NEWS or ROTATE)
-        # This tests the precedence: outside active -> check quiet -> QUIET_ART
-        # Implementation note: when both overlap, implementation behavior to verify
-        # The contract says: check active first, then quiet if not in active
-        # So if is_active_hour returns True, quiet check is skipped
-        # This test documents expected behavior when config has overlap
-        assert action == Action.QUIET_ART or action == Action.NONE
-
-    def test_idle_over_quiet_outside_active(self) -> None:
-        """Outside active and not in quiet: IDLE, not QUIET_ART."""
-        config = ScheduleConfig(
-            quiet_hours=(0, 6),
             active_hours=(8, 22),
         )
         scheduler = Scheduler(config)
 
-        # Hour 7: in neither (gap between quiet=0-6 and active=8-22)
+        # Hour 7: outside active (8-22) -> QUIET_ART
         now = datetime(2024, 1, 15, 7, 0, 0)
         state = SchedulerState(
             last_news_refresh=now - timedelta(hours=10),
@@ -1320,7 +1119,7 @@ class TestActionPrecedence:
         )
         action = scheduler.what_to_do(now, state)
 
-        assert action == Action.IDLE
+        assert action == Action.QUIET_ART
 
     def test_heavy_work_takes_priority_over_backfill(self) -> None:
         """When both heavy work and backfill are due, heavy work wins."""
@@ -1349,7 +1148,7 @@ class TestActionPrecedence:
 
         state = SchedulerState(
             last_news_refresh=now - timedelta(hours=1),  # 5h till due
-            last_rotation=now - timedelta(minutes=5),  # 10min till due
+            last_rotation=now - timedelta(minutes=2),  # 3min till due
             last_backfill=None,
         )
         action = scheduler.what_to_do(now, state)
@@ -1419,9 +1218,9 @@ class TestTimeArithmeticEdgeCases:
         )
 
         seconds = scheduler.seconds_until_next_action(now, state)
-        # Should return ~15 minutes (full interval, minus 1 microsecond)
+        # Should return ~5 minutes (full interval, minus 1 microsecond)
         # But implementation may round or truncate
-        assert 895 <= seconds <= 900  # ~15 min give-or-take
+        assert 295 <= seconds <= 300  # ~5 min give-or-take
 
     def test_timezone_naive_datetime_handling(
         self, default_config: ScheduleConfig
@@ -1470,11 +1269,11 @@ class TestSchedulerInvariants:
             assert seconds >= 0.0, f"Negative seconds at hour {hour}: {seconds}"
 
     def test_action_always_valid_in_active_hours(self) -> None:
-        """In active hours, action should never be IDLE or QUIET_ART."""
-        config = ScheduleConfig(quiet_hours=(0, 6), active_hours=(7, 23))
+        """In active hours, action should never be QUIET_ART."""
+        config = ScheduleConfig(active_hours=(7, 23))
         scheduler = Scheduler(config)
 
-        for hour in range(7, 24):  # Active hours
+        for hour in range(7, 23):  # Active hours
             now = datetime(2024, 1, 15, hour, 0, 0)
             state = SchedulerState(
                 last_news_refresh=now - timedelta(hours=3),
@@ -1482,17 +1281,14 @@ class TestSchedulerInvariants:
                 last_backfill=None,
             )
             action = scheduler.what_to_do(now, state)
-            assert Action.IDLE not in action or action == Action.NONE, (
-                f"IDLE in active hours {hour}"
-            )
             assert Action.QUIET_ART not in action, f"QUIET_ART in active hours {hour}"
 
-    def test_quiet_hours_during_active_are_ignored(self) -> None:
-        """Non-overlapping quiet/active hours don't interfere."""
-        config = ScheduleConfig(quiet_hours=(0, 6), active_hours=(7, 23))
+    def test_active_hours_get_normal_actions(self) -> None:
+        """In active hours, first run should get normal actions, not QUIET_ART."""
+        config = ScheduleConfig(active_hours=(7, 23))
         scheduler = Scheduler(config)
 
-        # In active hours (12), should never get QUIET_ART
+        # In active hours (12), should get normal actions
         now = datetime(2024, 1, 15, 12, 0, 0)
         state = SchedulerState(
             last_news_refresh=None,
@@ -1502,3 +1298,4 @@ class TestSchedulerInvariants:
         action = scheduler.what_to_do(now, state)
 
         assert Action.QUIET_ART not in action
+        assert Action.REFRESH_NEWS in action
