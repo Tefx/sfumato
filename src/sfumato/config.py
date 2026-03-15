@@ -74,6 +74,7 @@ class NewsConfig:
     max_age_days: int = 3
     expire_days: int = 7
     replay_expire_days: int = 2
+    qr_size: int = 60
     feeds: list[FeedConfig] = field(default_factory=list)
 
 
@@ -200,6 +201,7 @@ language = "zh"
 max_age_days = 3
 expire_days = 7
 replay_expire_days = 2
+qr_size = 60
 
 # --- Tech ---
 [[news.feeds]]
@@ -443,6 +445,13 @@ def _build_app_config(data: dict[str, Any], source_path: Path) -> AppConfig:
             news_data,
             "replay_expire_days",
             defaults.news.replay_expire_days,
+            source_path,
+            "news",
+        ),
+        qr_size=_expect_int_or_default(
+            news_data,
+            "qr_size",
+            defaults.news.qr_size,
             source_path,
             "news",
         ),

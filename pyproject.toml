@@ -12,6 +12,7 @@ dependencies = [
     "httpx",
     "typer>=0.9",
     "litellm",
+    "segno",
 ]
 
 [project.scripts]

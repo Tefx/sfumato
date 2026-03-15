@@ -11,3 +11,4 @@ Requires-Dist: feedparser
 Requires-Dist: httpx
 Requires-Dist: typer>=0.9
 Requires-Dist: litellm
+Requires-Dist: segno

@@ -162,6 +162,7 @@ class RenderContext:
     language: str
     date_str: str
     time_str: str
+    qr_size: int = 60
     whisper_fact_index: WhisperFactIndex = None
 
 
@@ -324,7 +325,7 @@ def build_template_variables(ctx: RenderContext) -> dict[str, str]:
     if ctx.template_name == "painting_text":
         variables["DATELINE"] = f"{ctx.date_str} · {ctx.time_str}"
         variables["NEWS_BLOCKS"] = _build_news_blocks_painting_text(
-            ctx.stories, ctx.layout.colors
+            ctx.stories, ctx.layout.colors, qr_size=ctx.qr_size
         )
 
     elif ctx.template_name == "portrait":
@@ -352,7 +353,7 @@ def build_template_variables(ctx: RenderContext) -> dict[str, str]:
         variables["BORDER"] = ctx.layout.colors.border
         variables["SOURCE"] = ctx.stories[0].source if ctx.stories else ""
         variables["SECTION_LABEL"] = f"{ctx.language.upper()} NEWS"
-        variables["STORIES"] = _build_stories_portrait(ctx.stories, ctx.layout.colors)
+        variables["STORIES"] = _build_stories_portrait(ctx.stories, ctx.layout.colors, qr_size=ctx.qr_size)
 
     elif ctx.template_name == "magazine":
         variables["PANEL_BG"] = ctx.layout.colors.panel_bg
@@ -361,7 +362,7 @@ def build_template_variables(ctx: RenderContext) -> dict[str, str]:
         variables["TEXT_SEC"] = ctx.layout.colors.text_secondary
         variables["BORDER"] = ctx.layout.colors.border
         variables["SOURCE"] = ctx.stories[0].source if ctx.stories else ""
-        variables["STORIES"] = _build_stories_magazine(ctx.stories, ctx.layout.colors)
+        variables["STORIES"] = _build_stories_magazine(ctx.stories, ctx.layout.colors, qr_size=ctx.qr_size)
 
     elif ctx.template_name in ("art_overlay", "art_minimal"):
         variables["TITLE"] = "DAILY BRIEF" if ctx.language == "en" else "每日简报"
@@ -372,7 +373,7 @@ def build_template_variables(ctx: RenderContext) -> dict[str, str]:
         # Generic fallback for unknown templates - use painting_text style
         variables["DATELINE"] = f"{ctx.date_str} · {ctx.time_str}"
         variables["NEWS_BLOCKS"] = _build_news_blocks_painting_text(
-            ctx.stories, ctx.layout.colors
+            ctx.stories, ctx.layout.colors, qr_size=ctx.qr_size
         )
 
     # === WHISPER VARIABLE POPULATION (minimal fixture) ===
@@ -558,9 +559,35 @@ def _substitute_template(template: str, variables: dict[str, str]) -> str:
     return result
 
 
+def _make_qr_svg(url: str, display_size: int = 60, color: str = "#888888") -> str:
+    """Generate inline SVG QR code for a URL."""
+    import segno
+    import io
+    import re
+
+    qr = segno.make(url, error='m')
+    buf = io.BytesIO()
+    qr.save(buf, kind='svg', scale=4, border=1, dark=color, light=None)
+    svg = buf.getvalue().decode()
+    if '<?xml' in svg:
+        svg = svg[svg.index('<svg'):]
+
+    # Add viewBox for proper CSS scaling (without this, browser crops instead of scales)
+    w_match = re.search(r'width="(\d+)"', svg)
+    h_match = re.search(r'height="(\d+)"', svg)
+    if w_match and h_match:
+        orig_w, orig_h = w_match.group(1), h_match.group(1)
+        svg = svg.replace(f'width="{orig_w}"', f'width="{display_size}"')
+        svg = svg.replace(f'height="{orig_h}"', f'height="{display_size}"')
+        svg = svg.replace('<svg ', f'<svg viewBox="0 0 {orig_w} {orig_h}" ', 1)
+
+    return svg
+
+
 def _build_news_blocks_painting_text(
     stories: list["Story"],
     colors: "LayoutColors",  # type: ignore[name-defined]
+    qr_size: int = 60,
 ) -> str:
     """Build news blocks for painting_text template.
 
@@ -578,9 +605,18 @@ def _build_news_blocks_painting_text(
     for story in stories:
         featured_class = " featured" if story.featured else ""
         parts.append(f'<div class="news-block{featured_class}">')
+        # Build headline row with optional QR code
+        qr_html = ""
+        if story.url:
+            qr_svg = _make_qr_svg(story.url, display_size=qr_size, color=colors.text_dim)
+            qr_html = f'  <div class="qr-code" style="flex: 0 0 {qr_size}px;">{qr_svg}</div>'
+        parts.append('  <div class="headline-row">')
         parts.append(
-            f'  <div class="title" style="color: {colors.text_primary}">{story.headline}</div>'
+            f'    <div class="title" style="color: {colors.text_primary}">{story.headline}</div>'
         )
+        if qr_html:
+            parts.append(qr_html)
+        parts.append('  </div>')
         parts.append(
             f'  <div class="body" style="color: {colors.text_secondary}">{story.summary}</div>'
         )
@@ -591,13 +627,15 @@ def _build_news_blocks_painting_text(
 
 def _build_stories_portrait(
     stories: list["Story"],
-    _colors: "LayoutColors",  # type: ignore[name-defined]
+    colors: "LayoutColors",  # type: ignore[name-defined]
+    qr_size: int = 60,
 ) -> str:
     """Build stories HTML for portrait template.
 
     Args:
         stories: List of Story objects.
         colors: LayoutColors for text styling.
+        qr_size: Display size in pixels for QR codes.
 
     Returns:
         HTML string for stories.
@@ -608,7 +646,15 @@ def _build_stories_portrait(
     parts = []
     for story in stories:
         parts.append('<div class="story">')
-        parts.append(f'  <div class="headline">{story.headline}</div>')
+        qr_html = ""
+        if story.url:
+            qr_svg = _make_qr_svg(story.url, display_size=qr_size, color=colors.text_dim)
+            qr_html = f'  <div class="qr-code" style="flex: 0 0 {qr_size}px;">{qr_svg}</div>'
+        parts.append('  <div class="headline-row">')
+        parts.append(f'    <div class="headline" style="flex: 1;">{story.headline}</div>')
+        if qr_html:
+            parts.append(qr_html)
+        parts.append('  </div>')
         parts.append(f'  <div class="body">{story.summary}</div>')
         parts.append("</div>")
 
@@ -617,13 +663,15 @@ def _build_stories_portrait(
 
 def _build_stories_magazine(
     stories: list["Story"],
-    _colors: "LayoutColors",  # type: ignore[name-defined]
+    colors: "LayoutColors",  # type: ignore[name-defined]
+    qr_size: int = 60,
 ) -> str:
     """Build stories HTML for magazine template.
 
     Args:
         stories: List of Story objects.
         colors: LayoutColors for text styling.
+        qr_size: Display size in pixels for QR codes.
 
     Returns:
         HTML string for stories.
@@ -634,7 +682,15 @@ def _build_stories_magazine(
     parts = []
     for story in stories:
         parts.append('<div class="story">')
-        parts.append(f'  <div class="headline">{story.headline}</div>')
+        qr_html = ""
+        if story.url:
+            qr_svg = _make_qr_svg(story.url, display_size=qr_size, color=colors.text_dim)
+            qr_html = f'  <div class="qr-code" style="flex: 0 0 {qr_size}px;">{qr_svg}</div>'
+        parts.append('  <div class="headline-row">')
+        parts.append(f'    <div class="headline" style="flex: 1;">{story.headline}</div>')
+        if qr_html:
+            parts.append(qr_html)
+        parts.append('  </div>')
         parts.append(f'  <div class="body">{story.summary}</div>')
         parts.append("</div>")
 

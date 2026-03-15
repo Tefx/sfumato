@@ -1704,6 +1704,7 @@ async def _render_4k(
         language=config.news.language,
         date_str=date_str,
         time_str=time_str,
+        qr_size=config.news.qr_size,
         whisper_fact_index=whisper_fact_index,
     )
 
