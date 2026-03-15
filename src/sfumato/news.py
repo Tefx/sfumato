@@ -573,9 +573,17 @@ def _parse_stories(
         ):
             continue
 
-        # Get URL - validate it exists in raw entries
+        # Get URL - accept LLM's URL even if it doesn't exactly match raw entries
+        # (LLM may normalize URLs slightly differently)
         url = story_dict.get("url", "")
-        if not url or url not in raw_urls:
+        if not url:
+            # Try to find URL from raw entries by matching headline
+            headline = story_dict.get("headline", "")
+            for entry in raw_entries:
+                if entry.get("title", "") in headline or headline in entry.get("title", ""):
+                    url = entry["url"]
+                    break
+        if not url:
             continue
 
         # Parse published_at
