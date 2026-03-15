@@ -550,7 +550,6 @@ def _parse_stories(
         List of Story objects.
     """
     stories: list[Story] = []
-    raw_urls = {e["url"] for e in raw_entries}
 
     for story_dict in story_dicts:
         # Validate required fields

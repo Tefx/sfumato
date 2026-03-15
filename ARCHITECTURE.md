@@ -135,7 +135,6 @@ class FeedConfig:
 @dataclass(frozen=True)
 class NewsConfig:
     language: str = "zh"
-    stories_per_refresh: int = 12
     max_age_days: int = 3
     expire_days: int = 7
     replay_expire_days: int = 2    # Days to keep replay batches before expiry
@@ -151,7 +150,9 @@ class PaintingsConfig:
 
 @dataclass(frozen=True)
 class AiConfig:
-    cli: str = "gemini"              # "gemini" | "codex" | "claude-code"
+    backend: str = "sdk"             # "sdk" | "cli"
+    sdk_provider: str = "openrouter" # "openrouter" | "google" | "openai" (when backend="sdk")
+    cli: str = "gemini"              # "gemini" | "codex" | "claude-code" (when backend="cli")
     model: str = "gemini-3-flash-preview"
 
 @dataclass(frozen=True)
@@ -242,13 +243,13 @@ async def fetch_feeds(
 async def curate(
     raw_entries: list[dict],
     language: str,
-    stories_per_refresh: int,
     ai_config: AiConfig,
 ) -> CurationResult:
-    """Invoke LLM to select, rank, summarize, translate, and describe tone.
+    """Invoke LLM to filter spam, rank, summarize, translate, and describe tone.
 
-    The LLM is called once with all raw entries. It returns:
-    - Exactly `stories_per_refresh` curated stories (or fewer if not enough raw entries)
+    Keeps all stories, only removing obvious spam. Processes in batches of 15.
+    Returns:
+    - All non-spam curated stories
     - A tone_description summarizing the batch's overall mood/themes
 
     Raises LlmError if the LLM call fails after retries.
@@ -508,9 +509,7 @@ class LayoutColors:
 
 @dataclass
 class ScrimParams:
-    position_css: str          # CSS position properties for scrim div
-    size_css: str              # CSS width/height for scrim div
-    gradient_css: str          # CSS radial-gradient or linear-gradient value
+    gradient_css: str          # CSS gradient applied as text-zone background (auto-sizes with content)
 
 @dataclass
 class PortraitLayout:
@@ -1044,19 +1043,6 @@ class LayoutCache:
     def save(self) -> None: ...
     def load(self) -> None: ...
 
-class EmbeddingCache:
-    """Cache of embedding vectors keyed by content_hash or text hash. Persisted to disk."""
-
-    def __init__(self, state_dir: Path) -> None: ...
-
-    def get(self, key: str) -> np.ndarray | None: ...
-    def put(self, key: str, vector: np.ndarray) -> None: ...
-    def has(self, key: str) -> bool: ...
-    @property
-    def size(self) -> int: ...
-    def save(self) -> None: ...
-    def load(self) -> None: ...
-
 @dataclass
 class AppState:
     """Aggregate root for all daemon state."""
@@ -1064,7 +1050,6 @@ class AppState:
     replay_queue: ReplayQueue
     used_paintings: UsedPaintings
     layout_cache: LayoutCache
-    embedding_cache: EmbeddingCache
     art_fact_rotation: ArtFactRotation
 
     @classmethod
@@ -1086,7 +1071,6 @@ class AppState:
   used_paintings.json    # Set of content_hash strings
   layout_cache.json      # Dict[content_hash, LayoutParams as dict]
   art_fact_rotation.json # Dict[content_hash, next_fact_index]
-  embedding_cache.npz    # Numpy archive of embedding vectors with string keys
 ```
 
 ---
@@ -1230,7 +1214,7 @@ async def run_backfill(
     state: AppState,
 ) -> int:
     """Fetch more paintings to expand the pool toward pool_size.
-    Analyze and compute embeddings for each new painting.
+    Analyze each new painting via LLM (layout + description).
 
     Returns number of new paintings added.
     """
@@ -1243,7 +1227,6 @@ async def init_project(config: AppConfig) -> None:
     2. Create state directory structure
     3. Fetch seed_size paintings from configured sources
     4. Analyze each painting (layout + description)
-    5. Compute embeddings for each painting
 
     This is a potentially long operation (~50 LLM calls for 50 paintings).
     Progress is printed to stdout.
@@ -1419,7 +1402,7 @@ for producing it.
 
 ### 3.3 Serialization
 
-All persisted data models must be serializable to JSON (or numpy `.npz` for embeddings).
+All persisted data models must be serializable to JSON.
 The serialization format for each:
 
 | Model          | Format                  | Notes                                    |
@@ -1428,7 +1411,6 @@ The serialization format for each:
 | `QueuedBatch`  | JSON dict               | `enqueued_at` as ISO 8601 string         |
 | `LayoutParams` | JSON dict               | All fields are JSON-native except None    |
 | `PaintingInfo` | JSON sidecar file       | `image_path` stored as relative to cache |
-| `EmbeddingCache`| numpy `.npz`           | Keys are content hashes                  |
 | `UsedPaintings`| JSON list of strings    | Set of content_hash values               |
 
 ---
@@ -1511,10 +1493,9 @@ The daemon maintains five categories of state:
 
 | State               | Lifetime        | Storage              | Size Estimate        |
 |---------------------|-----------------|----------------------|----------------------|
-| **News queue**      | Days            | `news_queue.json`    | ~12 stories/refresh  |
+| **News queue**      | Days            | `news_queue.json`    | All non-spam stories/refresh |
 | **Used paintings**  | Until pool exhausted | `used_paintings.json` | ~200 hashes     |
 | **Layout cache**    | Forever         | `layout_cache.json`  | ~2KB per painting    |
-| **Embedding cache** | Forever         | `embedding_cache.npz`| ~4KB per painting    |
 | **Painting pool**   | Forever         | `paintings/` dir     | ~2MB per image       |
 
 ### 5.2 News Queue Lifecycle
@@ -1536,8 +1517,8 @@ refresh_news()                          rotate()
   [removed]
 ```
 
-- `stories_per_refresh` (~12) stories are curated per refresh
-- They are split into batches of `recommended_stories` (3-4, as determined by LLM for each painting)
+- All non-spam stories are kept (LLM only filters obvious spam), processed in batches of 15
+- They are queued in batches of 8 stories; each rotation renders the count determined by `recommended_stories` (2-7)
 - The batch size is dynamic: it depends on the selected painting's layout analysis
 - If the queue is empty when a rotation triggers, an on-demand news refresh is performed
 
@@ -1553,14 +1534,11 @@ Fetch seed_size (50)          Backfill to pool_size (200)
 Analyze each (LLM)            Analyze each (LLM)
   │                                 │
   ▼                                 ▼
-Compute embeddings            Compute embeddings
-  │                                 │
-  ▼                                 ▼
 Store in cache_dir            Store in cache_dir
 ```
 
 - Paintings are fetched from configured sources in round-robin
-- Each painting gets: sidecar JSON metadata, LLM layout analysis (cached), embedding (cached)
+- Each painting gets: sidecar JSON metadata, LLM layout analysis (cached)
 - `UsedPaintings` tracks which have been displayed; when all are used, the set resets
 
 ### 5.4 State Persistence Strategy
@@ -1576,7 +1554,6 @@ Store in cache_dir            Store in cache_dir
 | Cache             | Invalidation Policy                              |
 |-------------------|--------------------------------------------------|
 | Layout cache      | Never invalidated (keyed by content hash)        |
-| Embedding cache   | Never invalidated (keyed by content hash)        |
 | News queue        | Entries older than `expire_days` are purged      |
 | Used paintings    | Reset when all paintings in pool have been used  |
 | Painting sidecar  | Never invalidated (immutable once written)       |
@@ -1661,8 +1638,7 @@ On daemon startup:
 | News curation            | Text     | Every 6h           | No         | ~12 stories |
 | Painting layout analysis | Vision   | Once per painting  | Yes (forever) | ~1 image |
 | Painting description     | Vision   | Once per painting  | Yes (forever) | Part of layout call |
-| Embedding computation    | Embedding| Once per painting  | Yes (forever) | ~1 text  |
-| News tone embedding      | Embedding| Every rotation     | No (unique) | ~1 text  |
+| Painting-news matching   | Text     | Every rotation     | No (unique) | ~1 prompt |
 
 ### 7.2 Prompt Structure
 
@@ -1672,9 +1648,9 @@ On daemon startup:
 System: You are a multilingual news editor curating a visual briefing.
 
 Input:
-- Raw RSS entries (title, summary, source, category, published date)
+- Raw RSS entries (title, summary, source, category, published date), processed in batches of 15
 - Target language: {language}
-- Target count: {stories_per_refresh}
+- Keep all stories, only filter obvious spam
 
 Output (JSON):
 - stories: [{headline, summary, source, category, url, featured}]
@@ -1744,10 +1720,8 @@ All LLM calls go through `llm.py`, which dispatches to the configured CLI:
   unique painting, forever. This is the most expensive call (vision model) and the most
   cacheable (painting content never changes).
 - **Painting description**: Part of the layout analysis response. Cached together.
-- **Painting embedding**: Cached by `content_hash` in `EmbeddingCache`. Computed once from
-  the description.
 - **News curation**: NOT cached. Each refresh produces fresh content from fresh RSS entries.
-- **News tone embedding**: NOT cached. Each batch has a unique tone description.
+- **Painting-news matching**: NOT cached. Each rotation compares news tone with painting descriptions via LLM.
 
 ### 7.5 Cost Optimization
 
@@ -1755,7 +1729,7 @@ All LLM calls go through `llm.py`, which dispatches to the configured CLI:
    come out. One call per 6h refresh.
 2. **Combine layout + description**: The painting analysis prompt asks for both layout params
    and the free-form description. One vision call per painting.
-3. **Cache aggressively**: Layout and embedding are immutable per painting hash. Even if the
+3. **Cache aggressively**: Layout and description are immutable per painting hash. Even if the
    config changes, cached values remain valid.
 4. **Backfill during idle time**: Painting analysis is done during BACKFILL actions, which
    are lower priority than ROTATE and REFRESH.
@@ -1817,8 +1791,7 @@ function produces the appropriate variables for each template.
 | Variable          | Type    | Source                | Example                              |
 |-------------------|---------|-----------------------|--------------------------------------|
 | `{{BG_IMAGE}}`    | URL     | `file://{image_path}` | `file:///home/user/.sfumato/...jpg`  |
-| `{{SCRIM_POSITION}}`| CSS  | `layout.scrim.position_css` | `top: 0; right: 0; width: 50%; height: 100%;` |
-| `{{SCRIM_GRADIENT}}`| CSS  | `layout.scrim.gradient_css` | `radial-gradient(...)` |
+| `{{SCRIM_GRADIENT}}`| CSS  | `layout.scrim.gradient_css` | `radial-gradient(...)` — applied as text-zone background |
 | `{{TEXT_POSITION}}`| CSS    | `layout.text_zone` -> CSS | `top: 100px; right: 160px;`      |
 | `{{TEXT_WIDTH}}`   | CSS    | `layout` derived      | `1500px`                             |
 | `{{TEXT_COLOR}}`   | Color  | `layout.colors.text_primary`| `#F5F0EB`                       |
@@ -1992,7 +1965,6 @@ The contract artifact lives in `Dockerfile`; rationale and failure conditions ar
     news_queue.json
     used_paintings.json
     layout_cache.json
-    embedding_cache.npz
   output/                       # Rendered PNGs (transient, can be cleaned)
 ```
 
@@ -2043,7 +2015,7 @@ container's network namespace.
 | Config file invalid      | Fatal     | Print error, exit with code 1               |
 | State file corrupted     | Error     | Log warning, reinitialize that state component |
 | Disk full                | Fatal     | Log error, exit                             |
-| Embedding fails          | Warning   | Fall back to random painting selection      |
+| LLM matching fails       | Warning   | Fall back to random painting selection      |
 
 ### 10.2 Degradation Ladder
 
@@ -2056,7 +2028,7 @@ Level 0: Full operation
 Level 1: No TV (TV unreachable or not in Art Mode)
   ├── Everything works, PNG saved locally, not uploaded
   │
-Level 2: No semantic matching (embedding fails)
+Level 2: No semantic matching (LLM matching fails or too few candidates)
   ├── Random painting selection, everything else works
   │
 Level 3: No fresh news (all RSS feeds fail)
@@ -2081,7 +2053,6 @@ SfumatoError (base)
 ├── ConfigError              # Config parsing/validation failures
 ├── LlmError                 # LLM invocation failures
 │   └── LlmParseError       # LLM response parsing failures
-│   └── EmbeddingError       # Embedding computation failures
 ├── TvError                  # TV communication failures
 │   ├── TvConnectionError    # TV unreachable
 │   └── TvUploadError        # Upload specifically failed
@@ -2166,8 +2137,7 @@ sfumato/
 ├── state/
 │   ├── news_queue.json
 │   ├── used_paintings.json
-│   ├── layout_cache.json
-│   └── embedding_cache.npz
+│   └── layout_cache.json
 └── output/                      # Rendered images (transient)
     ├── 20260314_080000.png
     └── 20260314_080000.html     # Debug HTML
@@ -2196,13 +2166,7 @@ sfumato/
      │      ││ings  ││       ││      ││       ││          │
      └──┬───┘└──┬───┘└───┬───┘└──┬───┘└───┬───┘└──────────┘
         │       │        │       │        │
-        │       │        ▼       │        │
-        │       │   ┌─────────┐  │        │
-        │       │   │embedding│  │        │
-        │       │   │ (numpy) │  │        │
-        │       │   └─────────┘  │        │
-        │       │                │        │
-        ▼       ▼                ▼        ▼
+        ▼       ▼        ▼       ▼        ▼
      ┌──────────────────────────────────────┐
      │              llm.py                  │
      │  (subprocess: gemini/codex/claude)   │
@@ -2225,7 +2189,7 @@ sfumato/
        render   ──▶ layout_ai.py (LayoutParams -- data only, not calling)
        news     ──▶ llm.py (curate via LLM)
        layout_ai──▶ llm.py (analyze via vision LLM)
-       matcher  ──▶ llm.py (compute embeddings)
+       matcher  ──▶ llm.py (LLM-based painting selection)
        paintings──▶ httpx (cloud API calls)
 ```
 
@@ -2239,11 +2203,11 @@ sfumato/
 | `paintings`   | `config`, `httpx`, `PIL`            | `orchestrator`, `matcher`  | Low      |
 | `layout_ai`   | `config`, `llm`                     | `orchestrator`             | Low      |
 | `palette`     | `PIL`, `numpy`                      | `render`, `orchestrator`   | Low      |
-| `matcher`     | `config`, `llm`, `numpy`            | `orchestrator`             | Low      |
+| `matcher`     | `config`, `llm`                     | `orchestrator`             | Low      |
 | `render`      | `config`, `playwright`              | `orchestrator`             | Low      |
 | `tv`          | `config`, `samsungtvws`             | `orchestrator`             | Low      |
 | `llm`         | `config`, `asyncio.subprocess`      | `news`, `layout_ai`, `matcher` | Low  |
-| `state`       | `numpy` (for embeddings)            | `orchestrator`             | Low      |
+| `state`       | (none)                              | `orchestrator`             | Low      |
 | `scheduler`   | `config`                            | `orchestrator`             | Low      |
 | `config`      | `tomllib` (stdlib)                  | All modules                | Low      |
 
@@ -2275,7 +2239,7 @@ modules (`llm`, `state`, `config`) are pure utilities with no upward dependencie
 | `samsungtvws[async,encrypted]` | `tv`             | Samsung TV control          |
 | `playwright`                   | `render`         | HTML -> PNG rendering       |
 | `Pillow`                       | `palette`, `paintings` | Image processing       |
-| `numpy`                        | `palette`, `matcher`, `state` | Numerical ops    |
+| `numpy`                        | `palette`                     | Numerical ops    |
 | `tomllib` (stdlib)             | `config`         | TOML parsing                |
 
 ---
@@ -2310,7 +2274,7 @@ sub-package later. Acceptable: YAGNI for now.
 
 ### A.3 State as JSON files (not SQLite)
 
-**Decision**: Persist all state as JSON files (and `.npz` for numpy arrays), not SQLite.
+**Decision**: Persist all state as JSON files, not SQLite.
 
 **Rationale**: The state is small (hundreds of entries, not millions), rarely queried by
 complex predicates, and needs to be human-readable for debugging. JSON files are trivially
@@ -2331,15 +2295,16 @@ positioned to recommend this.
 **Trade-off**: Batch splitting becomes dynamic and may leave odd-sized remainders in the queue.
 The queue handles this by allowing variable-size batches.
 
-### A.5 Embedding for semantic matching (not categories)
+### A.5 LLM-based semantic matching (not categories or embeddings)
 
-**Decision**: Use free-form text embeddings and cosine similarity for painting-news matching,
-not predefined mood categories.
+**Decision**: Use direct LLM matching to select the best painting for a given news tone.
+Send painting descriptions + news tone to LLM and ask it to pick the best match.
 
 **Rationale**: Fixed categories ("calm", "dramatic", "melancholic") are too coarse. The
 free-form description approach captures nuances like "quiet melancholy vs. peaceful solitude"
-that categorical labels cannot. The matching is emergent from the descriptions, not hand-coded.
+that categorical labels cannot. Direct LLM matching is simpler than embedding + cosine
+similarity and produces better results since the LLM can reason about the match holistically.
 
-**Trade-off**: Requires embedding computation (adds ~1s per matching operation). Matching
-quality depends on the LLM's description quality. Acceptable because descriptions are
-generated during analysis (cached) and embedding is fast.
+**Trade-off**: Requires one LLM text call per rotation (~15 min). Acceptable because the
+call is fast and inexpensive (text-only, no vision). Cold-start: if fewer than 3 painting
+descriptions are cached, falls back to random selection.

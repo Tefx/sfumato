@@ -433,3 +433,73 @@ def test_path_expansion_tilde_in_env_override(
 
     assert config.data_dir.is_absolute()
     assert str(config.data_dir).startswith(str(Path.home()))
+
+
+def test_minimal_tv_only_toml_fills_all_defaults(
+    isolated_paths: Path,
+) -> None:
+    """Loading a minimal TOML with only [tv] ip fills all other fields with defaults.
+
+    Backward-compatibility contract:
+    - replay_expire_days defaults to 2
+    - backend defaults to "sdk"
+    - sdk_provider defaults to "openrouter"
+    - Unknown/removed fields (e.g. stories_per_refresh) are silently ignored
+    """
+    config_path = isolated_paths / "minimal.toml"
+    _write(config_path, '[tv]\nip = "1.2.3.4"\n')
+
+    config = load_config(path=config_path)
+
+    # TV section: explicit ip, defaults for rest
+    assert config.tv.ip == "1.2.3.4"
+    assert config.tv.port == 8002
+    assert config.tv.max_uploads == 5
+
+    # Schedule: all defaults
+    assert config.schedule.news_interval_hours == 6
+    assert config.schedule.rotate_interval_minutes == 15
+    assert config.schedule.quiet_hours == (0, 6)
+    assert config.schedule.active_hours == (7, 23)
+
+    # News: all defaults including replay_expire_days
+    assert config.news.language == "zh"
+    assert config.news.max_age_days == 3
+    assert config.news.expire_days == 7
+    assert config.news.replay_expire_days == 2
+    assert config.news.feeds == []
+
+    # Paintings: all defaults
+    assert config.paintings.seed_size == 50
+    assert config.paintings.pool_size == 200
+    assert config.paintings.sources == ["met", "wikimedia"]
+    assert config.paintings.match_strategy == "semantic"
+
+    # AI: all defaults including backend and sdk_provider
+    assert config.ai.cli == "gemini"
+    assert config.ai.model == "gemini-3-flash-preview"
+    assert config.ai.backend == "sdk"
+    assert config.ai.sdk_provider == "openrouter"
+
+    # Paths are absolute
+    assert config.data_dir.is_absolute()
+    assert config.paintings.cache_dir.is_absolute()
+
+
+def test_old_toml_with_removed_field_stories_per_refresh_is_silently_ignored(
+    isolated_paths: Path,
+) -> None:
+    """Old TOML configs with removed fields like stories_per_refresh don't crash."""
+    config_path = isolated_paths / "old-config.toml"
+    _write(
+        config_path,
+        '[tv]\nip = "1.2.3.4"\n\n[news]\nstories_per_refresh = 10\nlanguage = "en"\nfeeds = []\n',
+    )
+
+    # Should not raise despite unknown field stories_per_refresh
+    config = load_config(path=config_path)
+
+    assert config.tv.ip == "1.2.3.4"
+    assert config.news.language == "en"
+    # replay_expire_days defaults even when other news fields are present
+    assert config.news.replay_expire_days == 2

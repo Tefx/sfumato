@@ -27,15 +27,15 @@ Every 15 minutes, sfumato selects a painting that matches the current news mood,
 ## Features
 
 - **Full-screen paintings** — The Frame's bezel is the frame. No borders, no panels, no picture-in-picture. The painting fills the screen.
-- **LLM-driven layout** — Each painting is analyzed by an LLM (via Gemini CLI, Codex CLI, or Claude Code) to find optimal text placement. Bright areas get dark text, dark areas get light text. The LLM recommends how many stories fit.
+- **LLM-driven layout** — Each painting is analyzed by an LLM (default: OpenRouter + Gemini 3 Flash via SDK, or Gemini/Codex/Claude CLI) to find optimal text placement. Bright areas get dark text, dark areas get light text. The LLM recommends how many stories fit (2-7).
 - **Semantic art–news matching** — No fixed mood categories. Each painting gets a free-form LLM description of its emotional tone, themes, and atmosphere. Each news batch gets the same. An LLM directly compares painting descriptions with news tone to find the best match. "Stormy skies with golden fields" naturally matches "industry upheaval amid golden-age AI breakthroughs."
 - **Whisper text** — Art facts blend into the painting's quiet zones: small, unobtrusive text carrying historical trivia, artist context, or compositional insights. Each painting displays one fact per rotation, cycling through 1-3 facts for repeated viewings.
 - **News replay** — Previously seen news batches cycle through on subsequent rotations when the primary queue empties. News facts are replayed with a configurable expiration window, keeping your backlog fresh without redundant alerts.
 - **Subject avoidance** — The LLM identifies the primary subject zone in each painting, ensuring news overlays never obscure the focal point. The subject region is preserved as visually clean space.
-- **Smart news curation** — Multiple RSS sources are fetched and deduplicated by URL, then an LLM selects, ranks, summarizes, and translates to your configured language. Complete stories, not just headlines. Seen article URLs are tracked to prevent repetition across refresh cycles.
+- **Smart news curation** — Multiple RSS sources are fetched and deduplicated by URL, then an LLM filters obvious spam, ranks, summarizes, and translates to your configured language in batches of 15. All non-spam stories are kept. Complete stories, not just headlines. Seen article URLs are tracked to prevent repetition across refresh cycles.
 - **Time-window awareness** — Fetches news from the past N days (default 3), not just the latest. If you've been away, you'll catch up on what matters. Articles older than 7 days are expired.
 - **Configurable display language** — Output in any language: Chinese, English, Japanese, etc. The LLM translates and adapts summaries accordingly.
-- **Dual refresh cycle** — News is fetched every 6 hours (configurable), paintings rotate every 15 minutes. News is split into batches so each rotation shows fresh stories.
+- **Dual refresh cycle** — News is fetched every 6 hours (configurable), paintings rotate every 15 minutes. News is queued in batches of 8 stories; each rotation renders the count determined by the painting's layout analysis (2-7 stories). Consumed batches replay until expired.
 - **Cloud art sources** — Paintings from Met Museum and Wikimedia Commons APIs. Locally cached, never repeats until the full pool is exhausted.
 - **Layout caching** — Each painting's composition analysis and description are cached by content hash. One LLM call per painting, forever.
 - **Seed art library** — `sfumato init` pre-fetches 50 paintings from cloud APIs covering diverse styles and moods, then analyzes them all. The daemon continues backfilling to 200+ in the background.
@@ -89,7 +89,7 @@ active_hours = [7, 23]              # Only push during these hours
 
 [news]
 language = "zh"                     # Display language (zh, en, ja, ...)
-stories_per_refresh = 12            # LLM curates this many per fetch
+                                    # All stories kept (only spam filtered), processed in batches of 15
 max_age_days = 3                    # Fetch articles up to N days old
 expire_days = 7                     # Discard articles older than this
 replay_expire_days = 2              # Expire replay batches older than this
@@ -177,7 +177,8 @@ sources = ["met", "wikimedia"]
 match_strategy = "semantic"         # semantic | random
 
 [ai]
-cli = "gemini"                      # gemini | codex | claude-code
+backend = "sdk"                     # sdk | cli
+sdk_provider = "openrouter"         # openrouter | google | openai (when backend="sdk")
 model = "gemini-3-flash-preview"    # Model for layout analysis and news curation
 ```
 
@@ -234,7 +235,7 @@ Painting descriptions are cached forever (one LLM call per painting). News batch
 - Python 3.12+
 - Chromium (installed via Playwright)
 - Samsung The Frame TV (2020+ models, on same network)
-- One of: `gemini` CLI, `codex` CLI, or `claude` CLI installed and authenticated
+- Default: OpenRouter API key (`OPENROUTER_API_KEY`) for SDK backend. Alternatively, one of: `gemini` CLI, `codex` CLI, or `claude` CLI for CLI backend mode
 
 ## Container Deployment Contract
 

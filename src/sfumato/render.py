@@ -532,59 +532,6 @@ def render_to_png_sync(
 # =============================================================================
 
 
-def _hex_brightness(color: str) -> int:
-    """Estimate brightness (0-255) from a hex color or rgba string."""
-    import re
-
-    # Try hex (#RRGGBB)
-    hex_match = re.search(r"#([0-9a-fA-F]{6})", color)
-    if hex_match:
-        r, g, b = (
-            int(hex_match.group(1)[:2], 16),
-            int(hex_match.group(1)[2:4], 16),
-            int(hex_match.group(1)[4:6], 16),
-        )
-        return int(0.299 * r + 0.587 * g + 0.114 * b)
-    # Try rgba(r,g,b,a)
-    rgba_match = re.search(r"rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)", color)
-    if rgba_match:
-        r, g, b = (
-            int(rgba_match.group(1)),
-            int(rgba_match.group(2)),
-            int(rgba_match.group(3)),
-        )
-        return int(0.299 * r + 0.587 * g + 0.114 * b)
-    return 128  # unknown, assume mid
-
-
-def _estimate_zone_brightness(ctx: "RenderContext") -> int:
-    """Estimate average brightness of the text zone area in the painting."""
-    try:
-        from PIL import Image
-        import numpy as np
-
-        img = Image.open(ctx.painting.image_path).convert("L")
-        arr = np.array(img)
-        h, w = arr.shape
-        pos = ctx.layout.text_zone.position
-
-        # Sample the quadrant where text will be placed
-        if "top" in pos and "right" in pos:
-            zone = arr[: h // 2, w // 2 :]
-        elif "top" in pos and "left" in pos:
-            zone = arr[: h // 2, : w // 2]
-        elif "bottom" in pos and "right" in pos:
-            zone = arr[h // 2 :, w // 2 :]
-        elif "bottom" in pos and "left" in pos:
-            zone = arr[h // 2 :, : w // 2]
-        else:
-            zone = arr[: h // 2, w // 2 :]  # default top-right
-
-        return int(np.mean(zone))
-    except Exception:
-        return 128  # unknown
-
-
 def _substitute_template(template: str, variables: dict[str, str]) -> str:
     """Substitute {{PLACEHOLDER}} variables in template.
 

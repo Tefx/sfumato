@@ -1486,6 +1486,15 @@ async def _select_painting(
         if cached_layout is not None:
             painting_descriptions[p.content_hash] = cached_layout.painting_description
 
+    # Cold-start guard: not enough painting descriptions for meaningful matching
+    if len(painting_descriptions) < 3:
+        logger.info(
+            "Only %d painting descriptions cached (need >= 3), falling back to random",
+            len(painting_descriptions),
+        )
+        selected = random.choice(available)
+        return (selected, 0.0)
+
     try:
         selected, score = await select_painting(
             news_tone=batch.tone_description,

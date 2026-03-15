@@ -115,8 +115,7 @@ Key design principle: **The Frame TV bezel IS the frame. Painting fills 100% of 
 Template variables:
 ```
 {{BG_IMAGE}}         — file:// URI to painting
-{{SCRIM_POSITION}}   — CSS absolute position for scrim div
-{{SCRIM_GRADIENT}}   — CSS radial-gradient or linear-gradient
+{{SCRIM_GRADIENT}}   — CSS gradient applied as text-zone background (auto-sizes with content)
 {{TEXT_POSITION}}     — CSS absolute position for text zone
 {{TEXT_WIDTH}}        — max-width of text zone
 {{TEXT_COLOR}}        — primary text color (titles)
