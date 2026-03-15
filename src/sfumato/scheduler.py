@@ -331,28 +331,25 @@ class Scheduler:
 
         Interval Semantics:
            - active_hours[0] is the start hour (inclusive)
-           - active_hours[1] is the end hour (inclusive, NOT exclusive)
+           - active_hours[1] is the end hour (exclusive)
            - Hour values are in 24-hour format (0-23)
-           - Example: (7, 23) means hours 7, 8, ..., 22, 23 are active
-
-        This differs from quiet_hours which uses exclusive end.
-        (See ARCHITECTURE.md#2.1 for rationale.)
+           - Same semantics as quiet_hours (both use exclusive end)
+           - Example: (7, 23) means hours 7, 8, ..., 21, 22 are active
+           - Example: (10, 2) means 10, 11, ..., 23, 0, 1 are active (wraps midnight)
+           - Example: (0, 24) means all day active
 
         Edge Cases:
-           - Active hours of (0, 23) means active all day.
-           - Active hours of (7, 6) where end < start: returns False (invalid config).
-           - Hour boundary: is_active_hour(22:59:59) returns True for (7, 23).
-           - Hour boundary: is_active_hour(23:00:00) returns True for (7, 23).
+           - Crossing midnight: active_hours=(10, 2) means 10:00-1:59.
+           - Active hours of (0, 0) or (x, x) is empty → always False.
 
         Args:
             now: Current datetime. Uses the hour component only.
 
         Returns:
-            True if the hour falls within [start, end] (both inclusive),
-            False otherwise.
+            True if the hour falls within [start, end), False otherwise.
         """
         return self._is_time_in_range(
-            now, self._active_hours[0], self._active_hours[1], end_inclusive=True
+            now, self._active_hours[0], self._active_hours[1], end_inclusive=False
         )
 
     def _is_time_in_range(

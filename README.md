@@ -85,7 +85,7 @@ max_uploads = 5                     # Auto-clean older uploads
 news_interval_hours = 6             # How often to fetch + curate news
 rotate_interval_minutes = 15        # How often to switch painting + news batch
 quiet_hours = [0, 6]                # Pure art mode, no news overlay
-active_hours = [7, 23]              # Only push during these hours
+active_hours = [10, 2]              # Only push during these hours
 
 [news]
 language = "zh"                     # Display language (zh, en, ja, ...)
@@ -257,7 +257,7 @@ port = 8002
 news_interval_hours = 6     # How often to fetch new RSS
 rotate_interval_minutes = 15 # How often to switch painting + news
 quiet_hours = [0, 6]        # Pure art mode (no news), e.g. midnight to 6am
-active_hours = [7, 23]      # Only push during these hours
+active_hours = [10, 2]      # Only push during these hours
 
 [news]
 language = "zh"             # Display language (zh/en/ja/...)
@@ -300,7 +300,7 @@ docker compose logs -f sfumato
 [schedule]
 # active_hours: only push during this window
 # Examples:
-#   active_hours = [7, 23]    # 7am to 11pm
+#   active_hours = [10, 2]    # 7am to 11pm
 #   active_hours = [10, 14]   # 10am to 2pm only
 #   active_hours = [0, 23]    # all day
 
