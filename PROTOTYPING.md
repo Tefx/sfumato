@@ -441,3 +441,10 @@ These files were generated during prototyping and can be used as visual referenc
 - 4 stories with long summaries overflow from corner into painting center
 - LLM recommended_stories sometimes too high for available quiet space
 - Need: stronger variance→magazine routing in prompt (added in commit f0b3086)
+
+### Watch Daemon SIGTERM Retest (2026-03-15)
+
+- SIGTERM during sleep phase: ✅ PASS — exits within 5s, health file written
+- SIGTERM during LLM call: ⚠️ blocked until current call completes (~10-60s)
+- Docker stop_grace_period: 90s (sufficient)
+- Health file: ✅ last_action.json correctly written on shutdown
