@@ -71,7 +71,7 @@ class NewsConfig:
     """
 
     language: str = "zh"
-    stories_per_refresh: int = 12
+    stories_per_refresh: int = 0  # 0 = keep all (only filter obvious spam). >0 = select top N.
     max_age_days: int = 3
     expire_days: int = 7
     replay_expire_days: int = 2

@@ -299,45 +299,55 @@ async def curate(
             entry_count=0,
         )
 
-    # Build prompt for LLM
-    prompt = _build_curation_prompt(raw_entries, language, stories_per_refresh)
+    # Split into batches of ~25 entries to keep prompts within LLM context limits
+    BATCH_SIZE = 25
+    all_stories: list[Story] = []
+    tone_descriptions: list[str] = []
 
-    # Invoke LLM
-    response = await invoke_text(
-        prompt=prompt,
-        ai_config=ai_config,
-        system_prompt=_get_system_prompt(language),
-        max_tokens=4000,
-        temperature=0.3,
-        timeout_seconds=120,
-    )
+    for batch_start in range(0, len(raw_entries), BATCH_SIZE):
+        batch = raw_entries[batch_start:batch_start + BATCH_SIZE]
+        # For batched processing, each batch gets stories_per_refresh=0 (keep all)
+        # or proportional selection if stories_per_refresh > 0
+        batch_limit = stories_per_refresh
+        if stories_per_refresh > 0:
+            batch_limit = max(1, stories_per_refresh * len(batch) // len(raw_entries))
 
-    # Parse response
-    parsed = parse_json_response(response.text)
+        prompt = _build_curation_prompt(batch, language, batch_limit)
+        response = await invoke_text(
+            prompt=prompt,
+            ai_config=ai_config,
+            system_prompt=_get_system_prompt(language),
+            max_tokens=4000,
+            timeout_seconds=120,
+        )
+        try:
+            data = parse_json_response(response.text)
+            batch_stories = _parse_stories(data.get("stories", []), batch)
+            batch_stories = _ensure_one_featured(batch_stories) if batch_stories else []
+            all_stories.extend(batch_stories)
+            if data.get("tone_description"):
+                tone_descriptions.append(data["tone_description"])
+        except Exception as e:
+            logger.warning("Failed to parse batch %d: %s", batch_start // BATCH_SIZE, e)
+            continue
 
-    # Extract and validate stories
-    stories = _parse_stories(parsed.get("stories", []), raw_entries)
+    # Sort all stories: featured first, then by original order
+    featured = [s for s in all_stories if s.featured]
+    non_featured = [s for s in all_stories if not s.featured]
+    all_stories = featured + non_featured
 
-    # Limit to requested count
-    stories = stories[:stories_per_refresh]
-
-    # Ensure exactly one featured story
-    stories = _ensure_one_featured(stories)
-
-    # Extract tone description
-    tone_description = parsed.get("tone_description", "")
-
-    # Get feed and entry counts from parsed metadata
-    feed_count = parsed.get("feed_count", 0)
-    entry_count = parsed.get("entry_count", len(raw_entries))
+    # Combine tone descriptions
+    tone = tone_descriptions[0] if tone_descriptions else ""
 
     return CurationResult(
-        stories=stories,
-        tone_description=tone_description,
+        stories=all_stories,
+        tone_description=tone,
         curated_at=datetime.now(),
-        feed_count=feed_count,
-        entry_count=entry_count,
+        feed_count=0,
+        entry_count=len(raw_entries),
     )
+
+
 
 
 # =============================================================================
@@ -348,6 +358,7 @@ async def curate(
 async def refresh_news(
     news_config: NewsConfig,
     ai_config: AiConfig,
+    exclude_urls: set[str] | None = None,
 ) -> CurationResult:
     """Top-level convenience: fetch + curate in one call.
 
@@ -379,6 +390,14 @@ async def refresh_news(
         feeds=news_config.feeds,
         max_age_days=news_config.max_age_days,
     )
+
+    # Filter out already-displayed URLs to avoid re-curating same stories
+    if exclude_urls:
+        before = len(raw_entries)
+        raw_entries = [e for e in raw_entries if e.get("url") not in exclude_urls]
+        filtered = before - len(raw_entries)
+        if filtered > 0:
+            logger.info("Filtered %d already-seen URLs from %d entries", filtered, before)
 
     # Curate with LLM
     result = await curate(
@@ -461,10 +480,20 @@ def _build_curation_prompt(
         headline_constraint = "headlines max ~12 words"
         summary_constraint = "summaries 60-100 words"
 
+    select_instruction = ""
+    if stories_per_refresh > 0:
+        select_instruction = f"Select the {stories_per_refresh} most interesting/important stories."
+    else:
+        select_instruction = (
+            "Keep ALL stories. Only remove entries that are OBVIOUSLY spam, ads, "
+            "or completely unreadable (must be high confidence). When in doubt, KEEP the entry."
+        )
+
     prompt = f"""You are a news editor preparing a visual briefing for a large display.
 
-Given these raw RSS entries, select the {stories_per_refresh} most interesting/important stories
-and produce a JSON object for rendering.
+Given these raw RSS entries, process them for display.
+
+{select_instruction}
 
 Rules:
 - Translate headlines and summaries to {language.upper()}

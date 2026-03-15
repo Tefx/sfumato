@@ -682,10 +682,29 @@ async def run_news_refresh(
     # stories_per_refresh is total curated (~12), we split into batches of 3-4.
     batch_size = min(4, config.news.stories_per_refresh)
 
-    # Fetch and curate news
+    # Collect already-displayed URLs from replay queue to avoid re-curating
+    exclude_urls: set[str] = set()
+    replay_queue = _get_replay_queue(state)
+    if replay_queue is not None:
+        try:
+            # Collect URLs from all replay batches
+            for i in range(replay_queue.size):
+                rb = replay_queue.next()
+                if rb and hasattr(rb, 'stories'):
+                    for story in rb.stories:
+                        if hasattr(story, 'url') and story.url:
+                            exclude_urls.add(story.url)
+        except Exception:
+            pass  # Best effort
+
+    # Also collect from current news queue
+    # (peek without consuming — news_queue doesn't have iteration, skip for now)
+
+    # Fetch and curate news, excluding already-seen URLs
     result = await refresh_news(
         news_config=config.news,
         ai_config=config.ai,
+        exclude_urls=exclude_urls if exclude_urls else None,
     )
 
     # Expire old batches before adding new ones
