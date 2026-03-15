@@ -422,3 +422,22 @@ These files were generated during prototyping and can be used as visual referenc
 - whisper 位置在新闻的对角（新闻右上 → whisper 左下）
 - LLM 一次调用输出两个互斥区域
 - 视觉层级：新闻 > whisper（字号更小、颜色更淡、但仍可读）
+
+## 12. Watch Daemon Test Results (2026-03-15)
+
+### Test 1-4: PASS
+- First rotation: ✓ renders produced
+- Second rotation: ✓ new render, replay queue grows
+- Forced refresh: ✓ clear queue → re-curate 20 new batches
+- Backfill: pool 29/200, should trigger on idle
+
+### Test 5: FAIL — SIGTERM
+- Daemon didn't exit within 5s of SIGTERM, required SIGKILL
+- Health file not generated
+- Issue: signal handler may not interrupt asyncio event loop
+
+### Layout Quality Issues Found
+- Dense paintings (Constable forest, Ricci Baptism): text placed over busy areas
+- 4 stories with long summaries overflow from corner into painting center
+- LLM recommended_stories sometimes too high for available quiet space
+- Need: stronger variance→magazine routing in prompt (added in commit f0b3086)
