@@ -977,18 +977,17 @@ async def watch(config: AppConfig) -> None:
         last_backfill=None,
     )
 
-    # Shutdown coordination using asyncio.Event (interruptible sleep)
+    # Shutdown coordination using asyncio-native signal handling
     loop = asyncio.get_event_loop()
     shutdown_event = asyncio.Event()
 
-    def handle_shutdown(signum: int, frame: object) -> None:
-        logger.info("Received shutdown signal %s, finishing current action...", signum)
-        # Must use call_soon_threadsafe because signal handlers run outside asyncio
-        loop.call_soon_threadsafe(shutdown_event.set)
+    def handle_shutdown() -> None:
+        logger.info("Received shutdown signal, finishing current action...")
+        shutdown_event.set()
 
-    # Register signal handlers
-    signal.signal(signal.SIGINT, handle_shutdown)
-    signal.signal(signal.SIGTERM, handle_shutdown)
+    # Use asyncio's signal handler (runs inside the event loop, not in a thread)
+    loop.add_signal_handler(signal.SIGINT, handle_shutdown)
+    loop.add_signal_handler(signal.SIGTERM, handle_shutdown)
 
     logger.info("Watch daemon started, entering main loop")
     write_health("starting", [])
