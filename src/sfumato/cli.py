@@ -324,6 +324,108 @@ class _EmbeddingCache:
         return None
 
 
+class _ReplayTransferResult:
+    """Minimal replay transfer result."""
+
+    def __init__(self, accepted: bool, reason: str, overlap_ratio: float) -> None:
+        self.accepted = accepted
+        self.reason = reason
+        self.overlap_ratio = overlap_ratio
+        self.matched_batch_index: int | None = None
+
+
+class _ReplayBatch:
+    """Minimal replay batch."""
+
+    def __init__(
+        self,
+        stories: list["Story"],
+        tone_description: str,
+        source_enqueued_at: datetime.datetime,
+    ) -> None:
+        self.stories = stories
+        self.tone_description = tone_description
+        self.source_enqueued_at = source_enqueued_at
+        self.transferred_at = datetime.datetime.now().astimezone()
+        self.replay_count: int = 0
+        self.last_replayed_at: datetime.datetime | None = None
+
+
+class _ReplayQueue:
+    """Minimal replay queue implementation for CLI.
+
+    Satisfies orchestrator.ReplayQueueProtocol.
+    """
+
+    def __init__(self, state_dir: Path) -> None:
+        self._state_dir = state_dir
+        self._batches: list[_ReplayBatch] = []
+        self._next_index: int = 0
+
+    def next(self) -> _ReplayBatch | None:
+        """Return the next replay batch cyclically without removal."""
+        if not self._batches:
+            return None
+        batch = self._batches[self._next_index % len(self._batches)]
+        batch.replay_count += 1
+        batch.last_replayed_at = datetime.datetime.now().astimezone()
+        self._next_index = (self._next_index + 1) % len(self._batches)
+        return batch
+
+    def expire(self, expire_days: int) -> int:
+        """Drop replay batches older than expire_days."""
+        if not self._batches:
+            return 0
+        cutoff = datetime.datetime.now().astimezone() - datetime.timedelta(
+            days=expire_days
+        )
+        before = len(self._batches)
+        self._batches = [
+            b for b in self._batches if b.source_enqueued_at >= cutoff
+        ]
+        removed = before - len(self._batches)
+        if self._batches:
+            self._next_index = self._next_index % len(self._batches)
+        else:
+            self._next_index = 0
+        return removed
+
+    def transfer_from_news_queue(self, batch: Any) -> _ReplayTransferResult:
+        """Transfer a consumed primary batch into replay storage."""
+        stories = getattr(batch, "stories", [])
+        if not stories:
+            return _ReplayTransferResult(
+                accepted=False, reason="rejected-empty-batch", overlap_ratio=0.0
+            )
+        tone = getattr(batch, "tone_description", "")
+        enqueued_at = getattr(
+            batch, "enqueued_at", datetime.datetime.now().astimezone()
+        )
+        self._batches.append(
+            _ReplayBatch(
+                stories=list(stories),
+                tone_description=tone,
+                source_enqueued_at=enqueued_at,
+            )
+        )
+        return _ReplayTransferResult(
+            accepted=True, reason="accepted", overlap_ratio=0.0
+        )
+
+    @property
+    def size(self) -> int:
+        """Number of replay batches."""
+        return len(self._batches)
+
+    def persist(self) -> None:
+        """Persist state (no-op for minimal implementation)."""
+        return None
+
+    def load(self) -> None:
+        """Load state (no-op for minimal implementation)."""
+        return None
+
+
 class _ArtFactRotation:
     """Minimal art-fact rotation tracking."""
 
@@ -363,6 +465,7 @@ class AppState:
     layout_cache: _LayoutCache
     embedding_cache: _EmbeddingCache
     art_fact_rotation: _ArtFactRotation
+    replay_queue: _ReplayQueue
 
     @classmethod
     def load(cls, state_dir: Path) -> "AppState":
@@ -374,6 +477,7 @@ class AppState:
             layout_cache=_LayoutCache(state_dir),
             embedding_cache=_EmbeddingCache(state_dir),
             art_fact_rotation=_ArtFactRotation(),
+            replay_queue=_ReplayQueue(state_dir),
         )
 
     def save_all(self) -> None:
@@ -382,6 +486,7 @@ class AppState:
         self.used_paintings.save()
         self.layout_cache.save()
         self.embedding_cache.save()
+        self.replay_queue.persist()
 
 
 # =============================================================================

@@ -80,6 +80,8 @@ class MockAiConfig:
     model: str = "test-model"
     backend: str = "cli"
     sdk_provider: str = "openrouter"
+    embedding_provider: str = "google"
+    embedding_model: str = "text-embedding-004"
 
 
 # =============================================================================

@@ -129,7 +129,7 @@ async def compute_embedding(
     return EmbeddingResult(
         text=text,
         vector=vector,
-        model=ai_config.model,
+        model=ai_config.embedding_model,
     )
 
 

@@ -308,18 +308,12 @@ def build_template_variables(ctx: RenderContext) -> dict[str, str]:
     # Add layout-based CSS parameters (for painting_text template)
     # Convert semantic position ("top-right") to CSS absolute positioning
     text_position_css = _position_to_css(ctx.layout.text_zone.position)
-    scrim_position_css = ctx.layout.scrim.position_css
-    scrim_size_css = (
-        ctx.layout.scrim.size_css
-        if hasattr(ctx.layout.scrim, "size_css") and ctx.layout.scrim.size_css
-        else "width: 50%; height: 50%;"
-    )
 
-    # 3. Text width: max 38% to avoid covering painting subjects
-    # LLMs often suggest too-wide text zones. 38% = 1459px, proven in prototype.
+    # Scrim is now integrated as .text-zone background (auto-sizes with content).
+    # LLM provides gradient style, template applies it directly on text-zone.
+    # No separate SCRIM_POSITION needed — scrim follows text content automatically.
     variables.update(
         {
-            "SCRIM_POSITION": f"{scrim_position_css} {scrim_size_css}",
             "SCRIM_GRADIENT": ctx.layout.scrim.gradient_css,
             "TEXT_POSITION": text_position_css,
             "TEXT_WIDTH": "38%",

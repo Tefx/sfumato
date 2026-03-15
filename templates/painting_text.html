@@ -21,21 +21,16 @@
     background: url('{{BG_IMAGE}}') center/cover no-repeat;
   }
 
-  /* Localized scrim — gentle darkening only in text area, fades to transparent */
-  .text-scrim {
-    position: absolute;
-    {{SCRIM_POSITION}}
-    background: {{SCRIM_GRADIENT}};
-    pointer-events: none;
-    z-index: 1;
-  }
-
   /* Text zone — positioned over the painting's quiet area */
+  /* Scrim is integrated as background of text zone, auto-sizing with content */
   .text-zone {
     position: absolute;
     {{TEXT_POSITION}}
     max-width: {{TEXT_WIDTH}};
     z-index: 2;
+    padding: 40px 48px;
+    border-radius: 8px;
+    background: {{SCRIM_GRADIENT}};
   }
 
   .dateline {
@@ -87,7 +82,6 @@
 </head>
 <body>
   <div class="painting"></div>
-  <div class="text-scrim"></div>
   <template id="whisper-contract">
     <div class="whisper-contract" data-whisper-position="{{WHISPER_POSITION}}" data-whisper-color="{{WHISPER_COLOR}}" data-whisper-shadow="{{WHISPER_SHADOW}}">{{WHISPER_TEXT}}</div>
   </template>

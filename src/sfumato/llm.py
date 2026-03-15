@@ -749,9 +749,13 @@ async def _invoke_sdk_embedding(
 ) -> list[float]:
     """Invoke embedding via LiteLLM SDK.
 
+    Uses ``ai_config.embedding_provider`` and ``ai_config.embedding_model``
+    instead of the main LLM provider/model, since not all providers (e.g.
+    OpenRouter) support embeddings.
+
     Args:
         text: The text string to embed.
-        ai_config: Configuration specifying SDK provider and model.
+        ai_config: Configuration specifying embedding provider and model.
 
     Returns:
         Embedding vector as list of floats.
@@ -767,16 +771,19 @@ async def _invoke_sdk_embedding(
             "Install with: pip install litellm"
         ) from e
 
+    embedding_provider = ai_config.embedding_provider
+    embedding_model = ai_config.embedding_model
+
     # Validate provider
-    if ai_config.sdk_provider not in VALID_SDK_PROVIDERS:
+    if embedding_provider not in VALID_SDK_PROVIDERS:
         valid_providers = ", ".join(repr(p) for p in VALID_SDK_PROVIDERS)
         raise EmbeddingError(
-            f"Unsupported SDK provider '{ai_config.sdk_provider}'. "
+            f"Unsupported embedding provider '{embedding_provider}'. "
             f"Valid providers: {valid_providers}"
         )
 
     # Map provider + model to LiteLLM format
-    model = _map_sdk_model(ai_config.sdk_provider, ai_config.model)
+    model = _map_sdk_model(embedding_provider, embedding_model)
 
     last_error: str = ""
     for attempt in range(1, MAX_RETRY_ATTEMPTS + 1):
@@ -798,7 +805,7 @@ async def _invoke_sdk_embedding(
                 return [float(x) for x in embedding]
 
             raise EmbeddingError(
-                f"Invalid embedding response from {ai_config.sdk_provider}: "
+                f"Invalid embedding response from {embedding_provider}: "
                 f"expected list of floats, got {type(embedding).__name__}"
             )
 
@@ -808,7 +815,7 @@ async def _invoke_sdk_embedding(
                 continue
             raise EmbeddingError(
                 f"Embedding failed after {MAX_RETRY_ATTEMPTS} attempts "
-                f"(backend: sdk, provider: {ai_config.sdk_provider}): {last_error}"
+                f"(backend: sdk, provider: {embedding_provider}): {last_error}"
             ) from None
 
         except EmbeddingError:
@@ -822,18 +829,18 @@ async def _invoke_sdk_embedding(
                     continue
                 raise EmbeddingError(
                     f"Embedding failed after {MAX_RETRY_ATTEMPTS} attempts "
-                    f"(backend: sdk, provider: {ai_config.sdk_provider}): {error_msg}"
+                    f"(backend: sdk, provider: {embedding_provider}): {error_msg}"
                 ) from None
             else:
                 raise EmbeddingError(
-                    f"Embedding failed (backend: sdk, provider: {ai_config.sdk_provider}): "
+                    f"Embedding failed (backend: sdk, provider: {embedding_provider}): "
                     f"{error_msg}"
                 ) from e
 
     # This should never be reached
     raise EmbeddingError(
         f"Embedding failed after {MAX_RETRY_ATTEMPTS} attempts "
-        f"(backend: sdk, provider: {ai_config.sdk_provider}): {last_error}"
+        f"(backend: sdk, provider: {embedding_provider}): {last_error}"
     )
 
 
