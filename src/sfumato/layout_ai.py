@@ -426,6 +426,7 @@ Analyze and provide exactly these 10 items:
 6. **Art Facts**: Produce 1-3 whisper-ready art facts.
    - Short, factual, and display-ready
    - Each item should fit comfortably inside the whisper zone
+   - IMPORTANT: Write art facts in {{LANGUAGE}} language
 
 7. **Color Harmony**: Design a text color scheme that:
    - Harmonizes with the painting's palette
@@ -534,6 +535,7 @@ CRITICAL RULES:
 async def analyze_painting(
     image_path: Path,
     ai_config: AiConfig,
+    language: str = "zh",
 ) -> LayoutParams:
     """Send painting image to LLM for composition analysis.
 
@@ -543,6 +545,7 @@ async def analyze_painting(
     Args:
         image_path: Path to the painting image file (PNG or JPEG).
         ai_config: Configuration specifying the LLM backend and model.
+        language: Display language for art facts (e.g. "zh", "en", "ja").
 
     Returns:
         LayoutParams with all layout decisions needed for rendering.
@@ -566,7 +569,12 @@ async def analyze_painting(
     """
     # Pre-analyze painting brightness per quadrant to help LLM make informed choices
     brightness_info = _analyze_brightness(image_path)
-    enriched_prompt = LAYOUT_ANALYSIS_PROMPT + "\n\n" + brightness_info
+
+    # Inject display language into prompt template
+    language_map = {"zh": "Chinese (中文)", "en": "English", "ja": "Japanese (日本語)"}
+    lang_label = language_map.get(language, language)
+    prompt = LAYOUT_ANALYSIS_PROMPT.replace("{{LANGUAGE}}", lang_label)
+    enriched_prompt = prompt + "\n\n" + brightness_info
 
     # Invoke LLM with vision analysis + brightness data
     try:

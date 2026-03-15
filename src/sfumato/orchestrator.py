@@ -891,7 +891,7 @@ async def run_backfill(
                     painting.content_hash[:8],
                 )
             else:
-                layout = await analyze_painting(painting.image_path, config.ai)
+                layout = await analyze_painting(painting.image_path, config.ai, language=config.news.language)
                 state.layout_cache.put(painting.content_hash, layout)
                 logger.debug(
                     "Analyzed layout for %s: %s",
@@ -1257,7 +1257,7 @@ async def init_project(config: AppConfig) -> None:
                 if state.layout_cache.has(painting.content_hash):
                     print(f"      Layout cached, skipping")
                 else:
-                    layout = await analyze_painting(painting.image_path, config.ai)
+                    layout = await analyze_painting(painting.image_path, config.ai, language=config.news.language)
                     state.layout_cache.put(painting.content_hash, layout)
                     print(f"      Layout: {layout.template_hint}")
                     state.save_all()  # Save layout immediately
@@ -1706,7 +1706,7 @@ async def _analyze_layout(
             return cached
 
     # Analyze with LLM
-    layout = await analyze_painting(painting.image_path, config.ai)
+    layout = await analyze_painting(painting.image_path, config.ai, language=config.news.language)
 
     # Cache result
     state.layout_cache.put(content_hash, layout)
