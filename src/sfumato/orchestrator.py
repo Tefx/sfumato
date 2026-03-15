@@ -1036,8 +1036,20 @@ async def watch(config: AppConfig) -> None:
             # IDLE: no pipeline action, just state save + sleep
             logger.debug("Scheduler returned IDLE, skipping to sleep")
         else:
-            # NONE: no action needed
-            pass
+            # NONE: no scheduled action. Check if backfill is needed.
+            # Scheduler can't check pool size (not in SchedulerState),
+            # so we check here in the watch loop.
+            try:
+                current_pool = len(list_cached_paintings(config.paintings.cache_dir))
+                if current_pool < config.paintings.pool_size:
+                    actions_to_dispatch = [Action.BACKFILL]
+                    logger.info(
+                        "Pool at %d/%d, triggering backfill",
+                        current_pool,
+                        config.paintings.pool_size,
+                    )
+            except Exception as e:
+                logger.debug("Pool check failed, skipping backfill: %s", e)
 
         # Dispatch actions in WATCH_ACTION_DISPATCH_ORDER
         executed_actions: list[str] = []
