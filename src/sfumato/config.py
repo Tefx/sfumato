@@ -96,6 +96,7 @@ class AiConfig:
     model: str = "gemini-3-flash-preview"
     backend: str = "sdk"
     sdk_provider: str = "openrouter"
+    api_key: str = ""  # SDK API key. Env var OPENROUTER_API_KEY takes precedence.
 
 
 @dataclass(frozen=True)
@@ -249,8 +250,9 @@ model = "gemini-3-flash-preview"
 # backend: "cli" for CLI tools, "sdk" for LiteLLM SDK
 backend = "sdk"
 # sdk_provider: "openrouter", "google", or "openai" (used when backend="sdk")
-# Set OPENROUTER_API_KEY env var for openrouter provider
 sdk_provider = "openrouter"
+# API key for SDK provider. Can also be set via env var (OPENROUTER_API_KEY, GOOGLE_API_KEY, etc.)
+# api_key = "your-key-here"
 """
 
 
@@ -463,6 +465,13 @@ def _build_app_config(data: dict[str, Any], source_path: Path) -> AppConfig:
             ai_data,
             "sdk_provider",
             defaults.ai.sdk_provider,
+            source_path,
+            "ai",
+        ),
+        api_key=_expect_str_or_default(
+            ai_data,
+            "api_key",
+            defaults.ai.api_key,
             source_path,
             "ai",
         ),
