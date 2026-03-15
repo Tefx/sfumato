@@ -977,13 +977,14 @@ async def watch(config: AppConfig) -> None:
         last_backfill=None,
     )
 
-    # Shutdown coordination
-    shutdown_requested = False
+    # Shutdown coordination using asyncio.Event (interruptible sleep)
+    loop = asyncio.get_event_loop()
+    shutdown_event = asyncio.Event()
 
     def handle_shutdown(signum: int, frame: object) -> None:
-        nonlocal shutdown_requested
         logger.info("Received shutdown signal %s, finishing current action...", signum)
-        shutdown_requested = True
+        # Must use call_soon_threadsafe because signal handlers run outside asyncio
+        loop.call_soon_threadsafe(shutdown_event.set)
 
     # Register signal handlers
     signal.signal(signal.SIGINT, handle_shutdown)
@@ -993,7 +994,7 @@ async def watch(config: AppConfig) -> None:
     write_health("starting", [])
 
     # Main daemon loop
-    while not shutdown_requested:
+    while not shutdown_event.is_set():
         # Stage 2: scheduler_decision
         now = datetime.now()
         action = scheduler.what_to_do(now, scheduler_state)
@@ -1037,7 +1038,7 @@ async def watch(config: AppConfig) -> None:
         action_error: str | None = None
         for act in actions_to_dispatch:
             # Check for shutdown between actions
-            if shutdown_requested:
+            if shutdown_event.is_set():
                 break
 
             try:
@@ -1093,14 +1094,22 @@ async def watch(config: AppConfig) -> None:
             raise
 
         # Stage 5: sleep_until_next_action
-        if shutdown_requested:
+        if shutdown_event.is_set():
             # Don't sleep if shutdown requested, exit immediately after state save
             break
 
         sleep_seconds = scheduler.seconds_until_next_action(now, scheduler_state)
         if sleep_seconds > 0:
             logger.debug("Sleeping for %.1f seconds until next action", sleep_seconds)
-            await asyncio.sleep(sleep_seconds)
+            # Use asyncio.wait_for on shutdown_event instead of asyncio.sleep
+            # so SIGTERM immediately wakes us up instead of waiting for sleep to expire
+            try:
+                await asyncio.wait_for(shutdown_event.wait(), timeout=sleep_seconds)
+                # If we get here, shutdown was requested during sleep
+                break
+            except asyncio.TimeoutError:
+                # Normal timeout — sleep expired, continue to next cycle
+                pass
 
     logger.info("Watch daemon shut down gracefully")
     write_health("stopped", [], error=None)
