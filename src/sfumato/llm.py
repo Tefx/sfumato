@@ -166,14 +166,25 @@ SDK_PROVIDER_PREFIX_MAP: dict[str, str] = {
 }
 """Mapping from ai_config.sdk_provider to LiteLLM model name prefix."""
 
+# OpenRouter model ID mapping: short name → full OpenRouter ID
+# Users write "gemini-3-flash-preview" in config, we map to "google/gemini-3-flash-preview"
+_OPENROUTER_MODEL_PREFIX_GUESSES: dict[str, str] = {
+    "gemini": "google/",
+    "gpt": "openai/",
+    "o3": "openai/",
+    "o4": "openai/",
+    "claude": "anthropic/",
+}
+
 
 def _map_sdk_model(sdk_provider: str, model: str) -> str:
     """Map SDK provider and model to LiteLLM model name.
 
     Contract:
-        - openrouter -> openrouter/{model}
-        - google -> gemini/{model}
-        - openai -> {model} (no prefix)
+        - If model already contains "/", use as-is with provider prefix
+        - openrouter: infer vendor prefix from model name (gemini→google/, gpt→openai/)
+        - google: gemini/{model}
+        - openai: {model} (no prefix)
 
     Args:
         sdk_provider: The SDK provider ("openrouter" | "google" | "openai").
@@ -192,6 +203,16 @@ def _map_sdk_model(sdk_provider: str, model: str) -> str:
         )
 
     prefix = SDK_PROVIDER_PREFIX_MAP[sdk_provider]
+
+    if sdk_provider == "openrouter" and "/" not in model:
+        # Infer vendor prefix from model name
+        vendor_prefix = ""
+        for hint, vp in _OPENROUTER_MODEL_PREFIX_GUESSES.items():
+            if model.startswith(hint):
+                vendor_prefix = vp
+                break
+        return f"{prefix}{vendor_prefix}{model}"
+
     return f"{prefix}{model}" if prefix else model
 
 
