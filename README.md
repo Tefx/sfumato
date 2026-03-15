@@ -237,15 +237,108 @@ Painting descriptions are cached forever (one LLM call per painting). News batch
 - Samsung The Frame TV (2020+ models, on same network)
 - Default: OpenRouter API key (`OPENROUTER_API_KEY`) for SDK backend. Alternatively, one of: `gemini` CLI, `codex` CLI, or `claude` CLI for CLI backend mode
 
-## Container Deployment Contract
+## Docker Deployment
 
-This repo now includes contract-only container artifacts:
+### Quick Start (Synology NAS / Mac Mini / any Docker host)
 
-- `DEPLOYMENT_CONTRACT.md` defines the required Dockerfile stages, compose service shape,
-  persistence semantics, and graceful-stop behavior.
-- `Dockerfile` is a stage-name stub only; it is not a production image yet.
-- `docker-compose.yml` is a contract stub only; it captures required mounts, healthcheck shape,
-  and shutdown semantics without claiming production readiness.
+```bash
+# 1. Create data directory
+mkdir -p data/{paintings,state,output}
+
+# 2. Create config file
+cat > data/config.toml << 'EOF'
+data_dir = "/data"
+
+[tv]
+ip = "192.168.88.22"       # Your Samsung The Frame TV IP
+port = 8002
+
+[schedule]
+news_interval_hours = 6     # How often to fetch new RSS
+rotate_interval_minutes = 15 # How often to switch painting + news
+quiet_hours = [0, 6]        # Pure art mode (no news), e.g. midnight to 6am
+active_hours = [7, 23]      # Only push during these hours
+
+[news]
+language = "zh"             # Display language (zh/en/ja/...)
+
+[[news.feeds]]
+name = "TLDR Tech"
+url = "https://tldr.tech/api/rss/tech"
+category = "Tech"
+
+[[news.feeds]]
+name = "BBC News"
+url = "https://feeds.bbci.co.uk/news/rss.xml"
+category = "World"
+
+# Add more feeds as needed — all entries are kept (only obvious spam filtered)
+
+[paintings]
+cache_dir = "/data/paintings"
+sources = ["met", "wikimedia"]
+
+[ai]
+backend = "sdk"
+sdk_provider = "openrouter"
+model = "gemini-3-flash-preview"
+EOF
+
+# 3. Set API key
+export OPENROUTER_API_KEY="your-key-here"
+
+# 4. Build and start
+docker compose up -d
+
+# 5. Check logs
+docker compose logs -f sfumato
+```
+
+### Configuration Reference
+
+```toml
+[schedule]
+# active_hours: only push during this window
+# Examples:
+#   active_hours = [7, 23]    # 7am to 11pm
+#   active_hours = [10, 14]   # 10am to 2pm only
+#   active_hours = [0, 23]    # all day
+
+# quiet_hours: show pure paintings (no news overlay)
+# Examples:
+#   quiet_hours = [0, 6]      # midnight to 6am
+#   quiet_hours = [22, 6]     # 10pm to 6am (wraps midnight)
+#   quiet_hours = [99, 99]    # never quiet
+```
+
+### Volumes
+
+| Mount | Purpose |
+|-------|---------|
+| `data/config.toml` → `/data/config.toml` | Your configuration |
+| `data/paintings/` → `/data/paintings/` | Downloaded art cache (persists across restarts) |
+| `data/state/` → `/data/state/` | News queue, replay queue, layout cache |
+| `data/output/` → `/data/output/` | Rendered PNGs (optional, for debugging) |
+
+### Management
+
+```bash
+# View status
+docker compose logs --tail 20 sfumato
+
+# Restart (e.g. after config change)
+docker compose restart sfumato
+
+# Stop gracefully (waits up to 90s for current action to finish)
+docker compose stop sfumato
+
+# Update to latest
+git pull && docker compose build && docker compose up -d
+```
+
+### Network
+
+The container uses `network_mode: host` so it can reach your TV on the local network. On macOS Docker Desktop, you may need to use the TV's IP directly (host networking works differently).
 
 ## License
 
