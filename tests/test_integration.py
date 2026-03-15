@@ -25,7 +25,6 @@ from sfumato.orchestrator import RunOptions, run_news_refresh, run_once
 from sfumato.paintings import content_hash, detect_orientation
 from sfumato.state import (
     AppState,
-    EmbeddingCache,
     LayoutCache,
     NewsQueue,
     UsedPaintings,
@@ -211,7 +210,6 @@ async def test_run_once_happy_path(tmp_path: Path) -> None:
     assert isinstance(state.news_queue, NewsQueue)
     assert isinstance(state.used_paintings, UsedPaintings)
     assert isinstance(state.layout_cache, LayoutCache)
-    assert isinstance(state.embedding_cache, EmbeddingCache)
 
     stories = [_make_story(1), _make_story(2)]
     state.news_queue.enqueue(

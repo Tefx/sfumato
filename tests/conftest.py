@@ -6,13 +6,11 @@ No product implementation code - only test data and mock objects.
 
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 import pytest
 
 
@@ -62,46 +60,6 @@ class AiConfig:
 # ---------------------------------------------------------------------------
 # Fixtures for painting data
 # ---------------------------------------------------------------------------
-
-
-@pytest.fixture
-def sample_embedding_vector() -> np.ndarray:
-    """Return a sample embedding vector (384 dimensions like MiniLM)."""
-    # Create a deterministic "unit-like" vector for testing
-    np.random.seed(42)
-    vec = np.random.randn(384).astype(np.float32)
-    # Normalize to unit length
-    norm = np.linalg.norm(vec)
-    if norm > 0:
-        vec = vec / norm
-    return vec
-
-
-@pytest.fixture
-def sample_embedding_vector_2() -> np.ndarray:
-    """Return a second sample embedding vector, orthogonal to the first."""
-    np.random.seed(123)
-    vec = np.random.randn(384).astype(np.float32)
-    # Normalize to unit length
-    norm = np.linalg.norm(vec)
-    if norm > 0:
-        vec = vec / norm
-    return vec
-
-
-@pytest.fixture
-def zero_vector() -> np.ndarray:
-    """Return a zero vector of same shape as sample_embedding_vector."""
-    return np.zeros(384, dtype=np.float32)
-
-
-@pytest.fixture
-def nan_vector() -> np.ndarray:
-    """Return a vector containing NaN values."""
-    vec = np.zeros(384, dtype=np.float32)
-    vec[0] = np.nan
-    vec[100] = np.nan
-    return vec
 
 
 @pytest.fixture
@@ -179,39 +137,6 @@ def sample_painting_descriptions() -> dict[str, str]:
 
 
 @pytest.fixture
-def sample_painting_embeddings(
-    sample_embedding_vector: np.ndarray,
-    sample_embedding_vector_2: np.ndarray,
-) -> dict[str, np.ndarray]:
-    """Return sample painting embeddings keyed by content_hash."""
-    # Use same base vectors but with slight variations for each painting
-    vec1 = sample_embedding_vector.copy()
-    vec2 = sample_embedding_vector_2.copy()
-    vec3 = (sample_embedding_vector + sample_embedding_vector_2) / 2
-    # Normalize vec3
-    norm = np.linalg.norm(vec3)
-    if norm > 0:
-        vec3 = vec3 / norm
-
-    return {
-        "hash_starry_night_001": vec1.astype(np.float32),
-        "hash_great_wave_002": vec2.astype(np.float32),
-        "hash_wanderer_003": vec3.astype(np.float32),
-    }
-
-
-@pytest.fixture
-def sample_tone_embedding() -> np.ndarray:
-    """Return a sample tone embedding similar to starry night."""
-    np.random.seed(42)
-    vec = np.random.randn(384).astype(np.float32)
-    norm = np.linalg.norm(vec)
-    if norm > 0:
-        vec = vec / norm
-    return vec
-
-
-@pytest.fixture
 def ai_config() -> AiConfig:
     """Return a default AiConfig for testing."""
     return AiConfig()
@@ -222,19 +147,6 @@ def ai_config() -> AiConfig:
 # ---------------------------------------------------------------------------
 
 
-def make_embedding(text: str, dimensions: int = 384) -> np.ndarray:
-    """Create a deterministic embedding vector from text.
-
-    Used for generating consistent test embeddings. NOT a real embedding algorithm.
-    """
-    # Use hash to seed random for deterministic output
-    seed = int(hashlib.sha256(text.encode()).hexdigest()[:8], 16)
-    np.random.seed(seed)
-    vec = np.random.randn(dimensions).astype(np.float32)
-    norm = np.linalg.norm(vec)
-    if norm > 0:
-        vec = vec / norm
-    return vec
 
 
 def make_painting(

@@ -344,7 +344,8 @@ Output structure validated:
 ## 8. Semantic Mood Matching — Validated
 
 ### Concept
-Match news batch emotional tone to painting atmosphere using free-form descriptions + embeddings.
+Match news batch emotional tone to painting atmosphere using free-form descriptions + LLM-based matching.
+(Note: originally used embeddings + cosine similarity, replaced with direct LLM matching for simplicity.)
 
 ### Test Results (3 batches matched to 3 paintings)
 
@@ -357,9 +358,9 @@ Match news batch emotional tone to painting atmosphere using free-form descripti
 All three were uploaded to the TV and confirmed working. User approved the concept.
 
 ### Implementation Path
-- Each painting: LLM generates free-form description → compute embedding → cache
-- Each news batch: LLM generates tone description (part of curation prompt) → compute embedding
-- Selection: cosine similarity between news embedding and all painting embeddings
+- Each painting: LLM generates free-form description → cache
+- Each news batch: LLM generates tone description (part of curation prompt)
+- Selection: LLM compares tone with painting descriptions and picks best match
 - No fixed mood categories needed
 
 ---
@@ -370,7 +371,7 @@ All three were uploaded to the TV and confirmed working. User approved the conce
 2. **Gallery wall layout** — Wastes Frame TV's natural bezel as frame
 3. **Frosted glass overlay** — Obscures painting too much
 4. **Bottom ticker banner** — Looks like cheap TV news
-5. **Fixed mood categories** — Too rigid; free-form descriptions + embeddings are better
+5. **Fixed mood categories** — Too rigid; free-form descriptions + LLM matching are better
 6. **Downloading art from TV** — `get_thumbnail()` hangs on 2024 model
 7. **set_artmode()** — Can hang; use select_image() instead
 

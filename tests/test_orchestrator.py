@@ -315,7 +315,6 @@ def test_backfill_contract_constants_are_pinned() -> None:
         "measure_pool_deficit",
         "fetch_new_paintings_if_needed",
         "analyze_layout_for_new_paintings",
-        "compute_embeddings_for_new_paintings",
         "state_save",
     )
 
@@ -646,22 +645,6 @@ class MockLayoutCache:
         return content_hash in self._cache
 
 
-class MockEmbeddingCache:
-    """Seam double for state.EmbeddingCache."""
-
-    def __init__(self) -> None:
-        self._cache: dict[str, list[float]] = {}
-
-    def get(self, key: str) -> list[float] | None:
-        return self._cache.get(key)
-
-    def put(self, key: str, vector: list[float]) -> None:
-        self._cache[key] = vector
-
-    def has(self, key: str) -> bool:
-        return key in self._cache
-
-
 class MockUsedPaintings:
     """Seam double for state.UsedPaintings."""
 
@@ -727,7 +710,6 @@ class MockAppState:
         self.used_paintings = MockUsedPaintings()
         self.replay_queue = MockReplayQueue()
         self.layout_cache = MockLayoutCache()
-        self.embedding_cache = MockEmbeddingCache()
         self.art_fact_rotation = MockArtFactRotation()
 
     def save_all(self) -> None:
@@ -3659,7 +3641,6 @@ class TestBackfillStageOrderContract:
     - measure_pool_deficit: Calculate how many paintings needed
     - fetch_new_paintings_if_needed: Fetch from sources if deficit > 0
     - analyze_layout_for_new_paintings: LLM analysis for each new painting
-    - compute_embeddings_for_new_paintings: Embedding for semantic matching
     - state_save: Persist state after backfill
     """
 
@@ -3669,7 +3650,6 @@ class TestBackfillStageOrderContract:
             "measure_pool_deficit",
             "fetch_new_paintings_if_needed",
             "analyze_layout_for_new_paintings",
-            "compute_embeddings_for_new_paintings",
             "state_save",
         )
 
@@ -3682,15 +3662,12 @@ class TestBackfillStageOrderContract:
         assert RUN_BACKFILL_STAGE_ORDER[-1] == "state_save"
 
     def test_backfill_stages_are_ordered_correctly(self) -> None:
-        """Stages must be ordered: fetch before analyze before embed before save."""
+        """Stages must be ordered: fetch before analyze before save."""
         stages = list(RUN_BACKFILL_STAGE_ORDER)
         assert stages.index("fetch_new_paintings_if_needed") < stages.index(
             "analyze_layout_for_new_paintings"
         )
         assert stages.index("analyze_layout_for_new_paintings") < stages.index(
-            "compute_embeddings_for_new_paintings"
-        )
-        assert stages.index("compute_embeddings_for_new_paintings") < stages.index(
             "state_save"
         )
 
@@ -4039,12 +4016,6 @@ class TestRunBackfillIntegrationWithState:
         # This integration is encoded in RUN_BACKFILL_STAGE_ORDER
         assert "analyze_layout_for_new_paintings" in RUN_BACKFILL_STAGE_ORDER
         # Stage 3: layout cache is populated for new paintings
-
-    def test_backfill_uses_embedding_cache(self) -> None:
-        """run_backfill must use state.embedding_cache for new paintings."""
-        # This integration is encoded in RUN_BACKFILL_STAGE_ORDER
-        assert "compute_embeddings_for_new_paintings" in RUN_BACKFILL_STAGE_ORDER
-        # Stage 4: embedding cache is populated for new paintings
 
     def test_backfill_saves_state(self) -> None:
         """run_backfill must call state.save_all() after completion."""

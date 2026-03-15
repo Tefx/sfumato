@@ -45,7 +45,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import numpy as np
 import typer
 
 from sfumato.config import ConfigError, generate_default_config, load_config
@@ -289,41 +288,6 @@ class _LayoutCache:
         return None
 
 
-class _EmbeddingCache:
-    """Minimal embedding cache implementation for CLI."""
-
-    def __init__(self, state_dir: Path) -> None:
-        self._state_dir = state_dir
-        self._cache: dict[str, np.ndarray] = {}
-
-    def get(self, key: str) -> np.ndarray | None:
-        """Get cached embedding vector."""
-        return self._cache.get(key)
-
-    def put(self, key: str, vector: np.ndarray) -> None:
-        """Cache embedding vector."""
-        if vector.ndim != 1:
-            raise ValueError("Embedding vectors must be 1-dimensional")
-        self._cache[key] = vector
-
-    def has(self, key: str) -> bool:
-        """Check if embedding is cached."""
-        return key in self._cache
-
-    @property
-    def size(self) -> int:
-        """Number of cached embedding vectors."""
-        return len(self._cache)
-
-    def save(self) -> None:
-        """Persist state (no-op for minimal implementation)."""
-        return None
-
-    def load(self) -> None:
-        """Load state (no-op for minimal implementation)."""
-        return None
-
-
 class _ReplayTransferResult:
     """Minimal replay transfer result."""
 
@@ -463,7 +427,6 @@ class AppState:
     news_queue: _NewsQueue
     used_paintings: _UsedPaintings
     layout_cache: _LayoutCache
-    embedding_cache: _EmbeddingCache
     art_fact_rotation: _ArtFactRotation
     replay_queue: _ReplayQueue
 
@@ -475,7 +438,6 @@ class AppState:
             news_queue=_NewsQueue(state_dir),
             used_paintings=_UsedPaintings(state_dir),
             layout_cache=_LayoutCache(state_dir),
-            embedding_cache=_EmbeddingCache(state_dir),
             art_fact_rotation=_ArtFactRotation(),
             replay_queue=_ReplayQueue(state_dir),
         )
@@ -485,7 +447,6 @@ class AppState:
         self.news_queue.save()
         self.used_paintings.save()
         self.layout_cache.save()
-        self.embedding_cache.save()
         self.replay_queue.persist()
 
 

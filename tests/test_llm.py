@@ -24,11 +24,9 @@ from sfumato.llm import (
     MAX_RETRY_ATTEMPTS,
     TRANSIENT_ERROR_INDICATORS,
     VALID_BACKENDS,
-    EmbeddingError,
     LlmError,
     LlmParseError,
     LlmResponse,
-    compute_embedding,
     invoke_text,
     invoke_vision,
     parse_json_response,
@@ -49,16 +47,10 @@ class TestLlmErrorContract:
     def test_llm_error_is_base_exception(self) -> None:
         """LlmError is the base class for all LLM-related failures."""
         assert issubclass(LlmParseError, LlmError)
-        assert issubclass(EmbeddingError, LlmError)
 
     def test_llm_parse_error_is_subclass_of_llm_error(self) -> None:
         """LlmParseError inherits from LlmError."""
         error = LlmParseError("test parse failure")
-        assert isinstance(error, LlmError)
-
-    def test_embedding_error_is_subclass_of_llm_error(self) -> None:
-        """EmbeddingError inherits from LlmError."""
-        error = EmbeddingError("test embedding failure")
         assert isinstance(error, LlmError)
 
     def test_llm_error_can_wrap_subprocess_error(self) -> None:
@@ -71,11 +63,6 @@ class TestLlmErrorContract:
         raw_text = '{"key": "value",}'  # trailing comma issue
         error = LlmParseError(f"Failed to parse JSON: {raw_text}")
         assert "key" in str(error)
-
-    def test_embedding_error_message_context(self) -> None:
-        """EmbeddingError should include context for debugging."""
-        error = EmbeddingError("Embedding API returned empty vector")
-        assert "Embedding" in str(error)
 
 
 class TestLlmResponseContract:
@@ -173,8 +160,8 @@ class TestBackendDispatchContract:
 class TestUnsupportedBackendBehavior:
     """Test behavior when unsupported backend is specified.
 
-    Contract: When ai_config.cli is not in VALID_BACKENDS, invoke_text,
-    invoke_vision, and compute_embedding MUST raise LlmError (deterministic,
+    Contract: When ai_config.cli is not in VALID_BACKENDS, invoke_text
+    and invoke_vision MUST raise LlmError (deterministic,
     NOT retryable) with a message listing valid backends.
 
     NOTE: Until implementation, these tests verify the stub raises
@@ -208,20 +195,6 @@ class TestUnsupportedBackendBehavior:
         with pytest.raises((LlmError, NotImplementedError)):
             asyncio.get_event_loop().run_until_complete(
                 invoke_vision("test prompt", dummy_image, unsupported_config)
-            )
-
-    def test_compute_embedding_unsupported_backend_raises_error(self) -> None:
-        """compute_embedding with unsupported backend raises an error.
-
-        Contract: Implementation MUST raise EmbeddingError for unsupported backends.
-        Stub verification: Currently raises NotImplementedError.
-        """
-        unsupported_config = AiConfig(cli="nonexistent", model="test-model")
-
-        # Stub raises NotImplementedError; implementation will raise EmbeddingError
-        with pytest.raises((EmbeddingError, LlmError, NotImplementedError)):
-            asyncio.get_event_loop().run_until_complete(
-                compute_embedding("test text", unsupported_config)
             )
 
     def test_unsupported_backend_error_is_deterministic(self) -> None:
@@ -749,92 +722,6 @@ class TestInvokeVisionSignature:
         assert "Path" in annotation
 
 
-class TestComputeEmbeddingSignature:
-    """Test compute_embedding function contract."""
-
-    def test_returns_list_of_floats(self) -> None:
-        """compute_embedding returns list[float], not numpy array.
-
-        Contract: Keep dependencies minimal; return plain Python list.
-        """
-        import inspect
-
-        assert asyncio.iscoroutinefunction(compute_embedding)
-        sig = inspect.signature(compute_embedding)
-        return_annotation = str(sig.return_annotation)
-        assert (
-            "list" in return_annotation.lower() or "float" in return_annotation.lower()
-        )
-
-    def test_accepts_text_and_config(self) -> None:
-        """compute_embedding requires text and ai_config.
-
-        Contract: Minimum invocation is await compute_embedding(text, ai_config).
-        """
-        import inspect
-
-        sig = inspect.signature(compute_embedding)
-        params = sig.parameters
-
-        assert "text" in params
-        assert "ai_config" in params
-        assert params["text"].default is inspect.Parameter.empty
-        assert params["ai_config"].default is inspect.Parameter.empty
-
-    def test_raises_embedding_error_on_failure(self) -> None:
-        """compute_embedding raises EmbeddingError on failure.
-
-        Contract: Embedding-specific failures raise EmbeddingError.
-        """
-        pass  # Verified by TestEmbeddingErrorWrapping
-
-    def test_uses_backend_specific_embedding_approach(self) -> None:
-        """Each backend may use different embedding strategy.
-
-        Contract:
-        - gemini: uses Gemini embedding API
-        - codex: may use local sentence-transformers fallback
-        - claude-code: may use Anthropic embedding or local fallback
-        """
-        pass  # Documented behavior; implementation varies by backend
-
-
-class TestEmbeddingErrorWrapping:
-    """Test that embedding errors are properly wrapped in EmbeddingError."""
-
-    def test_embedding_error_on_unsupported_backend(self) -> None:
-        """compute_embedding with unsupported backend raises EmbeddingError.
-
-        Contract: Implementation MUST raise EmbeddingError for backend issues.
-        Stub verification: Currently raises NotImplementedError.
-        """
-        unsupported_config = AiConfig(cli="unsupported_backend", model="test-model")
-
-        with pytest.raises((EmbeddingError, LlmError, NotImplementedError)):
-            asyncio.get_event_loop().run_until_complete(
-                compute_embedding("test text", unsupported_config)
-            )
-
-    def test_embedding_error_is_differentiated_from_llm_error(self) -> None:
-        """EmbeddingError is a distinct type for embedding-specific failures.
-
-        While it inherits from LlmError, it should be catchable separately.
-        """
-        assert issubclass(EmbeddingError, LlmError)
-
-        # Code can catch specific embedding errors
-        try:
-            raise EmbeddingError("Embedding failed")
-        except EmbeddingError:
-            pass  # Caught as EmbeddingError
-
-        # Can also catch as parent LlmError
-        try:
-            raise EmbeddingError("Embedding failed")
-        except LlmError:
-            pass  # Caught as LlmError (parent)
-
-
 # =============================================================================
 # CONTRACT: SUBPROCESS COMMAND SELECTION
 # =============================================================================
@@ -1120,15 +1007,6 @@ class TestSuccessfulDispatchPath:
         for backend in VALID_BACKENDS:
             config = AiConfig(cli=backend, model="test-model")
 
-    def test_compute_embedding_selects_correct_backend(self) -> None:
-        """compute_embedding must select backend based on ai_config.cli.
-
-        Contract: Backend must be one of VALID_BACKENDS.
-        Embedding strategy may differ per backend.
-        """
-        for backend in VALID_BACKENDS:
-            config = AiConfig(cli=backend, model="test-model")
-
     def test_model_parameter_passed_to_backend(self) -> None:
         """ai_config.model must be passed to the backend command.
 
@@ -1167,9 +1045,8 @@ class TestSuccessfulDispatchPath:
 # 3. No retry for deterministic errors (parse, config)
 # 4. Different timeouts for text (120s) vs vision (180s)
 # 5. JSON leniency: strip fences, trim whitespace, tolerate trailing commas
-# 6. Embedding returns list[float], not numpy array
-# 7. Error hierarchy: LlmError > LlmParseError, LlmError > EmbeddingError
+# 6. Error hierarchy: LlmError > LlmParseError
 #
 # Implementation workers should ensure their code passes all tests here.
 # After implementation, tests expecting NotImplementedError should be updated
-# to expect the actual error types (LlmError, EmbeddingError, LlmParseError).
+# to expect the actual error types (LlmError, LlmParseError).

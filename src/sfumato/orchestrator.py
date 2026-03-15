@@ -22,11 +22,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Protocol, cast
 
-import numpy as np
-
 from sfumato.config import AppConfig
 from sfumato.layout_ai import LayoutParams, analyze_painting
-from sfumato.matcher import MatcherError, compute_embedding, select_painting
+from sfumato.matcher import MatcherError, select_painting
 from sfumato.news import CurationResult, Story, refresh_news
 from sfumato.palette import PaletteColors, extract_palette
 from sfumato.paintings import (
@@ -331,7 +329,6 @@ RUN_BACKFILL_STAGE_ORDER: Final[tuple[str, ...]] = (
     "measure_pool_deficit",
     "fetch_new_paintings_if_needed",
     "analyze_layout_for_new_paintings",
-    "compute_embeddings_for_new_paintings",
     "state_save",
 )
 """Contracted stage order for ``run_backfill``.
@@ -539,35 +536,6 @@ class LayoutCacheProtocol(Protocol):
         ...
 
 
-class EmbeddingCacheProtocol(Protocol):
-    """Protocol for embedding cache operations."""
-
-    def get(self, key: str) -> np.ndarray | None:
-        """Get cached embedding vector by key (content_hash or tone key)."""
-        ...
-
-    def put(self, key: str, vector: np.ndarray) -> None:
-        """Cache embedding vector."""
-        ...
-
-    def has(self, key: str) -> bool:
-        """Check if embedding is cached."""
-        ...
-
-    @property
-    def size(self) -> int:
-        """Number of cached embeddings."""
-        ...
-
-    def save(self) -> None:
-        """Persist embedding cache state."""
-        ...
-
-    def load(self) -> None:
-        """Load embedding cache state."""
-        ...
-
-
 class UsedPaintingsProtocol(Protocol):
     """Protocol for used paintings tracking."""
 
@@ -648,11 +616,6 @@ class AppStateProtocol(Protocol):
     @property
     def layout_cache(self) -> LayoutCacheProtocol:
         """Layout cache state component."""
-        ...
-
-    @property
-    def embedding_cache(self) -> EmbeddingCacheProtocol:
-        """Embedding cache state component."""
         ...
 
     @property
@@ -777,8 +740,7 @@ async def run_backfill(
     1. Measure current pool deficit relative to ``pool_size``
     2. Fetch new paintings only when deficit > 0
     3. Analyze layout for each newly fetched painting
-    4. Compute and cache embeddings for each newly fetched painting
-    5. Persist state
+    4. Persist state
 
     Bounded behavior contract:
     - Never fetch/process more than the current deficit in one call.
@@ -874,7 +836,7 @@ async def run_backfill(
 
     logger.info("Fetched %d new paintings for analysis", len(new_paintings))
 
-    # Stages 3-4: analyze_layout and compute_embeddings for each painting
+    # Stage 3: analyze_layout for each painting
     # Track successfully processed paintings (bounded by deficit)
     added_count = 0
 
@@ -899,34 +861,6 @@ async def run_backfill(
                     layout.template_hint,
                 )
 
-            # Stage 4: compute_embeddings_for_new_paintings
-            if state.embedding_cache.has(painting.content_hash):
-                logger.debug(
-                    "Embedding already cached for %s, skipping computation",
-                    painting.content_hash[:8],
-                )
-            else:
-                # Get description from layout cache
-                layout = state.layout_cache.get(painting.content_hash)
-                if layout is None or not layout.painting_description:
-                    logger.warning(
-                        "No layout/description for %s, skipping embedding",
-                        painting.content_hash[:8],
-                    )
-                    continue
-
-                embedding_result = await compute_embedding(
-                    layout.painting_description, config.ai
-                )
-                state.embedding_cache.put(
-                    painting.content_hash, embedding_result.vector
-                )
-                logger.debug(
-                    "Computed embedding for %s (%d dimensions)",
-                    painting.content_hash[:8],
-                    len(embedding_result.vector),
-                )
-
             added_count += 1
 
         except Exception as e:
@@ -938,7 +872,7 @@ async def run_backfill(
             )
             continue
 
-    # Stage 5: state_save
+    # Stage 4: state_save
     # Persistence failures propagate (fatal error boundary)
     state.save_all()
 
@@ -1163,14 +1097,13 @@ async def init_project(config: AppConfig) -> None:
     2. Create state directory structure
     3. Fetch seed_size paintings from configured sources
     4. Analyze each painting (layout + description)
-    5. Compute embeddings for each painting
 
     Args:
         config: Application configuration.
 
     Raises:
         OSError: If directories cannot be created.
-        Exception: Propagated from painting fetch, layout analysis, or embedding compute.
+        Exception: Propagated from painting fetch or layout analysis.
     """
     from sfumato.config import generate_default_config
 
@@ -1195,9 +1128,9 @@ async def init_project(config: AppConfig) -> None:
     print(f"  - Paintings: {paintings_dir}")
     print(f"  - Output: {output_dir}")
 
-    # Steps 3-5: Pipeline — download paintings and analyze them concurrently
+    # Steps 3-4: Pipeline — download paintings and analyze them concurrently
     # Producer: downloads paintings, puts them in queue
-    # Consumer: analyzes layout + computes embeddings as paintings arrive
+    # Consumer: analyzes layout as paintings arrive
     print(f"\nFetching and analyzing {config.paintings.seed_size} paintings...")
     print(f"  Sources: {config.paintings.sources}")
 
@@ -1241,7 +1174,7 @@ async def init_project(config: AppConfig) -> None:
         await queue.put(None)  # Sentinel: signal consumer to stop
 
     async def consumer() -> None:
-        """Analyze and embed paintings as they arrive from the queue."""
+        """Analyze paintings as they arrive from the queue."""
         nonlocal success_count
         idx = 0
         while True:
@@ -1252,7 +1185,7 @@ async def init_project(config: AppConfig) -> None:
 
             print(f"  [{idx}] {painting.title} — {painting.artist}")
 
-            # Layout analysis (cached) — independent of embedding
+            # Layout analysis (cached)
             try:
                 if state.layout_cache.has(painting.content_hash):
                     print(f"      Layout cached, skipping")
@@ -1264,29 +1197,8 @@ async def init_project(config: AppConfig) -> None:
             except Exception as e:
                 print(f"      Layout error: {e}")
                 logger.warning("Layout failed for %s: %s", painting.content_hash, e)
-                # Continue — layout failed but don't skip embedding if layout was cached
 
-            # Embedding (cached) — separate try, won't lose layout on failure
-            try:
-                if state.embedding_cache.has(painting.content_hash):
-                    print(f"      Embedding cached, skipping")
-                else:
-                    layout = state.layout_cache.get(painting.content_hash)
-                    if layout and layout.painting_description:
-                        embedding_result = await compute_embedding(
-                            layout.painting_description, config.ai
-                        )
-                        state.embedding_cache.put(
-                            painting.content_hash, embedding_result.vector
-                        )
-                        print(f"      Embedded ({len(embedding_result.vector)}d)")
-                        state.save_all()
-            except Exception as e:
-                print(f"      Embedding error (non-fatal): {e}")
-                logger.warning("Embedding failed for %s: %s", painting.content_hash, e)
-                # Embedding failure is non-fatal — semantic matching falls back to random
-
-            # Count as success if layout exists (embedding is optional)
+            # Count as success if layout exists
             if state.layout_cache.has(painting.content_hash):
                 success_count += 1
 
@@ -1548,46 +1460,20 @@ async def _select_painting(
 
     # Semantic matching strategy
     # Build painting_descriptions dict from layout cache
-    # For paintings without cached layouts, we need descriptions for embedding
     painting_descriptions: dict[str, str] = {}
     for p in available:
         cached_layout = state.layout_cache.get(p.content_hash)
         if cached_layout is not None:
             painting_descriptions[p.content_hash] = cached_layout.painting_description
 
-    # Build embedding cache for lookups (state.embedding_cache is a dict-like cache)
-    embedding_cache: dict[str, np.ndarray] = {}
-    # Copy existing embeddings from state cache
-    for p in available:
-        if state.embedding_cache.has(p.content_hash):
-            vec = state.embedding_cache.get(p.content_hash)
-            if vec is not None:
-                embedding_cache[p.content_hash] = vec
-
-    # Check tone cache
-    from sfumato.matcher import _compute_tone_cache_key
-
-    tone_key = _compute_tone_cache_key(batch.tone_description)
-    if state.embedding_cache.has(tone_key):
-        vec = state.embedding_cache.get(tone_key)
-        if vec is not None:
-            embedding_cache[tone_key] = vec
-
     try:
         selected, score = await select_painting(
             news_tone=batch.tone_description,
             paintings=available,
             painting_descriptions=painting_descriptions,
-            embedding_cache=embedding_cache,
             ai_config=config.ai,
             strategy=strategy,
         )
-
-        # Cache tone embedding if it was computed
-        if not state.embedding_cache.has(tone_key):
-            tone_embedding = embedding_cache.get(tone_key)
-            if tone_embedding is not None:
-                state.embedding_cache.put(tone_key, tone_embedding)
 
         return (selected, score)
 

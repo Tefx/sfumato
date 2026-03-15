@@ -28,7 +28,7 @@ Every 15 minutes, sfumato selects a painting that matches the current news mood,
 
 - **Full-screen paintings** — The Frame's bezel is the frame. No borders, no panels, no picture-in-picture. The painting fills the screen.
 - **LLM-driven layout** — Each painting is analyzed by an LLM (via Gemini CLI, Codex CLI, or Claude Code) to find optimal text placement. Bright areas get dark text, dark areas get light text. The LLM recommends how many stories fit.
-- **Semantic art–news matching** — No fixed mood categories. Each painting gets a free-form LLM description of its emotional tone, themes, and atmosphere. Each news batch gets the same. Embeddings are computed and cosine similarity finds the best painting for the current news. "Stormy skies with golden fields" naturally matches "industry upheaval amid golden-age AI breakthroughs."
+- **Semantic art–news matching** — No fixed mood categories. Each painting gets a free-form LLM description of its emotional tone, themes, and atmosphere. Each news batch gets the same. An LLM directly compares painting descriptions with news tone to find the best match. "Stormy skies with golden fields" naturally matches "industry upheaval amid golden-age AI breakthroughs."
 - **Whisper text** — Art facts blend into the painting's quiet zones: small, unobtrusive text carrying historical trivia, artist context, or compositional insights. Each painting displays one fact per rotation, cycling through 1-3 facts for repeated viewings.
 - **News replay** — Previously seen news batches cycle through on subsequent rotations when the primary queue empties. News facts are replayed with a configurable expiration window, keeping your backlog fresh without redundant alerts.
 - **Subject avoidance** — The LLM identifies the primary subject zone in each painting, ensuring news overlays never obscure the focal point. The subject region is preserved as visually clean space.
@@ -37,8 +37,8 @@ Every 15 minutes, sfumato selects a painting that matches the current news mood,
 - **Configurable display language** — Output in any language: Chinese, English, Japanese, etc. The LLM translates and adapts summaries accordingly.
 - **Dual refresh cycle** — News is fetched every 6 hours (configurable), paintings rotate every 15 minutes. News is split into batches so each rotation shows fresh stories.
 - **Cloud art sources** — Paintings from Met Museum and Wikimedia Commons APIs. Locally cached, never repeats until the full pool is exhausted.
-- **Layout caching** — Each painting's composition analysis, description, and embedding are cached by content hash. One LLM call per painting, forever.
-- **Seed art library** — `sfumato init` pre-fetches 50 paintings from cloud APIs covering diverse styles and moods, then analyzes and embeds them all. The daemon continues backfilling to 200+ in the background.
+- **Layout caching** — Each painting's composition analysis and description are cached by content hash. One LLM call per painting, forever.
+- **Seed art library** — `sfumato init` pre-fetches 50 paintings from cloud APIs covering diverse styles and moods, then analyzes them all. The daemon continues backfilling to 200+ in the background.
 - **TV-aware** — Detects if the TV is off or not in Art Mode before pushing. Auto-cleans old uploads.
 - **Quiet hours** — Configurable time range (e.g., midnight to 6am) where only pure artwork is displayed, no news.
 - **Multi-template** — Landscape paintings with whitespace get text blended in. Portrait paintings get a side-panel layout. Dense compositions get a magazine split.
@@ -208,27 +208,26 @@ Bright painting (e.g., Monet)     Dark painting (e.g., Van Gogh)
 
 ## Semantic Art–News Matching
 
-No predefined mood categories. Instead, sfumato uses free-form descriptions and embedding similarity:
+No predefined mood categories. Instead, sfumato uses free-form descriptions and LLM-based matching:
 
 ```
 Painting analysis (one-time, cached):
   LLM sees painting → generates rich description:
   "暴风雨前的宁静，灰蓝色天空压迫着金色麦田，
    孤独感与自然的壮美交织，带有不安的预兆感"
-  → compute embedding → store
+  → store description
 
 News batch (each rotation):
   LLM reads stories → describes overall tone:
   "科技巨头间的紧张博弈，收购与反垄断交织，
    行业格局快速重组，充满不确定性"
-  → compute embedding
-  → cosine similarity against all painting embeddings
+  → LLM compares tone with all painting descriptions
   → pick best match
 ```
 
 This captures nuances that fixed labels cannot: the difference between "quiet melancholy" and "peaceful solitude," or between "anxious energy" and "joyful momentum." The matching is emergent, not hand-coded.
 
-Painting descriptions and embeddings are cached forever (one LLM call per painting). News batch descriptions are generated during curation (no extra LLM call — part of the same prompt). Embedding computation is instant and free.
+Painting descriptions are cached forever (one LLM call per painting). News batch descriptions are generated during curation (no extra LLM call -- part of the same prompt).
 
 ## Requirements
 

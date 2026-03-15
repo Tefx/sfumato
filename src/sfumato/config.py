@@ -97,8 +97,6 @@ class AiConfig:
     model: str = "gemini-3-flash-preview"
     backend: str = "sdk"
     sdk_provider: str = "openrouter"
-    embedding_provider: str = "google"
-    embedding_model: str = "text-embedding-004"
 
 
 @dataclass(frozen=True)
@@ -255,10 +253,6 @@ backend = "sdk"
 # sdk_provider: "openrouter", "google", or "openai" (used when backend="sdk")
 # Set OPENROUTER_API_KEY env var for openrouter provider
 sdk_provider = "openrouter"
-# Embedding provider (separate from main LLM, as not all providers support embeddings)
-embedding_provider = "google"
-embedding_model = "text-embedding-004"
-# Set GOOGLE_API_KEY env var for Google embedding provider
 """
 
 
@@ -481,20 +475,6 @@ def _build_app_config(data: dict[str, Any], source_path: Path) -> AppConfig:
             source_path,
             "ai",
         ),
-        embedding_provider=_expect_str_or_default(
-            ai_data,
-            "embedding_provider",
-            defaults.ai.embedding_provider,
-            source_path,
-            "ai",
-        ),
-        embedding_model=_expect_str_or_default(
-            ai_data,
-            "embedding_model",
-            defaults.ai.embedding_model,
-            source_path,
-            "ai",
-        ),
     )
 
     data_dir = Path(
@@ -684,8 +664,6 @@ def _apply_env_overrides(config: AppConfig) -> AppConfig:
             model=config.ai.model,
             backend=env_ai_backend,
             sdk_provider=config.ai.sdk_provider,
-            embedding_provider=config.ai.embedding_provider,
-            embedding_model=config.ai.embedding_model,
         )
 
     return AppConfig(

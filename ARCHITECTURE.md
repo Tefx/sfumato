@@ -274,8 +274,8 @@ async def refresh_news(
 Commons), download high-resolution images to the local cache, manage the local painting pool,
 track which paintings have been used, and provide painting metadata.
 
-**Non-Responsibility**: Does not analyze paintings (that is `layout_ai`). Does not compute
-embeddings (that is `matcher`). Does not decide which painting to show (that is `matcher`).
+**Non-Responsibility**: Does not analyze paintings (that is `layout_ai`). Does not decide
+which painting to show (that is `matcher`).
 
 **Public Interface**:
 
@@ -415,9 +415,9 @@ def extract_palette(image_path: Path, n_colors: int = 8) -> PaletteColors:
 **Responsibility**: Invoke LLM with a painting image to analyze its composition and produce
 structured layout parameters: text zone, subject zone, whisper zone, art facts, text colors,
 scrim design, recommended number of stories, and a free-form description of the painting
-(used for embedding/matching).
+(used for LLM-based matching).
 
-**Non-Responsibility**: Does not render HTML (that is `render`). Does not compute embeddings
+**Non-Responsibility**: Does not render HTML (that is `render`). Does not perform matching
 (that is `matcher`). Does not manage its own cache (caller checks cache by `content_hash`).
 
 **Public Interface**:
@@ -529,7 +529,7 @@ class LayoutParams:
     orientation: str              # "landscape" | "portrait" (as determined by LLM+dimensions)
     painting_title: str           # LLM-identified title (or "Unknown")
     painting_artist: str          # LLM-identified artist (or "Unknown")
-    painting_description: str     # Free-form rich description for embedding/matching
+    painting_description: str     # Free-form rich description for LLM-based matching
                                   # e.g. "暴风雨前的宁静，灰蓝色天空压迫着金色麦田..."
     text_zone: TextZone           # Where to place primary news text
     subject_zone: SubjectZone     # Protected subject area to avoid
@@ -574,9 +574,8 @@ async def analyze_painting(
 
 **File**: `src/sfumato/matcher.py`
 
-**Responsibility**: Compute embeddings for painting descriptions and news batch tone
-descriptions. Use cosine similarity to select the best-matching painting for a given
-news batch. Manage the embedding cache.
+**Responsibility**: Use LLM-based matching to select the best painting for a given
+news batch tone. Compare painting descriptions with news tone via LLM invocation.
 
 **Non-Responsibility**: Does not fetch paintings (that is `paintings`). Does not curate
 news (that is `news`). Does not generate descriptions (those come from `layout_ai` and
@@ -585,50 +584,23 @@ news (that is `news`). Does not generate descriptions (those come from `layout_a
 **Public Interface**:
 
 ```python
-from dataclasses import dataclass
-import numpy as np
-
-@dataclass
-class EmbeddingResult:
-    text: str                    # The text that was embedded
-    vector: np.ndarray           # Embedding vector (float32)
-    model: str                   # Which model produced this embedding
-
-async def compute_embedding(
-    text: str,
-    ai_config: AiConfig,
-) -> EmbeddingResult:
-    """Compute embedding vector for a text string.
-
-    Uses the configured AI backend's embedding API.
-    For gemini: calls Gemini embedding endpoint.
-    For local: uses sentence-transformers (if installed).
-
-    Raises EmbeddingError if embedding computation fails.
-    """
-    ...
-
-def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
-    """Compute cosine similarity between two vectors. Returns float in [-1, 1]."""
-    ...
-
 async def select_painting(
     news_tone: str,
     paintings: list[PaintingInfo],
     painting_descriptions: dict[str, str],   # content_hash -> description
-    embedding_cache: dict[str, np.ndarray],  # content_hash/tone_hash -> vector
     ai_config: AiConfig,
     strategy: str = "semantic",              # "semantic" | "random"
+    **kwargs,                                # Accept legacy params for backward compat
 ) -> tuple[PaintingInfo, float]:
     """Select the best painting for the given news tone.
 
     If strategy is "random", returns a random painting with score 0.0.
     If strategy is "semantic":
-      1. Compute embedding for news_tone (or use cached)
-      2. For each painting, look up cached embedding (must be pre-computed)
-      3. Return painting with highest cosine similarity, and the score
+      1. Build prompt with painting descriptions and news tone
+      2. Ask LLM to select the best match
+      3. Return selected painting with score 1.0
 
-    Returns (selected_painting, similarity_score).
+    Returns (selected_painting, match_score).
     Raises MatcherError if no paintings available.
     """
     ...
@@ -817,7 +789,7 @@ class TvUploadError(TvError):
 
 **Responsibility**: Provide a unified interface for invoking LLM backends (gemini CLI, codex
 CLI, claude-code CLI) via subprocess. Handle prompt construction, response parsing, retries,
-and timeout. Also provide embedding computation through the appropriate backend.
+and timeout.
 
 **Non-Responsibility**: Does not know about paintings, news, or layout semantics. Does not
 cache results (callers cache). Purely a transport/invocation layer.
@@ -871,20 +843,6 @@ async def invoke_vision(
     """
     ...
 
-async def compute_embedding(
-    text: str,
-    ai_config: AiConfig,
-) -> list[float]:
-    """Compute text embedding using the configured backend.
-
-    For gemini: uses Gemini embedding API endpoint.
-    For others: may fall back to a local sentence-transformers model.
-
-    Returns embedding as list of floats.
-    Raises EmbeddingError on failure.
-    """
-    ...
-
 def parse_json_response(text: str) -> dict:
     """Parse LLM response as JSON, stripping markdown code fences if present.
 
@@ -908,10 +866,6 @@ class LlmError(Exception):
 class LlmParseError(LlmError):
     """LLM response could not be parsed as expected format."""
     pass
-
-class EmbeddingError(LlmError):
-    """Embedding computation failed."""
-    pass
 ```
 
 ---
@@ -921,8 +875,8 @@ class EmbeddingError(LlmError):
 **File**: `src/sfumato/state.py`
 
 **Responsibility**: Manage all persistent and runtime state for the daemon: news queue,
-used paintings set, layout cache, embedding cache, and painting pool metadata. Persist
-state to disk (JSON files in `~/.sfumato/state/`) and load on startup.
+used paintings set, layout cache, and painting pool metadata. Persist state to disk
+(JSON files in `~/.sfumato/state/`) and load on startup.
 
 **Non-Responsibility**: Does not make decisions about what to enqueue or dequeue (that is
 the orchestrator and scheduler). Purely a storage layer.
