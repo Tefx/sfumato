@@ -1257,6 +1257,9 @@ async def init_project(config: AppConfig) -> None:
 
                 success_count += 1
 
+                # Incremental save after each painting — crash-safe
+                state.save_all()
+
             except Exception as e:
                 print(f"      Error: {e}")
                 logger.warning(
@@ -1268,7 +1271,7 @@ async def init_project(config: AppConfig) -> None:
     # Run producer and consumer concurrently
     await asyncio.gather(producer(), consumer())
 
-    state.save_all()
+    state.save_all()  # Final save
     print(f"\nInitialization complete!")
     print(f"  - Paintings downloaded: {download_count}")
     print(f"  - Successfully processed: {success_count}")

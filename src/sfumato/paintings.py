@@ -123,9 +123,10 @@ class ImageDownloadError(PaintingsError):
 # Bounded delays for API rate limiting (seconds)
 # BUG FIX #12: Ensure delays are bounded and never exceed these values
 MET_OBJECT_DELAY = 0.2  # Met API is lenient, brief pause between objects
-DOWNLOAD_DELAY = 0.5  # Pause between image downloads
-WIKIMEDIA_CATEGORY_DELAY = 1.0  # Pause between Wikimedia subcategory queries
-WIKIMEDIA_IMAGE_DELAY = 1.0  # Pause between Wikimedia image info queries
+DOWNLOAD_DELAY = 0.5  # Pause between image downloads (Met)
+WIKIMEDIA_DOWNLOAD_DELAY = 2.0  # Wikimedia needs longer pauses even for thumbnails
+WIKIMEDIA_CATEGORY_DELAY = 1.5  # Pause between Wikimedia subcategory queries
+WIKIMEDIA_IMAGE_DELAY = 1.5  # Pause between Wikimedia image info queries
 
 
 # =============================================================================
@@ -621,7 +622,9 @@ async def _download_candidates(
             break
 
         if idx > 0:
-            await asyncio.sleep(DOWNLOAD_DELAY)  # Bounded pause between downloads
+            # Wikimedia needs longer pauses to avoid 429 even on thumbnails
+            delay = WIKIMEDIA_DOWNLOAD_DELAY if source == ArtSource.WIKIMEDIA else DOWNLOAD_DELAY
+            await asyncio.sleep(delay)
 
         try:
             painting = await _download_one(
