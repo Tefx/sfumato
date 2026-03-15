@@ -678,9 +678,10 @@ async def run_news_refresh(
         - Individual feed fetch failures are non-fatal (logged, skipped)
         - State is NOT saved; caller must call state.save_all() if persistence needed
     """
-    # Batch size = how many stories per rotation display (not total curated).
-    # We split curated stories into batches of 4.
-    batch_size = 4
+    # Batch size for queue storage. Stores more than we display per rotation
+    # so that layout.recommended_stories (2-7) can be satisfied from any batch.
+    # Rendering will truncate to recommended_stories; unused stories stay for next rotation.
+    QUEUE_BATCH_SIZE = 8
 
     # Collect already-displayed URLs from replay queue to avoid re-curating
     exclude_urls: set[str] = set()
@@ -738,7 +739,7 @@ async def run_news_refresh(
         return 0
 
     # Enqueue in batches
-    enqueued_count = state.news_queue.enqueue(result, batch_size)
+    enqueued_count = state.news_queue.enqueue(result, QUEUE_BATCH_SIZE)
     logger.info(
         "Enqueued %d batches (%d stories total, %d feeds fetched)",
         enqueued_count,
