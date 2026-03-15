@@ -6266,3 +6266,36 @@ phases:
     - docker/healthcheck.py
     - docker-compose.yml
     agent: python-senior
+  - id: stabilize.painting-frame-crop
+    name: Handle museum painting frames in downloaded images
+    status: pending
+    description: "step_type: implementation\npriority: MEDIUM\n\nMet Museum photos\
+      \ include physical gold frames around paintings. These frames\ndegrade the visual\
+      \ output when rendered on the TV display.\n\n## Options (choose best approach)\n\
+      \nA. **Image-level auto-crop**: After downloading, detect and crop the frame\n\
+      \   region. Heuristic: museum photo backgrounds are typically uniform (white/gray\n\
+      \   wall), while the painting has content. Edge detection + contour finding\n\
+      \   (OpenCV or Pillow-based) can isolate the painted area.\n\nB. **Prompt-level\
+      \ mitigation**: Add instructions in the layout_ai prompt telling\n   the LLM\
+      \ to treat the outermost region as frame (not content) when computing\n   text\
+      \ placement zones.\n\nC. **Hybrid**: Light crop to remove obvious frame borders\
+      \ + prompt hint.\n\n## Decision criteria\n- If auto-crop can be done reliably\
+      \ with Pillow (no OpenCV dependency), prefer A.\n- If adding OpenCV is too heavy\
+      \ for the Docker image, prefer B or C.\n- Must not crop actual painting content\
+      \ (err on the side of leaving frame).\n\n## Files to touch\n- src/sfumato/paintings.py\
+      \ (add crop utility if approach A/C)\n- src/sfumato/layout_ai.py (prompt update\
+      \ if approach B/C)\n- tests/test_paintings.py (add crop tests if applicable)\n\
+      \n## Test evidence required\n- Before/after comparison on at least 2 Met Museum\
+      \ paintings showing frame removal\n- No painting content lost in the crop"
+    verification: '- Chosen approach documented with rationale
+
+      - At least 2 Met Museum paintings processed without visible gold frame in output
+
+      - No painting content cropped incorrectly
+
+      - Tests pass: pytest tests/test_paintings.py -v'
+    refs:
+    - src/sfumato/paintings.py
+    - src/sfumato/render.py
+    - tests/test_paintings.py
+    agent: python-senior
