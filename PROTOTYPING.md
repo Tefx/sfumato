@@ -448,3 +448,23 @@ These files were generated during prototyping and can be used as visual referenc
 - SIGTERM during LLM call: ⚠️ blocked until current call completes (~10-60s)
 - Docker stop_grace_period: 90s (sufficient)
 - Health file: ✅ last_action.json correctly written on shutdown
+
+## 13. Comprehensive Feature Verification (2026-03-15)
+
+All features verified:
+
+| Feature | Method | Result |
+|---------|--------|--------|
+| Quiet hours → QUIET_ART | Unit test with current hour | ✅ |
+| Active hours → IDLE | Unit test outside active range | ✅ |
+| News expire (7 days) | Create old batch, call expire() | ✅ 1 expired |
+| Replay expire (2 days) | Create old replay, call expire() | ✅ 1 expired |
+| Replay round-robin | next() cycles through batches | ✅ |
+| Replay count tracking | replay_count increments | ✅ |
+| Backfill trigger condition | Pool 29 < 200 | ✅ |
+| State persistence round-trip | save_all() + load() | ✅ news_queue + used_paintings |
+| Layout cache persistence | Load/size check | ✅ |
+| Docker container run | docker run with mounted config | ✅ starts correctly |
+| Watch daemon rotation | 1-min interval test | ✅ (from earlier test) |
+| Watch SIGTERM shutdown | Signal during sleep | ✅ (from earlier test) |
+| Watch forced refresh | Clear queue → re-curate | ✅ (from earlier test) |
