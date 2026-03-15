@@ -324,6 +324,33 @@ class _EmbeddingCache:
         return None
 
 
+class _ArtFactRotation:
+    """Minimal art-fact rotation tracking."""
+
+    def __init__(self) -> None:
+        self._counters: dict[str, int] = {}
+
+    def get_next_index(self, content_hash: str, fact_count: int) -> int | None:
+        """Return the next fact index for a painting, or None if no facts."""
+        if fact_count <= 0:
+            return None
+        current = self._counters.get(content_hash, 0)
+        return current % fact_count
+
+    def commit_rotation(self, content_hash: str, fact_count: int) -> None:
+        """Advance the rotation counter after successful render."""
+        if fact_count <= 0:
+            return
+        current = self._counters.get(content_hash, 0)
+        self._counters[content_hash] = (current + 1) % fact_count
+
+    def save(self) -> None:
+        return None
+
+    def load(self) -> None:
+        return None
+
+
 @dataclass
 class AppState:
     """Minimal application state implementation for CLI.
@@ -335,6 +362,7 @@ class AppState:
     used_paintings: _UsedPaintings
     layout_cache: _LayoutCache
     embedding_cache: _EmbeddingCache
+    art_fact_rotation: _ArtFactRotation
 
     @classmethod
     def load(cls, state_dir: Path) -> "AppState":
@@ -345,6 +373,7 @@ class AppState:
             used_paintings=_UsedPaintings(state_dir),
             layout_cache=_LayoutCache(state_dir),
             embedding_cache=_EmbeddingCache(state_dir),
+            art_fact_rotation=_ArtFactRotation(),
         )
 
     def save_all(self) -> None:

@@ -923,6 +923,7 @@ async def _discover_wikimedia_candidates(count: int) -> list[_SourceCandidate]:
                     "format": "json",
                     "prop": "imageinfo",
                     "iiprop": "url|extmetadata",
+                    "iiurlwidth": "3840",
                     "titles": title,
                 },
             )
@@ -933,7 +934,9 @@ async def _discover_wikimedia_candidates(count: int) -> list[_SourceCandidate]:
             ).values()
             page = next(iter(page_items), {})
             image_info = (page.get("imageinfo") or [{}])[0]
-            image_url = str(image_info.get("url", "")).strip()
+            # Use thumburl (resized, not rate-limited) instead of url (original, 429'd)
+            # Wikimedia explicitly asks to use thumbnail URLs: https://w.wiki/GHai
+            image_url = str(image_info.get("thumburl") or image_info.get("url", "")).strip()
             if not image_url:
                 continue
 
