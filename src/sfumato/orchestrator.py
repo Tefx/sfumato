@@ -807,14 +807,41 @@ async def run_backfill(
     current_count = len(current_paintings)
     target_size = config.paintings.pool_size
 
-    # Bounded behavior: if pool already meets target, return 0 immediately
+    # Rolling replacement: if pool is at capacity, evict oldest paintings
+    # to make room for fresh ones. This ensures users always see new art.
+    ROLLING_REPLACE_COUNT = 5  # Replace up to 5 paintings per backfill cycle
     if current_count >= target_size:
-        logger.info(
-            "Pool already at target size (%d >= %d), skipping backfill",
-            current_count,
-            target_size,
-        )
-        return 0
+        # Find paintings with the most views (used_count) or oldest import date
+        # For now: evict paintings that have been seen the most times
+        evict_count = min(ROLLING_REPLACE_COUNT, current_count)
+        # Sort by source_id (stable proxy for import order) and evict oldest
+        sorted_paintings = sorted(current_paintings, key=lambda p: p.source_id)
+        # Only evict if they've been used (don't evict paintings user hasn't seen)
+        used_paintings_set = set()
+        if hasattr(state, 'used_paintings'):
+            for p in sorted_paintings:
+                if state.used_paintings.is_used(p.content_hash):
+                    used_paintings_set.add(p.content_hash)
+
+        evictable = [p for p in sorted_paintings if p.content_hash in used_paintings_set]
+        to_evict = evictable[:evict_count] if evictable else []
+
+        if not to_evict:
+            logger.info("Pool at capacity (%d) but no evictable paintings, skipping", current_count)
+            return 0
+
+        for p in to_evict:
+            try:
+                p.image_path.unlink(missing_ok=True)
+                sidecar = p.image_path.with_suffix(".json")
+                sidecar.unlink(missing_ok=True)
+                logger.info("Evicted painting: %s (%s)", p.title, p.source_id)
+            except OSError as e:
+                logger.warning("Failed to evict %s: %s", p.source_id, e)
+
+        # Refresh the list after eviction
+        current_paintings = list_cached_paintings(config.paintings.cache_dir)
+        current_count = len(current_paintings)
 
     # Calculate how many paintings we need
     deficit = target_size - current_count
