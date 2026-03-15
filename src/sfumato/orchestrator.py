@@ -1207,17 +1207,37 @@ async def init_project(config: AppConfig) -> None:
     success_count = 0
 
     async def producer() -> None:
-        """Download paintings and feed them into the queue."""
+        """Load cached paintings first, download more if needed."""
         nonlocal download_count
-        paintings = await fetch_paintings(
-            sources=config.paintings.sources,
-            count=config.paintings.seed_size,
-            cache_dir=config.paintings.cache_dir,
-            exclude_ids=None,
-        )
-        download_count = len(paintings)
-        for painting in paintings:
-            await queue.put(painting)
+
+        # Check what's already cached — skip re-downloading
+        try:
+            cached = list_cached_paintings(config.paintings.cache_dir)
+        except FileNotFoundError:
+            cached = []
+
+        if cached:
+            print(f"  Found {len(cached)} cached paintings, skipping download")
+            download_count = len(cached)
+            for painting in cached:
+                await queue.put(painting)
+
+        # Download more if we haven't reached seed_size
+        deficit = config.paintings.seed_size - len(cached)
+        if deficit > 0:
+            existing_hashes = {p.content_hash for p in cached}
+            new_paintings = await fetch_paintings(
+                sources=config.paintings.sources,
+                count=deficit,
+                cache_dir=config.paintings.cache_dir,
+                exclude_ids=existing_hashes,
+            )
+            download_count += len(new_paintings)
+            for painting in new_paintings:
+                await queue.put(painting)
+            if new_paintings:
+                print(f"  Downloaded {len(new_paintings)} new paintings")
+
         await queue.put(None)  # Sentinel: signal consumer to stop
 
     async def consumer() -> None:

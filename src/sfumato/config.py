@@ -95,7 +95,7 @@ class AiConfig:
 
     cli: str = "gemini"
     model: str = "gemini-3-flash-preview"
-    backend: str = "cli"
+    backend: str = "sdk"
     sdk_provider: str = "openrouter"
 
 
@@ -249,8 +249,9 @@ match_strategy = "semantic"
 cli = "gemini"
 model = "gemini-3-flash-preview"
 # backend: "cli" for CLI tools, "sdk" for LiteLLM SDK
-backend = "cli"
+backend = "sdk"
 # sdk_provider: "openrouter", "google", or "openai" (used when backend="sdk")
+# Set OPENROUTER_API_KEY env var for openrouter provider
 sdk_provider = "openrouter"
 """
 

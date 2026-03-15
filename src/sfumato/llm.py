@@ -601,6 +601,8 @@ async def _invoke_sdk_completion(
     Raises:
         LlmError: If SDK invocation fails or provider is invalid.
     """
+    import os
+
     try:
         import litellm
     except ImportError as e:
@@ -608,6 +610,15 @@ async def _invoke_sdk_completion(
             "LiteLLM SDK is required for backend='sdk'. "
             "Install with: pip install litellm"
         ) from e
+
+    # Ensure API key env var is set (support common aliases)
+    if ai_config.sdk_provider == "openrouter" and not os.environ.get("OPENROUTER_API_KEY"):
+        # Try common aliases
+        for alias in ("OPENROUTER_KEY", "OR_API_KEY"):
+            val = os.environ.get(alias)
+            if val:
+                os.environ["OPENROUTER_API_KEY"] = val
+                break
 
     # Validate provider
     if ai_config.sdk_provider not in VALID_SDK_PROVIDERS:
