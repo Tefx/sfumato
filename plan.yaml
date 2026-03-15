@@ -6187,3 +6187,45 @@ phases:
   context: Fix and verify all known outstanding issues. Covers watch daemon E2E, Docker
     build, painting frame cropping, doc sync, config compat, and dead code cleanup.
     All prior phases done.
+  steps:
+  - id: stabilize.watch-daemon-e2e
+    name: Watch daemon end-to-end validation
+    status: pending
+    description: "step_type: implementation\npriority: HIGH\n\nEnd-to-end verification\
+      \ and fix of the `sfumato watch` daemon loop.\nThis is the most critical untested\
+      \ runtime surface in the project.\n\n## Scope\n\n1. **Scheduler integration\
+      \ test**: Write an integration test that exercises\n   the full watch() loop\
+      \ with a mock clock, verifying:\n   - News timer fires at news_interval_hours\n\
+      \   - Rotate timer fires at rotate_interval_minutes\n   - Quiet hours produce\
+      \ QUIET_ART action\n   - IDLE returned outside active hours\n   - Backfill triggers\
+      \ when pool_size deficit detected\n\n2. **Signal handling**: Verify SIGINT/SIGTERM\
+      \ produce graceful shutdown\n   (state persisted, no orphan actions).\n\n3.\
+      \ **Backfill rolling replacement**: The run_backfill() eviction logic\n   (lines\
+      \ 793-802 in orchestrator.py) has never been exercised. Write a\n   test that\
+      \ verifies paintings are evicted when pool is at capacity.\n\n4. **Health file**:\
+      \ Verify watch_health.json is written correctly on each\n   cycle (used by Docker\
+      \ HEALTHCHECK).\n\n5. **Error recovery**: Verify per-action recoverable errors\
+      \ don't crash\n   the daemon loop (line 1069-1080 in orchestrator.py).\n\n##\
+      \ Files to touch\n- tests/test_scheduler.py (extend)\n- tests/test_orchestrator.py\
+      \ (extend with watch integration tests)\n- src/sfumato/orchestrator.py (fix\
+      \ any bugs found)\n- src/sfumato/scheduler.py (fix any bugs found)\n\n## Known\
+      \ risks\n- The watch() function uses signal.signal() which may behave differently\n\
+      \  in test vs daemon context. Use asyncio event loop signal handling in tests.\n\
+      - run_backfill() rolling replacement sorts by source_id as proxy for age;\n\
+      \  verify this ordering is correct."
+    verification: '- Integration test for watch loop passes: pytest tests/test_orchestrator.py
+      -k watch -v
+
+      - Scheduler tests cover all action types: pytest tests/test_scheduler.py -v
+
+      - Backfill rolling replacement test passes with pool at capacity
+
+      - Signal handling test shows clean shutdown with state persistence
+
+      - Health file written with correct schema'
+    refs:
+    - src/sfumato/orchestrator.py
+    - src/sfumato/scheduler.py
+    - src/sfumato/cli.py
+    - tests/test_scheduler.py
+    agent: python-senior
