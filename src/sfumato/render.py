@@ -385,10 +385,24 @@ def build_template_variables(ctx: RenderContext) -> dict[str, str]:
     whisper_zone = ctx.layout.whisper_zone
     whisper_pos = whisper_zone.position
 
-    # Detect collision with painting credit (always bottom-left in portrait templates)
+    # Detect collision: whisper must not overlap with news text zone or credit
+    news_pos = ctx.layout.text_zone.position
+
+    # If whisper and news are in the same zone, move whisper to diagonal
+    if whisper_pos == news_pos:
+        diagonal_map = {
+            "top-left": "bottom-right",
+            "top-right": "bottom-left",
+            "bottom-left": "top-right",
+            "bottom-right": "top-left",
+            "left-side": "bottom-right",
+            "right-side": "bottom-left",
+        }
+        whisper_pos = diagonal_map.get(whisper_pos, "bottom-left")
+
+    # Portrait templates: bottom-left reserved for painting credit
     if ctx.template_name == "portrait" and whisper_pos in ("bottom-left", "left-side"):
-        # Shift whisper to top-left or bottom-right to avoid credit
-        whisper_pos = "top-left"
+        whisper_pos = "top-left" if news_pos != "top-left" else "bottom-right"
 
     whisper_position_css = _position_to_css(whisper_pos)
     whisper_max_width = f"max-width: {whisper_zone.max_width_percent}%;"
